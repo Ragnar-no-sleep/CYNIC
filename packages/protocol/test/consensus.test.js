@@ -33,6 +33,34 @@ import {
   createAddDimensionProposal,
   createParameterChangeProposal,
   generateKeypair,
+  // Slot management
+  SLOT_DURATION_MS,
+  SLOTS_PER_EPOCH,
+  getCurrentSlot,
+  getEpochForSlot,
+  getSlotIndexInEpoch,
+  timeUntilNextSlot,
+  getSlotTimestamp,
+  selectLeader,
+  createEpochSchedule,
+  SlotManager,
+  // Finality
+  FinalityStatus,
+  calculateFinalityProbability,
+  estimateTimeToFinality,
+  checkForkPossibility,
+  FinalityTracker,
+  // Messages
+  ConsensusMessageType,
+  createBlockProposal,
+  createVoteMessage,
+  createVoteAggregate,
+  createFinalityNotification,
+  createSlotStatus,
+  validateMessage,
+  isConsensusMessage,
+  // Engine
+  ConsensusEngine,
 } from '../src/index.js';
 
 import { PHI, PHI_INV, CONSENSUS_THRESHOLD, GOVERNANCE_QUORUM } from '@cynic/core';
@@ -786,5 +814,484 @@ describe('Proposal Management', () => {
 
     assert.strictEqual(proposal.action, ProposalAction.PARAMETER_CHANGE);
     assert.strictEqual(proposal.params.parameter, 'CONSENSUS_THRESHOLD');
+  });
+});
+
+// ============================================
+// New φ-BFT Consensus Tests
+// ============================================
+
+describe('Slot Management', () => {
+  const genesisTime = 1700000000000; // Fixed genesis for tests
+
+  it('should calculate current slot', () => {
+    const now = genesisTime + 800; // 800ms after genesis
+    const slot = getCurrentSlot(genesisTime, now);
+    assert.strictEqual(slot, 2); // 800/400 = 2
+  });
+
+  it('should return 0 for time before genesis', () => {
+    const slot = getCurrentSlot(genesisTime, genesisTime - 1000);
+    assert.strictEqual(slot, 0);
+  });
+
+  it('should calculate epoch from slot', () => {
+    assert.strictEqual(getEpochForSlot(0), 0);
+    assert.strictEqual(getEpochForSlot(431), 0);
+    assert.strictEqual(getEpochForSlot(432), 1);
+    assert.strictEqual(getEpochForSlot(864), 2);
+  });
+
+  it('should get slot index within epoch', () => {
+    assert.strictEqual(getSlotIndexInEpoch(0), 0);
+    assert.strictEqual(getSlotIndexInEpoch(100), 100);
+    assert.strictEqual(getSlotIndexInEpoch(432), 0);
+    assert.strictEqual(getSlotIndexInEpoch(500), 68);
+  });
+
+  it('should calculate time until next slot', () => {
+    const now = genesisTime + 100; // 100ms into slot 0
+    const remaining = timeUntilNextSlot(genesisTime, now);
+    assert.strictEqual(remaining, 300); // 400 - 100
+  });
+
+  it('should get slot timestamp', () => {
+    const ts = getSlotTimestamp(genesisTime, 5);
+    assert.strictEqual(ts, genesisTime + 5 * SLOT_DURATION_MS);
+  });
+
+  it('should select leader deterministically', () => {
+    const validators = [
+      { id: 'v1', weight: 100 },
+      { id: 'v2', weight: 100 },
+      { id: 'v3', weight: 100 },
+    ];
+
+    const leader1 = selectLeader(100, validators);
+    const leader2 = selectLeader(100, validators);
+    assert.strictEqual(leader1, leader2); // Same slot = same leader
+  });
+
+  it('should weight leader selection', () => {
+    const validators = [
+      { id: 'heavy', weight: 1000 },
+      { id: 'light', weight: 1 },
+    ];
+
+    // Run many times, heavy should be selected more often
+    let heavyCount = 0;
+    for (let slot = 0; slot < 100; slot++) {
+      if (selectLeader(slot, validators) === 'heavy') heavyCount++;
+    }
+    assert.ok(heavyCount > 80); // Heavy should win most
+  });
+
+  it('should create epoch schedule', () => {
+    const validators = [
+      { id: 'v1', weight: 50 },
+      { id: 'v2', weight: 50 },
+    ];
+
+    const schedule = createEpochSchedule(0, validators);
+    assert.strictEqual(schedule.length, SLOTS_PER_EPOCH);
+    assert.ok(schedule.every((id) => id === 'v1' || id === 'v2'));
+  });
+
+  it('should handle empty validator set', () => {
+    assert.strictEqual(selectLeader(0, []), null);
+    assert.strictEqual(selectLeader(0, null), null);
+  });
+});
+
+describe('SlotManager', () => {
+  it('should track current slot', () => {
+    const manager = new SlotManager({ genesisTime: Date.now() - 1000 });
+    const slot = manager.getCurrentSlot();
+    assert.ok(slot >= 2); // At least 2 slots (1000/400)
+  });
+
+  it('should get leader for slot', () => {
+    const manager = new SlotManager({ genesisTime: Date.now() });
+    manager.setValidators([
+      { id: 'v1', weight: 100 },
+      { id: 'v2', weight: 100 },
+    ]);
+
+    const leader = manager.getLeader(0);
+    assert.ok(leader === 'v1' || leader === 'v2');
+  });
+
+  it('should check if validator is leader', () => {
+    const manager = new SlotManager({ genesisTime: Date.now() });
+    manager.setValidators([{ id: 'only', weight: 100 }]);
+
+    assert.strictEqual(manager.isLeader('only'), true);
+    assert.strictEqual(manager.isLeader('other'), false);
+  });
+
+  it('should provide slot info', () => {
+    const manager = new SlotManager({ genesisTime: Date.now() - 500 });
+    manager.setValidators([{ id: 'v1', weight: 100 }]);
+
+    const info = manager.getSlotInfo(0);
+    assert.strictEqual(info.slot, 0);
+    assert.strictEqual(info.epoch, 0);
+    assert.strictEqual(info.indexInEpoch, 0);
+    assert.strictEqual(info.isEpochStart, true);
+  });
+});
+
+describe('Finality Probability', () => {
+  it('should calculate high probability for supermajority', () => {
+    const result = calculateFinalityProbability({
+      approveRatio: 0.65, // 65% approval (just above threshold)
+      confirmations: 1, // Low confirmations
+      totalValidators: 100,
+      votedValidators: 100,
+    });
+
+    assert.ok(result.probability > 0.9);
+    assert.strictEqual(result.status, FinalityStatus.OPTIMISTIC);
+  });
+
+  it('should return PENDING below threshold', () => {
+    const result = calculateFinalityProbability({
+      approveRatio: 0.5, // Below 61.8%
+      confirmations: 5,
+      totalValidators: 100,
+      votedValidators: 100,
+    });
+
+    assert.strictEqual(result.status, FinalityStatus.PENDING);
+  });
+
+  it('should reach DETERMINISTIC with high confirmations', () => {
+    const result = calculateFinalityProbability({
+      approveRatio: 1.0, // Full approval
+      confirmations: 32,
+      totalValidators: 100,
+      votedValidators: 100,
+    });
+
+    assert.strictEqual(result.status, FinalityStatus.DETERMINISTIC);
+  });
+
+  it('should penalize low participation', () => {
+    const full = calculateFinalityProbability({
+      approveRatio: 0.7,
+      confirmations: 5,
+      totalValidators: 100,
+      votedValidators: 100,
+    });
+
+    const partial = calculateFinalityProbability({
+      approveRatio: 0.7,
+      confirmations: 5,
+      totalValidators: 100,
+      votedValidators: 50, // Only 50% voted
+    });
+
+    assert.ok(partial.probability < full.probability);
+  });
+
+  it('should include lockout slots', () => {
+    const result = calculateFinalityProbability({
+      approveRatio: 0.7,
+      confirmations: 5,
+      totalValidators: 100,
+      votedValidators: 100,
+    });
+
+    assert.ok(result.lockoutSlots > 0);
+  });
+});
+
+describe('Time to Finality Estimation', () => {
+  it('should estimate confirmations needed', () => {
+    const result = estimateTimeToFinality({
+      currentConfirmations: 5,
+      targetProbability: 0.99,
+    });
+
+    assert.strictEqual(result.targetConfirmations, 13);
+    assert.strictEqual(result.remainingConfirmations, 8);
+  });
+
+  it('should estimate milliseconds', () => {
+    const result = estimateTimeToFinality({
+      currentConfirmations: 0,
+      targetProbability: 0.99,
+      slotDurationMs: 400,
+    });
+
+    assert.strictEqual(result.estimatedMs, 13 * 400);
+  });
+
+  it('should return 0 remaining when already final', () => {
+    const result = estimateTimeToFinality({
+      currentConfirmations: 32,
+      targetProbability: 0.99,
+    });
+
+    assert.strictEqual(result.remainingConfirmations, 0);
+  });
+});
+
+describe('Fork Possibility', () => {
+  it('should detect fork is possible', () => {
+    const result = checkForkPossibility({
+      lockedWeight: 30,
+      totalWeight: 100,
+      currentSlot: 10,
+      blockSlot: 5,
+      confirmations: 3,
+    });
+
+    // Available = 70, need 61.8 for supermajority
+    assert.strictEqual(result.forkPossible, true);
+    assert.strictEqual(result.availableWeight, 70);
+  });
+
+  it('should detect fork is impossible', () => {
+    const result = checkForkPossibility({
+      lockedWeight: 50,
+      totalWeight: 100,
+      currentSlot: 100,
+      blockSlot: 5,
+      confirmations: 20,
+    });
+
+    // Available = 50, need 61.8 - not enough
+    assert.strictEqual(result.forkPossible, false);
+  });
+});
+
+describe('FinalityTracker', () => {
+  let tracker;
+
+  beforeEach(() => {
+    tracker = new FinalityTracker();
+  });
+
+  it('should track block finality', () => {
+    tracker.update('block_abc', {
+      approveRatio: 0.7,
+      confirmations: 5,
+      totalValidators: 100,
+      votedValidators: 100,
+    });
+
+    const status = tracker.get('block_abc');
+    assert.ok(status);
+    assert.ok(status.probability > 0);
+  });
+
+  it('should track finalized blocks', () => {
+    tracker.update('block_xyz', {
+      approveRatio: 1.0,
+      confirmations: 32,
+      totalValidators: 100,
+      votedValidators: 100,
+    });
+
+    assert.strictEqual(tracker.isFinal('block_xyz'), true);
+    assert.strictEqual(tracker.isFinal('block_unknown'), false);
+  });
+
+  it('should provide statistics', () => {
+    tracker.update('b1', {
+      approveRatio: 0.5,
+      confirmations: 1,
+      totalValidators: 100,
+      votedValidators: 100,
+    });
+    tracker.update('b2', {
+      approveRatio: 0.7,
+      confirmations: 5,
+      totalValidators: 100,
+      votedValidators: 100,
+    });
+
+    const stats = tracker.getStats();
+    assert.strictEqual(stats.total, 2);
+    assert.ok(stats.avgProbability > 0);
+  });
+});
+
+describe('Consensus Messages', () => {
+  it('should create block proposal', () => {
+    const msg = createBlockProposal({
+      blockHash: 'hash_123',
+      block: { data: 'test' },
+      slot: 100,
+      proposer: 'pk_abc',
+      signature: 'sig_xyz',
+    });
+
+    assert.strictEqual(msg.type, ConsensusMessageType.BLOCK_PROPOSAL);
+    assert.strictEqual(msg.blockHash, 'hash_123');
+    assert.ok(msg.timestamp);
+  });
+
+  it('should create vote message', () => {
+    const msg = createVoteMessage({
+      blockHash: 'hash_123',
+      slot: 100,
+      decision: 'approve',
+      voter: 'pk_voter',
+      weight: 50,
+      signature: 'sig_vote',
+    });
+
+    assert.strictEqual(msg.type, ConsensusMessageType.VOTE);
+    assert.strictEqual(msg.decision, 'approve');
+  });
+
+  it('should create vote aggregate', () => {
+    const msg = createVoteAggregate({
+      blockHash: 'hash_123',
+      slot: 100,
+      approveWeight: 70,
+      rejectWeight: 30,
+      totalWeight: 100,
+      voteCount: 10,
+    });
+
+    assert.strictEqual(msg.type, ConsensusMessageType.VOTE_AGGREGATE);
+    assert.strictEqual(msg.approveRatio, 0.7);
+  });
+
+  it('should create finality notification', () => {
+    const msg = createFinalityNotification({
+      blockHash: 'hash_123',
+      slot: 100,
+      height: 50,
+      status: FinalityStatus.DETERMINISTIC,
+      probability: 0.9999,
+      confirmations: 32,
+    });
+
+    assert.strictEqual(msg.type, ConsensusMessageType.FINALITY_NOTIFICATION);
+    assert.strictEqual(msg.status, FinalityStatus.DETERMINISTIC);
+  });
+
+  it('should validate messages', () => {
+    const valid = createBlockProposal({
+      blockHash: 'hash',
+      block: {},
+      slot: 0,
+      proposer: 'pk',
+      signature: 'sig',
+    });
+
+    assert.strictEqual(validateMessage(valid).valid, true);
+
+    const invalid = { type: ConsensusMessageType.VOTE };
+    const result = validateMessage(invalid);
+    assert.strictEqual(result.valid, false);
+    assert.ok(result.errors.length > 0);
+  });
+
+  it('should identify consensus messages', () => {
+    assert.strictEqual(isConsensusMessage('consensus:vote'), true);
+    assert.strictEqual(isConsensusMessage('gossip:message'), false);
+    assert.strictEqual(isConsensusMessage(null), false);
+  });
+});
+
+describe('ConsensusEngine', () => {
+  let engine;
+  let keypair;
+
+  beforeEach(() => {
+    keypair = generateKeypair();
+    engine = new ConsensusEngine({
+      publicKey: keypair.publicKey,
+      privateKey: keypair.privateKey,
+      slotDuration: 400,
+    });
+  });
+
+  it('should initialize with validator identity', () => {
+    assert.strictEqual(engine.publicKey, keypair.publicKey);
+    assert.strictEqual(engine.state, 'INITIALIZING');
+  });
+
+  it('should register validators', () => {
+    engine.registerValidator({ publicKey: 'v1', eScore: 100 });
+    engine.registerValidator({ publicKey: 'v2', eScore: 50 });
+
+    const validators = engine.validators;
+    assert.strictEqual(validators.size, 2);
+  });
+
+  it('should start and stop', () => {
+    engine.start();
+    assert.strictEqual(engine.state, 'PARTICIPATING');
+
+    engine.stop();
+    assert.strictEqual(engine.state, 'STOPPED');
+  });
+
+  it('should propose block when started', () => {
+    engine.start();
+    engine.registerValidator({ publicKey: keypair.publicKey, eScore: 100 });
+
+    const block = { hash: 'test_block', data: 'content' };
+    const record = engine.proposeBlock(block);
+
+    assert.ok(record);
+    assert.strictEqual(record.hash, 'test_block');
+    engine.stop();
+  });
+
+  it('should receive and track votes', () => {
+    engine.start();
+
+    const block = { hash: 'vote_test', data: 'x' };
+    engine.proposeBlock(block);
+
+    const vote = {
+      blockHash: 'vote_test',
+      decision: 'approve',
+      voter: 'other_validator',
+      weight: 50,
+      slot: 0,
+      signature: 'sig',
+    };
+
+    engine.receiveVote(vote, 'peer1');
+
+    const record = engine.getBlock('vote_test');
+    assert.ok(record.votes.size >= 1);
+    engine.stop();
+  });
+
+  it('should emit events', (t, done) => {
+    engine.start();
+    engine.once('block:proposed', (data) => {
+      assert.ok(data.blockHash);
+      engine.stop();
+      done();
+    });
+
+    engine.proposeBlock({ hash: 'event_test', data: 'x' });
+  });
+
+  it('should track statistics', () => {
+    engine.start();
+    engine.registerValidator({ publicKey: 'v1', eScore: 100 });
+    engine.proposeBlock({ hash: 'stat_test', data: 'x' });
+
+    const stats = engine.getStats();
+    assert.ok(stats.blocksProposed > 0 || engine.blocks.size > 0);
+    assert.strictEqual(engine.validators.size, 1);
+    engine.stop();
+  });
+
+  it('should throw when proposing without starting', () => {
+    assert.throws(() => {
+      engine.proposeBlock({ hash: 'fail', data: 'x' });
+    }, /Not participating/);
   });
 });

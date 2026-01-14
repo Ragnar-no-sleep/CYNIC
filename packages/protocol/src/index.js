@@ -104,6 +104,40 @@ export {
   finalizeProposal,
   createAddDimensionProposal,
   createParameterChangeProposal,
+  // Engine
+  ConsensusState,
+  BlockStatus,
+  ConsensusEngine,
+  // Slot management
+  SLOT_DURATION_MS,
+  SLOTS_PER_EPOCH,
+  EPOCH_DURATION_MS,
+  getCurrentSlot,
+  getEpochForSlot,
+  getSlotIndexInEpoch,
+  timeUntilNextSlot,
+  getSlotTimestamp,
+  selectLeader,
+  createEpochSchedule,
+  SlotManager,
+  // Finality
+  FinalityStatus,
+  calculateFinalityProbability,
+  estimateTimeToFinality,
+  checkForkPossibility,
+  FinalityTracker,
+  // Messages
+  ConsensusMessageType,
+  createBlockProposal,
+  createVoteMessage,
+  createVoteAggregate,
+  createFinalityNotification,
+  createSlotStatus,
+  createSyncRequest as createConsensusSyncRequest,
+  createSyncResponse as createConsensusSyncResponse,
+  createValidatorJoin,
+  validateMessage,
+  isConsensusMessage,
 } from './consensus/index.js';
 
 // Crypto utilities

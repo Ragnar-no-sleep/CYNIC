@@ -1,0 +1,763 @@
+/**
+ * φ-BFT Consensus Engine
+ *
+ * Main orchestrator for CYNIC consensus:
+ * - Slot-based block production
+ * - Vote collection and verification
+ * - φ exponential lockout
+ * - Block finality (61.8% supermajority)
+ *
+ * @module @cynic/protocol/consensus/engine
+ */
+
+'use strict';
+
+import { EventEmitter } from 'events';
+import { PHI, PHI_INV, CONSENSUS_THRESHOLD, SLOT_MS } from '@cynic/core';
+import { hashObject } from '../crypto/hash.js';
+import {
+  VoteType,
+  ConsensusType,
+  createVote,
+  verifyVote,
+  calculateConsensus,
+  calculateVoteWeight,
+} from './voting.js';
+import { LockoutManager, calculateTotalLockout } from './lockout.js';
+
+/**
+ * Consensus state
+ */
+export const ConsensusState = {
+  INITIALIZING: 'INITIALIZING',
+  SYNCING: 'SYNCING',
+  PARTICIPATING: 'PARTICIPATING',
+  LEADER: 'LEADER',
+  STOPPED: 'STOPPED',
+};
+
+/**
+ * Block status in consensus
+ */
+export const BlockStatus = {
+  PROPOSED: 'PROPOSED',
+  VOTING: 'VOTING',
+  CONFIRMED: 'CONFIRMED',
+  FINALIZED: 'FINALIZED',
+  REJECTED: 'REJECTED',
+  ORPHANED: 'ORPHANED',
+};
+
+/**
+ * φ-BFT Consensus Engine
+ *
+ * Implements CYNIC's 4th layer consensus with:
+ * - φ⁻¹ (61.8%) supermajority threshold
+ * - E-Score weighted voting
+ * - Exponential lockout (φⁿ slots)
+ * - Probabilistic finality after sufficient confirmations
+ */
+export class ConsensusEngine extends EventEmitter {
+  /**
+   * @param {Object} options - Engine options
+   * @param {string} options.publicKey - Node public key
+   * @param {string} options.privateKey - Node private key
+   * @param {number} [options.eScore=50] - Node E-Score
+   * @param {number} [options.burned=0] - Node burned tokens
+   * @param {number} [options.slotDuration=SLOT_MS] - Slot duration in ms
+   * @param {number} [options.confirmationsForFinality=32] - Confirmations needed
+   */
+  constructor(options) {
+    super();
+
+    this.publicKey = options.publicKey;
+    this.privateKey = options.privateKey;
+    this.eScore = options.eScore || 50;
+    this.burned = options.burned || 0;
+    this.slotDuration = options.slotDuration || SLOT_MS || 400;
+    this.confirmationsForFinality = options.confirmationsForFinality || 32;
+
+    // State
+    this.state = ConsensusState.INITIALIZING;
+    this.currentSlot = 0;
+    this.genesisTime = null;
+
+    // Block tracking
+    this.blocks = new Map(); // blockHash -> BlockRecord
+    this.slotBlocks = new Map(); // slot -> Set<blockHash>
+    this.lastFinalizedSlot = 0;
+    this.lastFinalizedBlock = null;
+
+    // Vote tracking
+    this.votes = new Map(); // blockHash -> Map<voter, vote>
+    this.pendingVotes = []; // Votes waiting to be processed
+
+    // Lockout
+    this.lockoutManager = new LockoutManager();
+
+    // Leader selection (simplified round-robin for now)
+    this.validators = new Map(); // publicKey -> { eScore, weight, ... }
+
+    // Timers
+    this.slotTimer = null;
+
+    // Stats
+    this.stats = {
+      blocksProposed: 0,
+      blocksFinalized: 0,
+      votesSubmitted: 0,
+      votesReceived: 0,
+      slotsProcessed: 0,
+    };
+  }
+
+  /**
+   * Start consensus engine
+   * @param {number} [genesisTime] - Network genesis time
+   */
+  start(genesisTime = Date.now()) {
+    if (this.state !== ConsensusState.INITIALIZING && this.state !== ConsensusState.STOPPED) {
+      return;
+    }
+
+    this.genesisTime = genesisTime;
+    this.currentSlot = this._calculateSlot(Date.now());
+    this.state = ConsensusState.PARTICIPATING;
+
+    // Start slot timer
+    this._startSlotTimer();
+
+    this.emit('consensus:started', {
+      slot: this.currentSlot,
+      genesisTime: this.genesisTime,
+    });
+  }
+
+  /**
+   * Stop consensus engine
+   */
+  stop() {
+    this.state = ConsensusState.STOPPED;
+
+    if (this.slotTimer) {
+      clearTimeout(this.slotTimer);
+      clearInterval(this.slotTimer);
+      this.slotTimer = null;
+    }
+
+    this.emit('consensus:stopped');
+  }
+
+  /**
+   * Register a validator
+   * @param {Object} validator - Validator info
+   * @param {string} validator.publicKey - Validator public key
+   * @param {number} validator.eScore - Validator E-Score
+   * @param {number} [validator.burned=0] - Burned tokens
+   * @param {number} [validator.uptime=1] - Uptime ratio
+   */
+  registerValidator(validator) {
+    const weight = calculateVoteWeight({
+      eScore: validator.eScore,
+      burned: validator.burned || 0,
+      uptime: validator.uptime || 1,
+    });
+
+    this.validators.set(validator.publicKey, {
+      ...validator,
+      weight,
+      registeredAt: Date.now(),
+    });
+
+    this.emit('validator:registered', { publicKey: validator.publicKey, weight });
+  }
+
+  /**
+   * Remove a validator
+   * @param {string} publicKey - Validator public key
+   */
+  removeValidator(publicKey) {
+    this.validators.delete(publicKey);
+    this.emit('validator:removed', { publicKey });
+  }
+
+  /**
+   * Propose a block
+   * @param {Object} block - Block to propose
+   * @returns {Object} Block record
+   */
+  proposeBlock(block) {
+    if (this.state !== ConsensusState.PARTICIPATING && this.state !== ConsensusState.LEADER) {
+      throw new Error('Not participating in consensus');
+    }
+
+    const blockHash = block.hash || hashObject(block);
+    const slot = block.slot || this.currentSlot;
+
+    // Create block record
+    const record = {
+      hash: blockHash,
+      block,
+      slot,
+      proposer: block.proposer || this.publicKey,
+      status: BlockStatus.PROPOSED,
+      proposedAt: Date.now(),
+      votes: new Map(),
+      confirmations: 0,
+      totalWeight: 0,
+      approveWeight: 0,
+      rejectWeight: 0,
+    };
+
+    this.blocks.set(blockHash, record);
+
+    // Track by slot
+    if (!this.slotBlocks.has(slot)) {
+      this.slotBlocks.set(slot, new Set());
+    }
+    this.slotBlocks.get(slot).add(blockHash);
+
+    // Initialize vote tracking
+    this.votes.set(blockHash, new Map());
+
+    this.stats.blocksProposed++;
+    this.emit('block:proposed', { blockHash, slot, proposer: record.proposer });
+
+    // Self-vote (approve own block)
+    this._submitVote(blockHash, VoteType.APPROVE);
+
+    return record;
+  }
+
+  /**
+   * Receive a proposed block from network
+   * @param {Object} block - Block received
+   * @param {string} fromPeer - Peer who sent it
+   */
+  receiveBlock(block, fromPeer) {
+    const blockHash = block.hash || hashObject(block);
+
+    // Already have this block
+    if (this.blocks.has(blockHash)) {
+      return;
+    }
+
+    // Validate block slot
+    const slot = block.slot;
+    if (slot < this.lastFinalizedSlot) {
+      // Too old, ignore
+      return;
+    }
+
+    // Create record
+    const record = {
+      hash: blockHash,
+      block,
+      slot,
+      proposer: block.proposer,
+      status: BlockStatus.VOTING,
+      receivedAt: Date.now(),
+      receivedFrom: fromPeer,
+      votes: new Map(),
+      confirmations: 0,
+      totalWeight: 0,
+      approveWeight: 0,
+      rejectWeight: 0,
+    };
+
+    this.blocks.set(blockHash, record);
+
+    if (!this.slotBlocks.has(slot)) {
+      this.slotBlocks.set(slot, new Set());
+    }
+    this.slotBlocks.get(slot).add(blockHash);
+
+    this.votes.set(blockHash, new Map());
+
+    this.emit('block:received', { blockHash, slot, fromPeer });
+
+    // Validate and vote
+    this._validateAndVote(record);
+  }
+
+  /**
+   * Receive a vote from network
+   * @param {Object} vote - Vote received
+   * @param {string} fromPeer - Peer who sent it
+   */
+  receiveVote(vote, fromPeer) {
+    // Verify vote signature
+    if (!verifyVote(vote)) {
+      this.emit('vote:invalid', { vote, reason: 'signature' });
+      return;
+    }
+
+    const blockHash = vote.block_hash || vote.proposal_id;
+    const record = this.blocks.get(blockHash);
+
+    if (!record) {
+      // Don't have the block yet, queue vote
+      this.pendingVotes.push(vote);
+      return;
+    }
+
+    // Check if voter is locked out
+    if (vote.vote === VoteType.REJECT) {
+      if (this.lockoutManager.isLockedOut(vote.voter, blockHash, this.currentSlot)) {
+        this.emit('vote:rejected', { vote, reason: 'lockout' });
+        return;
+      }
+    }
+
+    // Add vote
+    this._addVote(record, vote);
+    this.stats.votesReceived++;
+  }
+
+  /**
+   * Submit own vote for a block
+   * @param {string} blockHash - Block hash
+   * @param {string} voteType - Vote type
+   * @returns {Object} Vote object
+   */
+  vote(blockHash, voteType) {
+    return this._submitVote(blockHash, voteType);
+  }
+
+  /**
+   * Get block status
+   * @param {string} blockHash - Block hash
+   * @returns {Object|null} Block record or null
+   */
+  getBlock(blockHash) {
+    return this.blocks.get(blockHash) || null;
+  }
+
+  /**
+   * Get blocks at slot
+   * @param {number} slot - Slot number
+   * @returns {Object[]} Block records
+   */
+  getBlocksAtSlot(slot) {
+    const hashes = this.slotBlocks.get(slot);
+    if (!hashes) return [];
+    return Array.from(hashes).map((h) => this.blocks.get(h)).filter(Boolean);
+  }
+
+  /**
+   * Check if block is finalized
+   * @param {string} blockHash - Block hash
+   * @returns {boolean} True if finalized
+   */
+  isFinalized(blockHash) {
+    const record = this.blocks.get(blockHash);
+    return record?.status === BlockStatus.FINALIZED;
+  }
+
+  /**
+   * Get current slot
+   * @returns {number} Current slot
+   */
+  getCurrentSlot() {
+    return this.currentSlot;
+  }
+
+  /**
+   * Get consensus statistics
+   * @returns {Object} Statistics
+   */
+  getStats() {
+    const lockoutStats = this.lockoutManager.getStats(this.currentSlot);
+
+    return {
+      ...this.stats,
+      state: this.state,
+      currentSlot: this.currentSlot,
+      lastFinalizedSlot: this.lastFinalizedSlot,
+      pendingBlocks: Array.from(this.blocks.values()).filter(
+        (b) => b.status === BlockStatus.VOTING
+      ).length,
+      validators: this.validators.size,
+      totalWeight: this._getTotalValidatorWeight(),
+      ...lockoutStats,
+    };
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // Private Methods
+  // ─────────────────────────────────────────────────────────────────
+
+  /**
+   * Calculate slot from timestamp
+   * @private
+   */
+  _calculateSlot(timestamp) {
+    if (!this.genesisTime) return 0;
+    return Math.floor((timestamp - this.genesisTime) / this.slotDuration);
+  }
+
+  /**
+   * Start slot timer
+   * @private
+   */
+  _startSlotTimer() {
+    // Calculate time until next slot
+    const now = Date.now();
+    const currentSlotStart = this.genesisTime + this.currentSlot * this.slotDuration;
+    const nextSlotStart = currentSlotStart + this.slotDuration;
+    const delay = nextSlotStart - now;
+
+    this.slotTimer = setTimeout(() => {
+      if (this.state === ConsensusState.STOPPED) return;
+      this._onSlotChange();
+      this.slotTimer = setInterval(() => {
+        if (this.state === ConsensusState.STOPPED) return;
+        this._onSlotChange();
+      }, this.slotDuration);
+    }, delay > 0 ? delay : 0);
+  }
+
+  /**
+   * Handle slot change
+   * @private
+   */
+  _onSlotChange() {
+    const previousSlot = this.currentSlot;
+    this.currentSlot = this._calculateSlot(Date.now());
+
+    if (this.currentSlot <= previousSlot) return;
+
+    this.stats.slotsProcessed++;
+
+    // Process pending votes
+    this._processPendingVotes();
+
+    // Check for block confirmations
+    this._processConfirmations();
+
+    // Check for finality
+    this._checkFinality();
+
+    // Prune old lockouts
+    if (this.currentSlot % 100 === 0) {
+      this.lockoutManager.prune(this.currentSlot);
+    }
+
+    this.emit('slot:change', {
+      previousSlot,
+      currentSlot: this.currentSlot,
+    });
+  }
+
+  /**
+   * Submit own vote
+   * @private
+   */
+  _submitVote(blockHash, voteType) {
+    const record = this.blocks.get(blockHash);
+    if (!record) {
+      throw new Error(`Unknown block: ${blockHash}`);
+    }
+
+    // Check lockout if rejecting
+    if (voteType === VoteType.REJECT) {
+      const lockout = this.lockoutManager.canSwitchVote(this.publicKey, this.currentSlot);
+      if (!lockout.canSwitch && lockout.locked.some((l) => l.blockHash === blockHash)) {
+        throw new Error('Locked out from voting against this block');
+      }
+    }
+
+    // Create vote
+    const vote = createVote({
+      proposalId: blockHash,
+      vote: voteType,
+      voterPublicKey: this.publicKey,
+      voterPrivateKey: this.privateKey,
+      eScore: this.eScore,
+      burned: this.burned,
+      uptime: 1,
+    });
+
+    vote.block_hash = blockHash;
+    vote.slot = this.currentSlot;
+
+    // Add to record
+    this._addVote(record, vote);
+
+    // Record for lockout if approving
+    if (voteType === VoteType.APPROVE) {
+      this.lockoutManager.recordVote(this.publicKey, blockHash, this.currentSlot);
+    }
+
+    this.stats.votesSubmitted++;
+    this.emit('vote:submitted', { blockHash, voteType, vote });
+
+    return vote;
+  }
+
+  /**
+   * Add vote to block record
+   * @private
+   */
+  _addVote(record, vote) {
+    const blockVotes = this.votes.get(record.hash);
+    if (!blockVotes) return;
+
+    // Replace existing vote from same voter
+    const existing = blockVotes.get(vote.voter);
+    if (existing) {
+      // Update weights
+      if (existing.vote === VoteType.APPROVE) {
+        record.approveWeight -= existing.weight || 1;
+      } else if (existing.vote === VoteType.REJECT) {
+        record.rejectWeight -= existing.weight || 1;
+      }
+    }
+
+    // Add new vote
+    blockVotes.set(vote.voter, vote);
+    record.votes.set(vote.voter, vote);
+
+    // Update weights
+    const weight = vote.weight || 1;
+    if (vote.vote === VoteType.APPROVE) {
+      record.approveWeight += weight;
+      // Record lockout
+      this.lockoutManager.recordVote(vote.voter, record.hash, this.currentSlot);
+    } else if (vote.vote === VoteType.REJECT) {
+      record.rejectWeight += weight;
+    }
+    record.totalWeight = record.approveWeight + record.rejectWeight;
+
+    // Check for consensus
+    this._checkBlockConsensus(record);
+
+    this.emit('vote:added', {
+      blockHash: record.hash,
+      voter: vote.voter,
+      voteType: vote.vote,
+      weight,
+    });
+  }
+
+  /**
+   * Check if block has reached consensus
+   * @private
+   */
+  _checkBlockConsensus(record) {
+    if (record.status === BlockStatus.FINALIZED || record.status === BlockStatus.REJECTED) {
+      return;
+    }
+
+    const totalWeight = this._getTotalValidatorWeight();
+    if (totalWeight === 0) return;
+
+    const ratio = record.approveWeight / totalWeight;
+
+    // Check for supermajority approval
+    if (ratio >= CONSENSUS_THRESHOLD) {
+      record.status = BlockStatus.CONFIRMED;
+      record.confirmations++;
+      record.confirmedAt = Date.now();
+
+      this.emit('block:confirmed', {
+        blockHash: record.hash,
+        slot: record.slot,
+        ratio,
+        confirmations: record.confirmations,
+      });
+    }
+
+    // Check for rejection
+    const rejectRatio = record.rejectWeight / totalWeight;
+    if (rejectRatio > 1 - CONSENSUS_THRESHOLD) {
+      record.status = BlockStatus.REJECTED;
+      record.rejectedAt = Date.now();
+
+      this.emit('block:rejected', {
+        blockHash: record.hash,
+        slot: record.slot,
+        ratio: rejectRatio,
+      });
+    }
+  }
+
+  /**
+   * Validate block and submit vote
+   * @private
+   */
+  _validateAndVote(record) {
+    // Basic validation (can be extended)
+    const isValid = this._validateBlock(record.block);
+
+    // Check if we should vote
+    const voteType = isValid ? VoteType.APPROVE : VoteType.REJECT;
+
+    try {
+      this._submitVote(record.hash, voteType);
+    } catch (err) {
+      // Likely locked out, which is fine
+      this.emit('vote:skipped', { blockHash: record.hash, reason: err.message });
+    }
+  }
+
+  /**
+   * Validate a block
+   * @private
+   */
+  _validateBlock(block) {
+    // Basic validation
+    if (!block) return false;
+    if (!block.slot && block.slot !== 0) return false;
+    if (!block.proposer) return false;
+
+    // Check proposer is valid validator
+    if (!this.validators.has(block.proposer)) {
+      // Unknown proposer - could be valid in decentralized network
+      // For now, accept blocks from unknown proposers
+    }
+
+    return true;
+  }
+
+  /**
+   * Process pending votes
+   * @private
+   */
+  _processPendingVotes() {
+    const stillPending = [];
+
+    for (const vote of this.pendingVotes) {
+      const blockHash = vote.block_hash || vote.proposal_id;
+      const record = this.blocks.get(blockHash);
+
+      if (record) {
+        this._addVote(record, vote);
+      } else {
+        // Still don't have block, keep pending
+        stillPending.push(vote);
+      }
+    }
+
+    this.pendingVotes = stillPending;
+  }
+
+  /**
+   * Process block confirmations
+   * @private
+   */
+  _processConfirmations() {
+    for (const record of this.blocks.values()) {
+      if (record.status === BlockStatus.CONFIRMED) {
+        // Increment confirmations if still receiving votes
+        const totalWeight = this._getTotalValidatorWeight();
+        const ratio = record.approveWeight / totalWeight;
+
+        if (ratio >= CONSENSUS_THRESHOLD) {
+          record.confirmations++;
+        }
+      }
+    }
+  }
+
+  /**
+   * Check for block finality
+   * @private
+   */
+  _checkFinality() {
+    for (const record of this.blocks.values()) {
+      if (record.status === BlockStatus.CONFIRMED) {
+        // Check if enough confirmations for finality
+        if (record.confirmations >= this.confirmationsForFinality) {
+          record.status = BlockStatus.FINALIZED;
+          record.finalizedAt = Date.now();
+
+          // Update finalized slot
+          if (record.slot > this.lastFinalizedSlot) {
+            this.lastFinalizedSlot = record.slot;
+            this.lastFinalizedBlock = record.hash;
+          }
+
+          // Mark conflicting blocks as orphaned
+          this._orphanConflictingBlocks(record);
+
+          this.stats.blocksFinalized++;
+          this.emit('block:finalized', {
+            blockHash: record.hash,
+            slot: record.slot,
+            confirmations: record.confirmations,
+          });
+        }
+      }
+    }
+  }
+
+  /**
+   * Mark conflicting blocks as orphaned
+   * @private
+   */
+  _orphanConflictingBlocks(finalizedRecord) {
+    const slotBlocks = this.slotBlocks.get(finalizedRecord.slot);
+    if (!slotBlocks) return;
+
+    for (const blockHash of slotBlocks) {
+      if (blockHash !== finalizedRecord.hash) {
+        const record = this.blocks.get(blockHash);
+        if (record && record.status !== BlockStatus.FINALIZED) {
+          record.status = BlockStatus.ORPHANED;
+          this.emit('block:orphaned', { blockHash, slot: record.slot });
+        }
+      }
+    }
+  }
+
+  /**
+   * Get total validator weight
+   * @private
+   */
+  _getTotalValidatorWeight() {
+    let total = 0;
+    for (const validator of this.validators.values()) {
+      total += validator.weight || 1;
+    }
+    return total || 1; // Prevent division by zero
+  }
+}
+
+/**
+ * Create consensus vote message for gossip
+ * @param {Object} vote - Vote object
+ * @param {string} senderPublicKey - Sender public key
+ * @returns {Object} Gossip message
+ */
+export function createConsensusVoteMessage(vote, senderPublicKey) {
+  return {
+    type: 'CONSENSUS_VOTE',
+    payload: vote,
+    sender: senderPublicKey,
+    timestamp: Date.now(),
+  };
+}
+
+/**
+ * Create block proposal message for gossip
+ * @param {Object} block - Block to propose
+ * @param {string} senderPublicKey - Sender public key
+ * @returns {Object} Gossip message
+ */
+export function createBlockProposalMessage(block, senderPublicKey) {
+  return {
+    type: 'BLOCK_PROPOSAL',
+    payload: block,
+    sender: senderPublicKey,
+    timestamp: Date.now(),
+  };
+}
+
+export default {
+  ConsensusState,
+  BlockStatus,
+  ConsensusEngine,
+  createConsensusVoteMessage,
+  createBlockProposalMessage,
+};

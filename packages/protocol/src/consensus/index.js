@@ -12,3 +12,7 @@
 export * from './voting.js';
 export * from './lockout.js';
 export * from './proposal.js';
+export * from './engine.js';
+export * from './finality.js';
+export * from './slot.js';
+export * from './messages.js';
