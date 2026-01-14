@@ -186,15 +186,18 @@ export class ConsensusGossip extends EventEmitter {
    * @private
    */
   async _broadcastVote(event) {
-    const vote = {
+    // Include the full vote object for signature verification
+    const votePayload = {
       blockHash: event.blockHash,
       slot: event.slot,
       decision: event.decision,
       voter: this.consensus.publicKey,
       weight: event.weight,
+      // Include full vote for verification (has proposal_id, vote, timestamp, signature)
+      vote: event.vote,
     };
 
-    const sent = await this.gossip.broadcastVote(vote);
+    const sent = await this.gossip.broadcastVote(votePayload);
     this.stats.votesBroadcast++;
 
     this.emit('vote:broadcast', { blockHash: event.blockHash, peers: sent });
@@ -261,15 +264,20 @@ export class ConsensusGossip extends EventEmitter {
 
     this.stats.votesReceived++;
 
-    // Forward to consensus engine
-    const vote = {
-      blockHash: payload.blockHash,
-      slot: payload.slot,
-      decision: payload.decision,
+    // Use full vote object if available (for signature verification)
+    // Fall back to constructing from payload fields
+    const vote = payload.vote || {
+      proposal_id: payload.blockHash,
+      block_hash: payload.blockHash,
+      vote: payload.decision,
       voter: payload.voter,
       weight: payload.weight,
       signature: payload.signature,
+      timestamp: payload.timestamp || Date.now(),
     };
+
+    // Ensure block_hash is set for engine lookup
+    vote.block_hash = vote.block_hash || payload.blockHash;
 
     try {
       this.consensus.receiveVote(vote, sender);
