@@ -37,6 +37,10 @@ export const MessageType = {
   CONSENSUS_VOTE_AGGREGATE: 'CONSENSUS_VOTE_AGGREGATE', // Aggregated votes
   CONSENSUS_FINALITY: 'CONSENSUS_FINALITY', // Finality notification
   CONSENSUS_SLOT_STATUS: 'CONSENSUS_SLOT_STATUS', // Slot status update
+
+  // State sync messages (for late joiners)
+  CONSENSUS_STATE_REQUEST: 'CONSENSUS_STATE_REQUEST', // Request finalized state
+  CONSENSUS_STATE_RESPONSE: 'CONSENSUS_STATE_RESPONSE', // Response with finalized blocks
 };
 
 /**
@@ -306,6 +310,54 @@ export function createConsensusSlotStatus(status, sender, privateKey) {
 }
 
 /**
+ * Create consensus state request message (for late joiners)
+ * @param {Object} request - State request
+ * @param {number} request.sinceSlot - Request state since this slot
+ * @param {number} [request.maxBlocks=50] - Maximum blocks to return
+ * @param {string} sender - Sender public key
+ * @param {string} privateKey - Sender private key
+ * @returns {Object} State request message
+ */
+export function createConsensusStateRequest(request, sender, privateKey) {
+  return createMessage({
+    type: MessageType.CONSENSUS_STATE_REQUEST,
+    payload: {
+      sinceSlot: request.sinceSlot || 0,
+      maxBlocks: request.maxBlocks || 50,
+      requestId: generateMessageId(),
+    },
+    sender,
+    privateKey,
+    ttl: 1, // Direct request, no relay
+  });
+}
+
+/**
+ * Create consensus state response message
+ * @param {Object} response - State response
+ * @param {string} response.requestId - Original request ID
+ * @param {Object[]} response.blocks - Finalized blocks
+ * @param {number} response.latestSlot - Latest finalized slot
+ * @param {string} sender - Sender public key
+ * @param {string} privateKey - Sender private key
+ * @returns {Object} State response message
+ */
+export function createConsensusStateResponse(response, sender, privateKey) {
+  return createMessage({
+    type: MessageType.CONSENSUS_STATE_RESPONSE,
+    payload: {
+      requestId: response.requestId,
+      blocks: response.blocks || [],
+      latestSlot: response.latestSlot || 0,
+      validatorCount: response.validatorCount || 0,
+    },
+    sender,
+    privateKey,
+    ttl: 1, // Direct response, no relay
+  });
+}
+
+/**
  * Check if message is a consensus message
  * @param {string} type - Message type
  * @returns {boolean} True if consensus message
@@ -332,5 +384,8 @@ export default {
   createConsensusVoteAggregate,
   createConsensusFinality,
   createConsensusSlotStatus,
+  // State sync messages
+  createConsensusStateRequest,
+  createConsensusStateResponse,
   isConsensusGossipMessage,
 };

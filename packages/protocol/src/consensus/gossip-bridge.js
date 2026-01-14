@@ -156,6 +156,12 @@ export class ConsensusGossip extends EventEmitter {
         case MessageType.CONSENSUS_SLOT_STATUS:
           await this._handleSlotStatus(message);
           break;
+        case MessageType.CONSENSUS_STATE_REQUEST:
+          await this._handleStateRequest(message);
+          break;
+        case MessageType.CONSENSUS_STATE_RESPONSE:
+          await this._handleStateResponse(message);
+          break;
       }
     } catch (err) {
       this.emit('error', { source: 'gossip-message', error: err.message });
@@ -344,6 +350,65 @@ export class ConsensusGossip extends EventEmitter {
   }
 
   /**
+   * Handle state sync request from a peer
+   * @private
+   */
+  async _handleStateRequest(message) {
+    const { payload, sender } = message;
+
+    this.stats.syncRequestsReceived = (this.stats.syncRequestsReceived || 0) + 1;
+
+    // Export our finalized state
+    const state = this.consensus.exportState(payload.sinceSlot || 0, payload.maxBlocks || 50);
+
+    // Send response back to requesting peer
+    try {
+      await this.gossip.sendStateResponse(sender, payload.requestId, state);
+      this.stats.syncResponsesSent = (this.stats.syncResponsesSent || 0) + 1;
+
+      this.emit('sync:response-sent', {
+        to: sender,
+        blocksCount: state.blocks.length,
+        latestSlot: state.latestSlot,
+      });
+    } catch (err) {
+      this.emit('error', { source: 'sync-response', error: err.message });
+    }
+  }
+
+  /**
+   * Handle state sync response from a peer
+   * @private
+   */
+  async _handleStateResponse(message) {
+    const { payload, sender } = message;
+
+    this.stats.syncResponsesReceived = (this.stats.syncResponsesReceived || 0) + 1;
+
+    // Import the synced state
+    const result = this.consensus.importState({
+      blocks: payload.blocks,
+      latestSlot: payload.latestSlot,
+      validatorCount: payload.validatorCount,
+    });
+
+    this.emit('sync:state-imported', {
+      from: sender,
+      imported: result.imported,
+      total: result.total,
+      latestSlot: result.latestSlot,
+      errors: result.errors,
+    });
+
+    // Resolve pending request if there is one
+    const pending = this.gossip.pendingRequests?.get(payload.requestId);
+    if (pending) {
+      this.gossip.pendingRequests.delete(payload.requestId);
+      pending.resolve(result);
+    }
+  }
+
+  /**
    * Check if message type is consensus-related
    * @private
    */
@@ -387,6 +452,64 @@ export class ConsensusGossip extends EventEmitter {
    */
   async broadcastVote(vote) {
     return this._broadcastVote(vote);
+  }
+
+  /**
+   * Request state sync from a specific peer
+   * Used by late-joining nodes to catch up on finalized history
+   *
+   * @param {string} peerId - Peer to request from
+   * @param {number} [sinceSlot=0] - Request state since this slot
+   * @returns {Promise<Object>} Sync result with imported blocks
+   */
+  async requestSync(peerId, sinceSlot = 0) {
+    this.stats.syncRequestsSent = (this.stats.syncRequestsSent || 0) + 1;
+
+    try {
+      const result = await this.gossip.requestStateSync(peerId, sinceSlot);
+      return result;
+    } catch (err) {
+      this.emit('error', { source: 'sync-request', error: err.message });
+      throw err;
+    }
+  }
+
+  /**
+   * Sync state from all connected peers
+   * Requests state from each peer and imports the most complete response
+   *
+   * @param {number} [sinceSlot=0] - Request state since this slot
+   * @returns {Promise<Object>} Best sync result
+   */
+  async syncFromPeers(sinceSlot = 0) {
+    const peers = this.gossip.peerManager.getActivePeers();
+    if (peers.length === 0) {
+      return { imported: 0, error: 'No peers available' };
+    }
+
+    let bestResult = { imported: 0, latestSlot: 0 };
+
+    // Request sync from each peer
+    const results = await Promise.allSettled(
+      peers.map(peer => this.requestSync(peer.publicKey, sinceSlot))
+    );
+
+    // Find the best result (most blocks imported or highest slot)
+    for (const result of results) {
+      if (result.status === 'fulfilled' && result.value) {
+        if (result.value.latestSlot > bestResult.latestSlot) {
+          bestResult = result.value;
+        }
+      }
+    }
+
+    this.emit('sync:completed', {
+      peersQueried: peers.length,
+      imported: bestResult.imported,
+      latestSlot: bestResult.latestSlot,
+    });
+
+    return bestResult;
   }
 }
 

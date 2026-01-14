@@ -23,6 +23,8 @@ import {
   createConsensusVote,
   createConsensusVoteAggregate,
   createConsensusFinality,
+  createConsensusStateRequest,
+  createConsensusStateResponse,
   isConsensusGossipMessage,
 } from './message.js';
 
@@ -391,6 +393,84 @@ export class GossipProtocol {
   async broadcastFinality(finality) {
     const message = createConsensusFinality(finality, this.publicKey, this.privateKey);
     return this.broadcast(message);
+  }
+
+  /**
+   * Request state sync from a peer (for late joiners)
+   * @param {string} peerIdOrPublicKey - Peer ID or public key
+   * @param {number} [sinceSlot=0] - Request state since this slot
+   * @param {number} [timeoutMs=10000] - Request timeout
+   * @returns {Promise<Object>} State response with finalized blocks
+   */
+  async requestStateSync(peerIdOrPublicKey, sinceSlot = 0, timeoutMs = 10000) {
+    // Try both peer ID and public key lookup
+    let peer = this.peerManager.getPeer(peerIdOrPublicKey);
+    if (!peer) {
+      peer = this.peerManager.getPeerByPublicKey(peerIdOrPublicKey);
+    }
+    if (!peer) {
+      throw new Error(`Unknown peer: ${peerIdOrPublicKey}`);
+    }
+
+    const request = createConsensusStateRequest(
+      { sinceSlot, maxBlocks: 50 },
+      this.publicKey,
+      this.privateKey
+    );
+
+    const requestId = request.payload.requestId;
+
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pendingRequests.delete(requestId);
+        reject(new Error('State sync request timeout'));
+      }, timeoutMs);
+
+      this.pendingRequests.set(requestId, {
+        resolve: (response) => {
+          clearTimeout(timeout);
+          resolve(response);
+        },
+        reject,
+      });
+
+      this.sendFn(peer, request).catch((err) => {
+        clearTimeout(timeout);
+        this.pendingRequests.delete(requestId);
+        reject(err);
+      });
+    });
+  }
+
+  /**
+   * Send state sync response to a peer
+   * @param {string} peerIdOrPublicKey - Peer ID or public key
+   * @param {string} requestId - Original request ID
+   * @param {Object} state - State to send
+   * @param {Object[]} state.blocks - Finalized blocks
+   * @param {number} state.latestSlot - Latest finalized slot
+   * @param {number} state.validatorCount - Number of validators
+   */
+  async sendStateResponse(peerIdOrPublicKey, requestId, state) {
+    // Try both peer ID and public key lookup
+    let peer = this.peerManager.getPeer(peerIdOrPublicKey);
+    if (!peer) {
+      peer = this.peerManager.getPeerByPublicKey(peerIdOrPublicKey);
+    }
+    if (!peer) return;
+
+    const response = createConsensusStateResponse(
+      {
+        requestId,
+        blocks: state.blocks || [],
+        latestSlot: state.latestSlot || 0,
+        validatorCount: state.validatorCount || 0,
+      },
+      this.publicKey,
+      this.privateKey
+    );
+
+    await this.sendFn(peer, response);
   }
 }
 

@@ -410,6 +410,140 @@ export class ConsensusEngine extends EventEmitter {
   }
 
   // ─────────────────────────────────────────────────────────────────
+  // State Sync Methods (for late joiners)
+  // ─────────────────────────────────────────────────────────────────
+
+  /**
+   * Export finalized blocks for state sync
+   * Returns blocks that have reached FINALIZED status
+   *
+   * @param {number} [sinceSlot=0] - Export blocks since this slot
+   * @param {number} [maxBlocks=50] - Maximum number of blocks to export
+   * @returns {Object} Exported state
+   */
+  exportState(sinceSlot = 0, maxBlocks = 50) {
+    const finalizedBlocks = [];
+
+    for (const [blockHash, record] of this.blocks) {
+      if (record.status === BlockStatus.FINALIZED && record.slot >= sinceSlot) {
+        finalizedBlocks.push({
+          hash: blockHash,
+          slot: record.slot,
+          proposer: record.proposer,
+          block: record.block,
+          status: record.status,
+          approveWeight: record.approveWeight,
+          confirmations: record.confirmations,
+          finalizedAt: record.finalizedAt,
+        });
+      }
+    }
+
+    // Sort by slot ascending
+    finalizedBlocks.sort((a, b) => a.slot - b.slot);
+
+    // Limit results
+    const blocks = finalizedBlocks.slice(0, maxBlocks);
+
+    return {
+      blocks,
+      latestSlot: this.lastFinalizedSlot,
+      validatorCount: this.validators.size,
+      genesisTime: this.genesisTime,
+    };
+  }
+
+  /**
+   * Import synced state from a peer
+   * Used by late-joining nodes to catch up on finalized history
+   *
+   * @param {Object} state - State to import
+   * @param {Object[]} state.blocks - Finalized blocks
+   * @param {number} state.latestSlot - Latest finalized slot from peer
+   * @param {number} [state.genesisTime] - Network genesis time
+   * @returns {Object} Import result
+   */
+  importState(state) {
+    const { blocks, latestSlot, genesisTime } = state;
+
+    if (!blocks || !Array.isArray(blocks)) {
+      return { imported: 0, error: 'Invalid state: blocks must be an array' };
+    }
+
+    let imported = 0;
+    const errors = [];
+
+    // Set genesis time if not already set
+    if (genesisTime && !this.genesisTime) {
+      this.genesisTime = genesisTime;
+    }
+
+    for (const blockData of blocks) {
+      try {
+        // Skip if we already have this block
+        if (this.blocks.has(blockData.hash)) {
+          continue;
+        }
+
+        // Create block record
+        const record = {
+          hash: blockData.hash,
+          slot: blockData.slot,
+          proposer: blockData.proposer,
+          block: blockData.block,
+          status: BlockStatus.FINALIZED, // Trust peer's finalized state
+          approveWeight: blockData.approveWeight || 0,
+          totalWeight: blockData.approveWeight || 0,
+          confirmations: blockData.confirmations || this.confirmationsForFinality,
+          votes: new Map(),
+          receivedAt: Date.now(),
+          finalizedAt: blockData.finalizedAt || Date.now(),
+        };
+
+        // Store block
+        this.blocks.set(blockData.hash, record);
+
+        // Track in slot index
+        if (!this.slotBlocks.has(record.slot)) {
+          this.slotBlocks.set(record.slot, new Set());
+        }
+        this.slotBlocks.get(record.slot).add(blockData.hash);
+
+        imported++;
+
+        this.emit('block:synced', {
+          event: 'block:synced',
+          blockHash: blockData.hash,
+          slot: record.slot,
+        });
+      } catch (err) {
+        errors.push({ hash: blockData.hash, error: err.message });
+      }
+    }
+
+    // Update our finalized slot if peer is ahead
+    if (latestSlot > this.lastFinalizedSlot) {
+      this.lastFinalizedSlot = latestSlot;
+    }
+
+    return {
+      imported,
+      total: blocks.length,
+      latestSlot: this.lastFinalizedSlot,
+      errors: errors.length > 0 ? errors : undefined,
+    };
+  }
+
+  /**
+   * Check if we need to sync (are we behind the network?)
+   * @param {number} networkLatestSlot - Latest slot reported by network
+   * @returns {boolean} True if sync needed
+   */
+  needsSync(networkLatestSlot) {
+    return networkLatestSlot > this.lastFinalizedSlot;
+  }
+
+  // ─────────────────────────────────────────────────────────────────
   // Private Methods
   // ─────────────────────────────────────────────────────────────────
 

@@ -131,6 +131,20 @@ export class PeerManager {
   }
 
   /**
+   * Get peer by public key
+   * @param {string} publicKey - Peer public key
+   * @returns {Object|null} Peer info or null
+   */
+  getPeerByPublicKey(publicKey) {
+    for (const peer of this.peers.values()) {
+      if (peer.publicKey === publicKey) {
+        return peer;
+      }
+    }
+    return null;
+  }
+
+  /**
    * Record failed attempt
    * @param {string} peerId - Peer ID
    * @param {number} [maxFailures=5] - Max failures before marking inactive

@@ -204,9 +204,27 @@ async function main() {
   console.log('[Phase 2] Node3 starting consensus engine...');
   node3.consensus.start();
 
-  // Check if Node3 knows about Block A (it shouldn't yet without explicit sync)
-  const node3BlockA = node3.consensus.getBlock(blockA.hash);
-  console.log(`[Phase 2] Node3 knows Block A: ${node3BlockA ? 'YES' : 'NO (expected - needs sync)'}`);
+  // Check if Node3 knows about Block A before sync (it shouldn't)
+  const node3BlockABeforeSync = node3.consensus.getBlock(blockA.hash);
+  console.log(`[Phase 2] Node3 knows Block A (before sync): ${node3BlockABeforeSync ? 'YES' : 'NO'}`);
+
+  // Request state sync from peers
+  console.log('[Phase 2] Node3 requesting state sync from peers...');
+  try {
+    const syncResult = await node3.consensusGossip.syncFromPeers(0);
+    console.log(`[Phase 2] Sync complete: ${syncResult.imported} blocks imported, latest slot: ${syncResult.latestSlot}`);
+  } catch (err) {
+    console.log(`[Phase 2] Sync error (expected on first attempt): ${err.message}`);
+  }
+
+  await new Promise(r => setTimeout(r, 300));
+
+  // Check if Node3 now knows about Block A after sync
+  const node3BlockAAfterSync = node3.consensus.getBlock(blockA.hash);
+  console.log(`[Phase 2] Node3 knows Block A (after sync): ${node3BlockAAfterSync ? 'YES ✅' : 'NO'}`);
+  if (node3BlockAAfterSync) {
+    console.log(`[Phase 2] Block A Status on Node3: ${node3BlockAAfterSync.status}`);
+  }
 
   // Phase 3: All three nodes participate in Block B
   console.log('\n─────────────────────────────────────────────────────');
@@ -256,21 +274,30 @@ async function main() {
   }
 
   // Verify results
+  const blockANode3Final = node3.consensus.getBlock(blockA.hash);
   const blockBNode3 = node3.consensus.getBlock(blockB.hash);
-  const success = blockBNode3 && blockBNode3.status !== 'REJECTED' && blockBNode3.votes.size >= 2;
+  const blockASynced = blockANode3Final && blockANode3Final.status === 'FINALIZED';
+  const blockBSuccess = blockBNode3 && blockBNode3.status !== 'REJECTED' && blockBNode3.votes.size >= 2;
+  const fullSuccess = blockASynced && blockBSuccess;
 
-  if (success) {
+  if (fullSuccess) {
     console.log('\n═══════════════════════════════════════════════════');
-    console.log('   ✅ LATE JOIN SYNC TEST PASSED');
-    console.log('   - Node3 joined after Block A');
+    console.log('   ✅ STATE SYNC TEST PASSED');
+    console.log('   - Node3 joined after Block A was finalized');
+    console.log('   - Node3 synced Block A from peers ✅');
     console.log('   - Node3 participated in Block B consensus');
     console.log('   - All nodes reached agreement');
     console.log('═══════════════════════════════════════════════════\n');
-  } else {
+  } else if (blockBSuccess) {
     console.log('\n═══════════════════════════════════════════════════');
     console.log('   ⚠️  PARTIAL SUCCESS');
-    console.log('   - Node3 joined but sync may be incomplete');
-    console.log('   - Full state sync requires additional protocol');
+    console.log('   - Node3 participated in Block B: ✅');
+    console.log(`   - Block A synced to Node3: ${blockASynced ? '✅' : '❌'}`);
+    console.log('═══════════════════════════════════════════════════\n');
+  } else {
+    console.log('\n═══════════════════════════════════════════════════');
+    console.log('   ❌ TEST FAILED');
+    console.log('   - Consensus or sync issues detected');
     console.log('═══════════════════════════════════════════════════\n');
   }
 }
