@@ -204,24 +204,30 @@ async function main() {
   console.log('[Phase 2] Node3 starting consensus engine...');
   node3.consensus.start();
 
-  // Check if Node3 knows about Block A before sync (it shouldn't)
+  // Check if Node3 knows about Block A before auto-sync completes
   const node3BlockABeforeSync = node3.consensus.getBlock(blockA.hash);
-  console.log(`[Phase 2] Node3 knows Block A (before sync): ${node3BlockABeforeSync ? 'YES' : 'NO'}`);
+  console.log(`[Phase 2] Node3 knows Block A (before auto-sync): ${node3BlockABeforeSync ? 'YES' : 'NO'}`);
 
-  // Request state sync from peers
-  console.log('[Phase 2] Node3 requesting state sync from peers...');
-  try {
-    const syncResult = await node3.consensusGossip.syncFromPeers(0);
-    console.log(`[Phase 2] Sync complete: ${syncResult.imported} blocks imported, latest slot: ${syncResult.latestSlot}`);
-  } catch (err) {
-    console.log(`[Phase 2] Sync error (expected on first attempt): ${err.message}`);
-  }
+  // Wait for auto-sync to complete (triggered automatically when peers connect)
+  console.log('[Phase 2] Waiting for auto-sync to complete...');
+  await new Promise((resolve) => {
+    const timeout = setTimeout(() => {
+      console.log('[Phase 2] Auto-sync timeout (may already be synced)');
+      resolve();
+    }, 2000);
+
+    node3.consensusGossip.once('sync:auto-completed', (result) => {
+      clearTimeout(timeout);
+      console.log(`[Phase 2] Auto-sync complete: ${result.imported} blocks imported, latest slot: ${result.latestSlot}`);
+      resolve();
+    });
+  });
 
   await new Promise(r => setTimeout(r, 300));
 
-  // Check if Node3 now knows about Block A after sync
+  // Check if Node3 now knows about Block A after auto-sync
   const node3BlockAAfterSync = node3.consensus.getBlock(blockA.hash);
-  console.log(`[Phase 2] Node3 knows Block A (after sync): ${node3BlockAAfterSync ? 'YES ✅' : 'NO'}`);
+  console.log(`[Phase 2] Node3 knows Block A (after auto-sync): ${node3BlockAAfterSync ? 'YES ✅' : 'NO'}`);
   if (node3BlockAAfterSync) {
     console.log(`[Phase 2] Block A Status on Node3: ${node3BlockAAfterSync.status}`);
   }

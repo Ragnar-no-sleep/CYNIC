@@ -28,14 +28,20 @@ export class ConsensusGossip extends EventEmitter {
    * @param {Object} options - Bridge options
    * @param {ConsensusEngine} options.consensus - ConsensusEngine instance
    * @param {GossipProtocol} options.gossip - GossipProtocol instance
+   * @param {boolean} [options.autoSync=true] - Auto-sync when joining network
+   * @param {number} [options.syncDelayMs=500] - Delay before auto-sync (allows peers to connect)
    */
-  constructor({ consensus, gossip }) {
+  constructor({ consensus, gossip, autoSync = true, syncDelayMs = 500 }) {
     super();
 
     this.consensus = consensus;
     this.gossip = gossip;
+    this.autoSync = autoSync;
+    this.syncDelayMs = syncDelayMs;
 
     this.started = false;
+    this.synced = false;
+    this.syncTimer = null;
     this.stats = {
       proposalsBroadcast: 0,
       votesBroadcast: 0,
@@ -48,6 +54,7 @@ export class ConsensusGossip extends EventEmitter {
     // Bind methods
     this._onConsensusEvent = this._onConsensusEvent.bind(this);
     this._onGossipMessage = this._onGossipMessage.bind(this);
+    this._onPeerAdded = this._onPeerAdded.bind(this);
   }
 
   /**
@@ -82,6 +89,18 @@ export class ConsensusGossip extends EventEmitter {
       }
     };
 
+    // Hook into peer manager for auto-sync on join
+    if (this.autoSync) {
+      this._originalAddPeer = this.gossip.peerManager.addPeer.bind(this.gossip.peerManager);
+      this.gossip.peerManager.addPeer = (peerInfo) => {
+        const result = this._originalAddPeer(peerInfo);
+        if (result) {
+          this._onPeerAdded(peerInfo);
+        }
+        return result;
+      };
+    }
+
     this.started = true;
     this.emit('started');
   }
@@ -91,6 +110,12 @@ export class ConsensusGossip extends EventEmitter {
    */
   stop() {
     if (!this.started) return;
+
+    // Clear sync timer
+    if (this.syncTimer) {
+      clearTimeout(this.syncTimer);
+      this.syncTimer = null;
+    }
 
     // Remove consensus event listeners
     this.consensus.off('block:proposed', this._onConsensusEvent);
@@ -102,6 +127,11 @@ export class ConsensusGossip extends EventEmitter {
     // Restore original onMessage handler
     if (this._originalOnMessage) {
       this.gossip.onMessage = this._originalOnMessage;
+    }
+
+    // Restore original addPeer
+    if (this._originalAddPeer) {
+      this.gossip.peerManager.addPeer = this._originalAddPeer;
     }
 
     this.started = false;
@@ -347,6 +377,45 @@ export class ConsensusGossip extends EventEmitter {
       leader: payload.leader,
       from: sender,
     });
+  }
+
+  /**
+   * Handle peer added - triggers auto-sync
+   * @private
+   */
+  _onPeerAdded(peerInfo) {
+    // Skip if already synced or auto-sync disabled
+    if (this.synced || !this.autoSync) return;
+
+    // Debounce sync - wait for more peers to connect
+    if (this.syncTimer) {
+      clearTimeout(this.syncTimer);
+    }
+
+    this.syncTimer = setTimeout(async () => {
+      this.syncTimer = null;
+
+      // Only sync if we haven't already
+      if (this.synced) return;
+
+      const peers = this.gossip.peerManager.getActivePeers();
+      if (peers.length === 0) return;
+
+      this.emit('sync:starting', { peerCount: peers.length });
+
+      try {
+        const result = await this.syncFromPeers(0);
+        this.synced = true;
+
+        this.emit('sync:auto-completed', {
+          imported: result.imported,
+          latestSlot: result.latestSlot,
+          peerCount: peers.length,
+        });
+      } catch (err) {
+        this.emit('error', { source: 'auto-sync', error: err.message });
+      }
+    }, this.syncDelayMs);
   }
 
   /**
