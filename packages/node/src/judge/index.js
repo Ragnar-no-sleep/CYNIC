@@ -1,0 +1,11 @@
+/**
+ * CYNIC Judge Module
+ *
+ * The judgment engine - κυνικός (like a dog)
+ *
+ * @module @cynic/node/judge
+ */
+
+export * from './dimensions.js';
+export * from './judge.js';
+export * from './residual.js';

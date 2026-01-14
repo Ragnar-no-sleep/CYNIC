@@ -1,0 +1,415 @@
+/**
+ * CYNIC Judge
+ *
+ * The judgment engine - κυνικός (like a dog)
+ *
+ * "φ distrusts φ" - Max confidence 61.8%, min doubt 38.2%
+ *
+ * Verdicts (dog metaphors):
+ * - HOWL: Exceptional (≥80)
+ * - WAG: Passes (≥50)
+ * - GROWL: Needs work (≥38.2)
+ * - BARK: Critical (<38.2)
+ *
+ * @module @cynic/node/judge/judge
+ */
+
+'use strict';
+
+import { PHI_INV, PHI_INV_2, THRESHOLDS } from '@cynic/core';
+import {
+  createJudgment,
+  validateJudgment,
+  calculateResidual,
+  isAnomalous,
+  Verdict,
+} from '@cynic/protocol';
+import {
+  Dimensions,
+  getAllDimensions,
+  getDimensionsForAxiom,
+  getTotalWeight,
+  dimensionRegistry,
+} from './dimensions.js';
+
+/**
+ * CYNIC Judge - The judgment engine
+ */
+export class CYNICJudge {
+  /**
+   * Create judge instance
+   * @param {Object} [options] - Judge options
+   * @param {Object} [options.customDimensions] - Custom dimensions to include
+   * @param {Function} [options.scorer] - Custom scoring function
+   */
+  constructor(options = {}) {
+    this.customDimensions = options.customDimensions || {};
+    this.customScorer = options.scorer || null;
+
+    // Stats tracking
+    this.stats = {
+      totalJudgments: 0,
+      verdicts: { HOWL: 0, WAG: 0, GROWL: 0, BARK: 0 },
+      anomaliesDetected: 0,
+      avgScore: 0,
+    };
+
+    // Anomaly buffer for ResidualDetector
+    this.anomalyBuffer = [];
+  }
+
+  /**
+   * Judge an item
+   * @param {Object} item - Item to judge
+   * @param {Object} [context] - Judgment context
+   * @returns {Object} Judgment result
+   */
+  judge(item, context = {}) {
+    // Score each dimension
+    const dimensionScores = this._scoreDimensions(item, context);
+
+    // Calculate global score
+    const globalScore = this._calculateGlobalScore(dimensionScores);
+
+    // Calculate confidence (φ-bounded)
+    const confidence = this._calculateConfidence(dimensionScores, context);
+
+    // Create judgment
+    const judgment = createJudgment({
+      item,
+      globalScore,
+      dimensions: dimensionScores,
+      confidence,
+      metadata: {
+        context: context.type || 'general',
+        judgedAt: Date.now(),
+      },
+    });
+
+    // Check for anomalies
+    if (isAnomalous(judgment)) {
+      this._recordAnomaly(judgment, item);
+    }
+
+    // Update stats
+    this._updateStats(judgment);
+
+    return judgment;
+  }
+
+  /**
+   * Score all dimensions for item
+   * @private
+   * @param {Object} item - Item to score
+   * @param {Object} context - Context
+   * @returns {Object} Dimension scores
+   */
+  _scoreDimensions(item, context) {
+    const scores = {};
+
+    // Score base dimensions
+    for (const [axiom, dims] of Object.entries(Dimensions)) {
+      for (const [dimName, config] of Object.entries(dims)) {
+        scores[dimName] = this._scoreDimension(dimName, config, item, context);
+      }
+    }
+
+    // Score custom dimensions
+    for (const [dimName, config] of Object.entries(this.customDimensions)) {
+      scores[dimName] = this._scoreDimension(dimName, config, item, context);
+    }
+
+    // Score discovered dimensions from registry
+    for (const [dimName, config] of Object.entries(dimensionRegistry.getAll())) {
+      scores[dimName] = this._scoreDimension(dimName, config, item, context);
+    }
+
+    return scores;
+  }
+
+  /**
+   * Score single dimension
+   * @private
+   */
+  _scoreDimension(name, config, item, context) {
+    // Use custom scorer if provided
+    if (this.customScorer) {
+      const score = this.customScorer(name, item, context);
+      if (score !== null && score !== undefined) {
+        return Math.min(Math.max(score, 0), 100);
+      }
+    }
+
+    // Default scoring based on item properties
+    return this._defaultScore(name, item, context);
+  }
+
+  /**
+   * Default scoring heuristics
+   * @private
+   */
+  _defaultScore(name, item, context) {
+    // Base score - can be overridden by specific item properties
+    let score = 50; // Neutral default
+
+    // Check if item has explicit scores
+    if (item.scores && typeof item.scores[name] === 'number') {
+      return item.scores[name];
+    }
+
+    // Heuristics based on dimension type
+    switch (name) {
+      case 'COHERENCE':
+        score = this._scoreCoherence(item);
+        break;
+      case 'ACCURACY':
+        score = this._scoreAccuracy(item);
+        break;
+      case 'NOVELTY':
+        score = this._scoreNovelty(item);
+        break;
+      case 'UTILITY':
+        score = this._scoreUtility(item);
+        break;
+      case 'VERIFIABILITY':
+        score = this._scoreVerifiability(item);
+        break;
+      default:
+        // Use item's overall quality indicators if available
+        if (typeof item.quality === 'number') {
+          score = item.quality;
+        }
+    }
+
+    return Math.min(Math.max(score, 0), 100);
+  }
+
+  /**
+   * Score coherence
+   * @private
+   */
+  _scoreCoherence(item) {
+    let score = 50;
+
+    // Structured data is more coherent
+    if (typeof item === 'object' && item !== null) {
+      score += 10;
+    }
+
+    // Has required fields
+    if (item.id && item.type) {
+      score += 10;
+    }
+
+    // Has content
+    if (item.content || item.data || item.body) {
+      score += 10;
+    }
+
+    return Math.min(score, 100);
+  }
+
+  /**
+   * Score accuracy
+   * @private
+   */
+  _scoreAccuracy(item) {
+    let score = 50;
+
+    // Has sources
+    if (item.sources && item.sources.length > 0) {
+      score += item.sources.length * 5;
+    }
+
+    // Has verification
+    if (item.verified) {
+      score += 20;
+    }
+
+    // Has hash/signature
+    if (item.hash || item.signature) {
+      score += 10;
+    }
+
+    return Math.min(score, 100);
+  }
+
+  /**
+   * Score novelty
+   * @private
+   */
+  _scoreNovelty(item) {
+    let score = 40; // Slightly lower default - novelty should be earned
+
+    // New item
+    if (item.createdAt && Date.now() - item.createdAt < 86400000) {
+      score += 20;
+    }
+
+    // Marked as original
+    if (item.original || item.isNew) {
+      score += 20;
+    }
+
+    return Math.min(score, 100);
+  }
+
+  /**
+   * Score utility
+   * @private
+   */
+  _scoreUtility(item) {
+    let score = 50;
+
+    // Has clear purpose
+    if (item.purpose || item.goal) {
+      score += 15;
+    }
+
+    // Has usage count
+    if (item.usageCount && item.usageCount > 0) {
+      score += Math.min(item.usageCount * 2, 30);
+    }
+
+    return Math.min(score, 100);
+  }
+
+  /**
+   * Score verifiability
+   * @private
+   */
+  _scoreVerifiability(item) {
+    let score = 40;
+
+    // Has proof
+    if (item.proof) {
+      score += 30;
+    }
+
+    // Has signature
+    if (item.signature) {
+      score += 15;
+    }
+
+    // Has hash
+    if (item.hash) {
+      score += 15;
+    }
+
+    return Math.min(score, 100);
+  }
+
+  /**
+   * Calculate global score from dimensions
+   * @private
+   */
+  _calculateGlobalScore(dimensionScores) {
+    const allDims = getAllDimensions();
+    let weightedSum = 0;
+    let totalWeight = 0;
+
+    for (const [name, score] of Object.entries(dimensionScores)) {
+      const config = allDims[name] ||
+        this.customDimensions[name] ||
+        dimensionRegistry.get(name);
+
+      const weight = config?.weight || 1.0;
+      weightedSum += score * weight;
+      totalWeight += weight;
+    }
+
+    if (totalWeight === 0) return 50;
+    return Math.round(weightedSum / totalWeight * 10) / 10;
+  }
+
+  /**
+   * Calculate confidence (φ-bounded)
+   * @private
+   */
+  _calculateConfidence(dimensionScores, context) {
+    const scores = Object.values(dimensionScores);
+    if (scores.length === 0) return PHI_INV_2;
+
+    // Base confidence on score consistency
+    const mean = scores.reduce((a, b) => a + b, 0) / scores.length;
+    const variance = scores.reduce((sum, s) => sum + Math.pow(s - mean, 2), 0) / scores.length;
+    const stdDev = Math.sqrt(variance);
+
+    // Lower variance = higher confidence
+    // But NEVER exceed φ⁻¹ (61.8%)
+    const rawConfidence = 1 - (stdDev / 100);
+    return Math.min(rawConfidence * PHI_INV, PHI_INV);
+  }
+
+  /**
+   * Record anomaly for ResidualDetector
+   * @private
+   */
+  _recordAnomaly(judgment, item) {
+    this.stats.anomaliesDetected++;
+
+    const residual = calculateResidual(judgment);
+    this.anomalyBuffer.push({
+      judgmentId: judgment.id,
+      residual,
+      timestamp: Date.now(),
+      item: { type: item.type, id: item.id },
+    });
+
+    // Keep buffer bounded
+    if (this.anomalyBuffer.length > 100) {
+      this.anomalyBuffer.shift();
+    }
+  }
+
+  /**
+   * Update stats
+   * @private
+   */
+  _updateStats(judgment) {
+    this.stats.totalJudgments++;
+    this.stats.verdicts[judgment.verdict]++;
+
+    // Rolling average
+    const n = this.stats.totalJudgments;
+    this.stats.avgScore =
+      (this.stats.avgScore * (n - 1) + judgment.global_score) / n;
+  }
+
+  /**
+   * Get anomaly candidates for dimension discovery
+   * @returns {Object[]} Anomaly candidates
+   */
+  getAnomalyCandidates() {
+    return this.anomalyBuffer.filter((a) => a.residual > PHI_INV_2);
+  }
+
+  /**
+   * Get judge statistics
+   * @returns {Object} Statistics
+   */
+  getStats() {
+    return {
+      ...this.stats,
+      avgScore: Math.round(this.stats.avgScore * 10) / 10,
+      anomalyRate: this.stats.totalJudgments > 0
+        ? Math.round(this.stats.anomaliesDetected / this.stats.totalJudgments * 1000) / 1000
+        : 0,
+    };
+  }
+
+  /**
+   * Reset statistics
+   */
+  resetStats() {
+    this.stats = {
+      totalJudgments: 0,
+      verdicts: { HOWL: 0, WAG: 0, GROWL: 0, BARK: 0 },
+      anomaliesDetected: 0,
+      avgScore: 0,
+    };
+    this.anomalyBuffer = [];
+  }
+}
+
+export default { CYNICJudge };
