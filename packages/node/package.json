@@ -8,11 +8,16 @@
     ".": "./src/index.js",
     "./operator": "./src/operator/index.js",
     "./judge": "./src/judge/index.js",
-    "./state": "./src/state/index.js"
+    "./state": "./src/state/index.js",
+    "./transport": "./src/transport/index.js"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
   },
   "dependencies": {
     "@cynic/core": "*",
-    "@cynic/protocol": "*"
+    "@cynic/protocol": "*",
+    "ws": "^8.18.0"
   },
-  "keywords": ["cynic", "node", "consciousness", "decentralized", "phi"]
+  "keywords": ["cynic", "node", "consciousness", "decentralized", "phi", "websocket", "p2p"]
 }

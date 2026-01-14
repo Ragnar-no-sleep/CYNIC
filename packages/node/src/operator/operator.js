@@ -101,7 +101,12 @@ export class Operator {
   getUptime() {
     const now = Date.now();
     const totalTime = now - this.stats.startedAt;
-    return totalTime > 0 ? Math.min(this.stats.uptime / totalTime, 1) : 0;
+    // If uptime was explicitly set, return ratio (capped at 1)
+    // If totalTime is 0 (same millisecond), return 1 if uptime > 0
+    if (totalTime <= 0) {
+      return this.stats.uptime > 0 ? 1 : 0;
+    }
+    return Math.min(this.stats.uptime / totalTime, 1);
   }
 
   /**

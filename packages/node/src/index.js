@@ -51,3 +51,12 @@ export {
   MemoryStorage,
   FileStorage,
 } from './state/index.js';
+
+// Transport
+export {
+  WebSocketTransport,
+  ConnectionState,
+  serialize,
+  deserialize,
+  isValidMessage,
+} from './transport/index.js';
