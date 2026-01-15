@@ -405,13 +405,21 @@ export class ConsensusGossip extends EventEmitter {
 
       try {
         const result = await this.syncFromPeers(0);
-        this.synced = true;
 
-        this.emit('sync:auto-completed', {
-          imported: result.imported,
-          latestSlot: result.latestSlot,
-          peerCount: peers.length,
-        });
+        // Only mark as synced if at least one peer responded successfully
+        if (result.success) {
+          this.synced = true;
+          this.emit('sync:auto-completed', {
+            imported: result.imported,
+            latestSlot: result.latestSlot,
+            peerCount: peers.length,
+          });
+        } else {
+          this.emit('sync:failed', {
+            error: result.error || 'All sync requests failed',
+            peerCount: peers.length,
+          });
+        }
       } catch (err) {
         this.emit('error', { source: 'auto-sync', error: err.message });
       }
@@ -553,10 +561,11 @@ export class ConsensusGossip extends EventEmitter {
   async syncFromPeers(sinceSlot = 0) {
     const peers = this.gossip.peerManager.getActivePeers();
     if (peers.length === 0) {
-      return { imported: 0, error: 'No peers available' };
+      return { imported: 0, success: false, error: 'No peers available' };
     }
 
     let bestResult = { imported: 0, latestSlot: 0 };
+    let anySuccess = false;
 
     // Request sync from each peer
     const results = await Promise.allSettled(
@@ -566,6 +575,7 @@ export class ConsensusGossip extends EventEmitter {
     // Find the best result (most blocks imported or highest slot)
     for (const result of results) {
       if (result.status === 'fulfilled' && result.value) {
+        anySuccess = true;
         if (result.value.latestSlot > bestResult.latestSlot) {
           bestResult = result.value;
         }
@@ -576,9 +586,10 @@ export class ConsensusGossip extends EventEmitter {
       peersQueried: peers.length,
       imported: bestResult.imported,
       latestSlot: bestResult.latestSlot,
+      success: anySuccess,
     });
 
-    return bestResult;
+    return { ...bestResult, success: anySuccess };
   }
 }
 
