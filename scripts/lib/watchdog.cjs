@@ -347,9 +347,9 @@ function calculateVerdict(results) {
     message = `*GROWL* CRITICAL: ${allFindings.filter(f => f.severity === 'critical').length} critical secret(s) detected!`;
     shouldBlock = true;
   } else if (hasHigh) {
-    verdict = 'BARK';
-    message = `*bark* WARNING: ${allFindings.filter(f => f.severity === 'high').length} high-severity finding(s).`;
-    shouldBlock = false;
+    verdict = 'GROWL';
+    message = `*GROWL* HIGH: ${allFindings.filter(f => f.severity === 'high').length} high-severity secret(s) detected!`;
+    shouldBlock = true;
   } else {
     verdict = 'BARK';
     message = `*sniff* ${allFindings.length} potential issue(s) found.`;
