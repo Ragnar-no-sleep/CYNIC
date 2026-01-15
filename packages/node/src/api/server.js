@@ -164,10 +164,19 @@ export class APIServer {
       try {
         const { type, item, context } = req.body;
 
-        if (!item) {
+        // Validate item exists and is a non-null object
+        if (!item || typeof item !== 'object' || Array.isArray(item)) {
           return res.status(400).json({
             error: 'Bad Request',
-            message: 'Missing required field: item',
+            message: 'Invalid item: must be a non-null object',
+          });
+        }
+
+        // Validate item has content to judge
+        if (Object.keys(item).length === 0) {
+          return res.status(400).json({
+            error: 'Bad Request',
+            message: 'Invalid item: object cannot be empty',
           });
         }
 
