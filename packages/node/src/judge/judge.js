@@ -16,7 +16,15 @@
 
 'use strict';
 
-import { PHI_INV, PHI_INV_2, THRESHOLDS } from '@cynic/core';
+import {
+  PHI_INV,
+  PHI_INV_2,
+  THRESHOLDS,
+  calculateQScoreFromAxioms,
+  calculateFinalScore,
+  getVerdict,
+  analyzeWeaknesses,
+} from '@cynic/core';
 import {
   createJudgment,
   validateJudgment,
@@ -29,6 +37,7 @@ import {
   getAllDimensions,
   getDimensionsForAxiom,
   getTotalWeight,
+  getAxiomTotalWeight,
   dimensionRegistry,
 } from './dimensions.js';
 
@@ -62,17 +71,29 @@ export class CYNICJudge {
    * Judge an item
    * @param {Object} item - Item to judge
    * @param {Object} [context] - Judgment context
-   * @returns {Object} Judgment result
+   * @returns {Object} Judgment result with Q-Score
    */
   judge(item, context = {}) {
     // Score each dimension
     const dimensionScores = this._scoreDimensions(item, context);
 
-    // Calculate global score
+    // Calculate global score (weighted average - legacy)
     const globalScore = this._calculateGlobalScore(dimensionScores);
+
+    // Calculate axiom scores (aggregated by axiom)
+    const axiomScores = this._calculateAxiomScores(dimensionScores);
+
+    // Calculate Q-Score (geometric mean of axioms)
+    const qScoreResult = this._calculateQScore(axiomScores);
 
     // Calculate confidence (φ-bounded)
     const confidence = this._calculateConfidence(dimensionScores, context);
+
+    // If K-Score is provided, calculate Final score
+    let finalScore = null;
+    if (typeof context.kScore === 'number') {
+      finalScore = calculateFinalScore(context.kScore, qScoreResult.Q);
+    }
 
     // Create judgment
     const judgment = createJudgment({
@@ -85,6 +106,20 @@ export class CYNICJudge {
         judgedAt: Date.now(),
       },
     });
+
+    // Enhance judgment with Q-Score data
+    judgment.axiomScores = axiomScores;
+    judgment.qScore = qScoreResult.Q;
+    judgment.qVerdict = qScoreResult.verdict;
+    judgment.weaknesses = qScoreResult.weaknesses;
+
+    // Include Final score if K-Score was provided
+    if (finalScore) {
+      judgment.kScore = context.kScore;
+      judgment.finalScore = finalScore.Final;
+      judgment.finalVerdict = finalScore.verdict;
+      judgment.limiting = finalScore.limiting;
+    }
 
     // Check for anomalies
     if (isAnomalous(judgment)) {
@@ -320,6 +355,55 @@ export class CYNICJudge {
 
     if (totalWeight === 0) return 50;
     return Math.round(weightedSum / totalWeight * 10) / 10;
+  }
+
+  /**
+   * Calculate scores aggregated by axiom
+   * @private
+   * @param {Object} dimensionScores - All dimension scores
+   * @returns {Object} Axiom scores {PHI, VERIFY, CULTURE, BURN}
+   */
+  _calculateAxiomScores(dimensionScores) {
+    const axiomScores = {};
+
+    for (const [axiom, dims] of Object.entries(Dimensions)) {
+      let weightedSum = 0;
+      let totalWeight = 0;
+
+      for (const [dimName, config] of Object.entries(dims)) {
+        const score = dimensionScores[dimName];
+        if (typeof score === 'number') {
+          weightedSum += score * config.weight;
+          totalWeight += config.weight;
+        }
+      }
+
+      // Calculate weighted average for this axiom
+      axiomScores[axiom] = totalWeight > 0
+        ? Math.round(weightedSum / totalWeight * 10) / 10
+        : 50; // Neutral if no data
+    }
+
+    return axiomScores;
+  }
+
+  /**
+   * Calculate Q-Score using geometric mean of axiom scores
+   * Q = 100 × ∜(φ × V × C × B / 100^4)
+   * @private
+   * @param {Object} axiomScores - Scores by axiom
+   * @returns {Object} Q-Score result
+   */
+  _calculateQScore(axiomScores) {
+    const qResult = calculateQScoreFromAxioms(axiomScores);
+    const weaknesses = analyzeWeaknesses(qResult);
+
+    return {
+      Q: qResult.Q,
+      verdict: qResult.verdict,
+      axiomBreakdown: axiomScores,
+      weaknesses,
+    };
   }
 
   /**

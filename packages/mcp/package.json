@@ -18,7 +18,9 @@
   },
   "dependencies": {
     "@cynic/core": "*",
-    "@cynic/node": "*"
+    "@cynic/node": "*",
+    "@cynic/persistence": "*",
+    "dotenv": "^17.2.3"
   },
   "keywords": [
     "cynic",

@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "cynic": {
+      "command": "node",
+      "args": ["packages/mcp/bin/mcp.js"],
+      "cwd": "/workspaces/CYNIC-new",
+      "env": {}
+    }
+  }
+}

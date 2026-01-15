@@ -182,18 +182,33 @@ export class APIServer {
           source: 'api',
         });
 
-        res.status(201).json({
+        // Build response with optional Final score
+        const response = {
           requestId,
           status: 'finalized',
           judgment: {
-            score: judgment.score,
+            globalScore: judgment.global_score,
+            qScore: judgment.qScore,
             verdict: judgment.verdict,
+            qVerdict: judgment.qVerdict?.verdict,
             confidence: judgment.confidence,
+            axiomScores: judgment.axiomScores,
+            weaknesses: judgment.weaknesses,
             dimensions: judgment.dimensions,
           },
           height: this.node.state.chain?.height || 0,
           timestamp: Date.now(),
-        });
+        };
+
+        // Add Final score if K-Score was provided
+        if (judgment.finalScore !== undefined) {
+          response.judgment.kScore = judgment.kScore;
+          response.judgment.finalScore = judgment.finalScore;
+          response.judgment.finalVerdict = judgment.finalVerdict?.verdict;
+          response.judgment.limiting = judgment.limiting;
+        }
+
+        res.status(201).json(response);
       } catch (err) {
         console.error('Judge error:', err);
         res.status(500).json({

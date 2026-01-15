@@ -11,4 +11,5 @@
 'use strict';
 
 export { MCPServer } from './server.js';
+export { PersistenceManager } from './persistence.js';
 export { default } from './server.js';

@@ -7,7 +7,13 @@
   "exports": {
     ".": "./src/index.js",
     "./axioms": "./src/axioms/index.js",
-    "./timing": "./src/timing/index.js"
+    "./timing": "./src/timing/index.js",
+    "./qscore": "./src/qscore/index.js",
+    "./identity": "./src/identity/index.js",
+    "./worlds": "./src/worlds/index.js"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
   },
   "license": "MIT"
 }

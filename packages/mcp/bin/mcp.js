@@ -5,10 +5,17 @@
  *
  * Run: cynic-mcp
  *
+ * Environment variables:
+ *   CYNIC_DATABASE_URL - PostgreSQL connection string
+ *   CYNIC_REDIS_URL    - Redis connection string
+ *
  * "φ distrusts φ" - κυνικός
  */
 
 'use strict';
+
+// Load environment variables from .env file
+import 'dotenv/config';
 
 import { MCPServer } from '../src/server.js';
 

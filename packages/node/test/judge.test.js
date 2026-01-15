@@ -486,3 +486,157 @@ describe('Residual Detector', () => {
     assert.ok(Array.isArray(discoveries));
   });
 });
+
+describe('Q-Score Integration', () => {
+  let judge;
+  let allDims;
+
+  beforeEach(() => {
+    judge = new CYNICJudge();
+    allDims = getAllDimensions();
+  });
+
+  it('should calculate axiom scores', () => {
+    const scores = {};
+    // PHI at 80
+    for (const dim of Object.keys(getDimensionsForAxiom('PHI'))) {
+      scores[dim] = 80;
+    }
+    // VERIFY at 70
+    for (const dim of Object.keys(getDimensionsForAxiom('VERIFY'))) {
+      scores[dim] = 70;
+    }
+    // CULTURE at 60
+    for (const dim of Object.keys(getDimensionsForAxiom('CULTURE'))) {
+      scores[dim] = 60;
+    }
+    // BURN at 50
+    for (const dim of Object.keys(getDimensionsForAxiom('BURN'))) {
+      scores[dim] = 50;
+    }
+
+    const item = { id: 'test', scores };
+    const judgment = judge.judge(item);
+
+    assert.ok(judgment.axiomScores);
+    assert.ok(judgment.axiomScores.PHI > 70);
+    assert.ok(judgment.axiomScores.VERIFY > 60);
+    assert.ok(judgment.axiomScores.CULTURE > 50);
+    assert.ok(judgment.axiomScores.BURN > 40);
+  });
+
+  it('should calculate Q-Score via geometric mean', () => {
+    // All dimensions at 70
+    const scores = {};
+    for (const dim of Object.keys(allDims)) {
+      scores[dim] = 70;
+    }
+
+    const item = { id: 'test', scores };
+    const judgment = judge.judge(item);
+
+    assert.ok(judgment.qScore);
+    // When all axioms are equal, Q-Score should be close to that value
+    assert.ok(Math.abs(judgment.qScore - 70) < 5);
+  });
+
+  it('should include qVerdict', () => {
+    const scores = {};
+    for (const dim of Object.keys(allDims)) {
+      scores[dim] = 85;
+    }
+
+    const item = { id: 'test', scores };
+    const judgment = judge.judge(item);
+
+    assert.ok(judgment.qVerdict);
+    assert.strictEqual(judgment.qVerdict.verdict, 'HOWL');
+  });
+
+  it('should identify weaknesses', () => {
+    const scores = {};
+    // PHI high
+    for (const dim of Object.keys(getDimensionsForAxiom('PHI'))) {
+      scores[dim] = 90;
+    }
+    // VERIFY high
+    for (const dim of Object.keys(getDimensionsForAxiom('VERIFY'))) {
+      scores[dim] = 85;
+    }
+    // CULTURE medium
+    for (const dim of Object.keys(getDimensionsForAxiom('CULTURE'))) {
+      scores[dim] = 60;
+    }
+    // BURN low - this should be identified as weakness
+    for (const dim of Object.keys(getDimensionsForAxiom('BURN'))) {
+      scores[dim] = 30;
+    }
+
+    const item = { id: 'test', scores };
+    const judgment = judge.judge(item);
+
+    assert.ok(judgment.weaknesses);
+    assert.strictEqual(judgment.weaknesses.weakestAxiom, 'BURN');
+  });
+
+  it('should penalize imbalance via geometric mean', () => {
+    // Balanced at 70
+    const balancedScores = {};
+    for (const dim of Object.keys(allDims)) {
+      balancedScores[dim] = 70;
+    }
+
+    // Imbalanced: PHI, VERIFY, CULTURE at 90, BURN at 20
+    const imbalancedScores = {};
+    for (const axiom of ['PHI', 'VERIFY', 'CULTURE']) {
+      for (const dim of Object.keys(getDimensionsForAxiom(axiom))) {
+        imbalancedScores[dim] = 90;
+      }
+    }
+    for (const dim of Object.keys(getDimensionsForAxiom('BURN'))) {
+      imbalancedScores[dim] = 20;
+    }
+
+    const balanced = judge.judge({ id: 'balanced', scores: balancedScores });
+    const imbalanced = judge.judge({ id: 'imbalanced', scores: imbalancedScores });
+
+    // Geometric mean punishes imbalance
+    assert.ok(imbalanced.qScore < balanced.qScore);
+  });
+
+  it('should calculate Final score when K-Score provided', () => {
+    const scores = {};
+    for (const dim of Object.keys(allDims)) {
+      scores[dim] = 80;
+    }
+
+    const item = { id: 'test', scores };
+    const judgment = judge.judge(item, { kScore: 80 });
+
+    assert.ok(judgment.finalScore);
+    assert.strictEqual(judgment.kScore, 80);
+    // Final = sqrt(K * Q) = sqrt(80 * ~80) = ~80
+    assert.ok(Math.abs(judgment.finalScore - 80) < 5);
+  });
+
+  it('should not include Final without K-Score', () => {
+    const item = { id: 'test' };
+    const judgment = judge.judge(item);
+
+    assert.strictEqual(judgment.finalScore, undefined);
+    assert.strictEqual(judgment.kScore, undefined);
+  });
+
+  it('should identify limiting factor', () => {
+    const scores = {};
+    for (const dim of Object.keys(allDims)) {
+      scores[dim] = 90;
+    }
+
+    // Q-Score ~90, K-Score = 40 -> K is limiting
+    const item = { id: 'test', scores };
+    const judgment = judge.judge(item, { kScore: 40 });
+
+    assert.strictEqual(judgment.limiting, 'K-Score');
+  });
+});
