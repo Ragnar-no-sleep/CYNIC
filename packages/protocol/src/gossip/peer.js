@@ -59,8 +59,10 @@ export class PeerManager {
     this.inactiveThresholdMs = options.inactiveThresholdMs || 300000;
     this.maxSeenMessages = options.maxSeenMessages || 100000;
     this.messageExpireMs = options.messageExpireMs || 60000; // 1 minute
+    this.maxBannedPeers = options.maxBannedPeers || 1000;
+    this.banDurationMs = options.banDurationMs || 3600000; // 1 hour default ban
     this.peers = new Map();
-    this.bannedPeers = new Set();
+    this.bannedPeers = new Map(); // peerId -> { timestamp, reason }
     // Use Map with timestamps for bounded dedup with LRU eviction
     this.seenMessages = new Map(); // messageId -> timestamp
   }
@@ -71,8 +73,14 @@ export class PeerManager {
    * @returns {boolean} True if added/updated
    */
   addPeer(peerInfo) {
-    if (this.bannedPeers.has(peerInfo.id)) {
-      return false;
+    // Check if banned (with expiration)
+    const banInfo = this.bannedPeers.get(peerInfo.id);
+    if (banInfo) {
+      if (Date.now() - banInfo.timestamp < this.banDurationMs) {
+        return false; // Still banned
+      }
+      // Ban expired, remove it
+      this.bannedPeers.delete(peerInfo.id);
     }
 
     const existing = this.peers.get(peerInfo.id);
@@ -113,8 +121,40 @@ export class PeerManager {
       peer.status = PeerStatus.BANNED;
       peer.banReason = reason;
     }
-    this.bannedPeers.add(peerId);
+
+    // Evict oldest ban if at capacity (FIFO eviction)
+    if (!this.bannedPeers.has(peerId) &&
+        this.bannedPeers.size >= this.maxBannedPeers) {
+      const oldestKey = this.bannedPeers.keys().next().value;
+      if (oldestKey) this.bannedPeers.delete(oldestKey);
+    }
+
+    this.bannedPeers.set(peerId, { timestamp: Date.now(), reason });
     this.peers.delete(peerId);
+  }
+
+  /**
+   * Unban peer
+   * @param {string} peerId - Peer ID
+   * @returns {boolean} True if peer was banned and is now unbanned
+   */
+  unbanPeer(peerId) {
+    return this.bannedPeers.delete(peerId);
+  }
+
+  /**
+   * Check if peer is banned
+   * @param {string} peerId - Peer ID
+   * @returns {boolean} True if banned (and not expired)
+   */
+  isBanned(peerId) {
+    const banInfo = this.bannedPeers.get(peerId);
+    if (!banInfo) return false;
+    if (Date.now() - banInfo.timestamp >= this.banDurationMs) {
+      this.bannedPeers.delete(peerId); // Cleanup expired ban
+      return false;
+    }
+    return true;
   }
 
   /**
