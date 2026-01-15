@@ -46,6 +46,7 @@ export class WebSocketTransport extends EventEmitter {
    * @param {number} [options.reconnectBaseMs=1000] - Base reconnect delay
    * @param {number} [options.reconnectMaxMs=30000] - Max reconnect delay
    * @param {number} [options.maxQueueSize=1000] - Max queued messages per peer
+   * @param {number} [options.maxPeerIdRemaps=10000] - Max peer ID remappings to track
    */
   constructor(options = {}) {
     super();
@@ -58,6 +59,7 @@ export class WebSocketTransport extends EventEmitter {
     this.reconnectBaseMs = options.reconnectBaseMs || 1000;
     this.reconnectMaxMs = options.reconnectMaxMs || 30000;
     this.maxQueueSize = options.maxQueueSize || 1000;
+    this.maxPeerIdRemaps = options.maxPeerIdRemaps || 10000;
 
     // Server
     this.server = null;
@@ -70,6 +72,7 @@ export class WebSocketTransport extends EventEmitter {
     this.addressToPeer = new Map();
 
     // Original peerId to real peerId mapping (after identity exchange)
+    // Bounded with FIFO eviction
     this.peerIdRemap = new Map();
 
     // Heartbeat timer
@@ -310,13 +313,11 @@ export class WebSocketTransport extends EventEmitter {
 
     const wasPendingIdentity = conn.pendingIdentity;
 
+    // Mark connection as being remapped to prevent disconnect handler race
+    conn._remapping = true;
+
     // Update connection with real peer ID
     if (tempPeerId !== realPeerId) {
-      this.connections.delete(tempPeerId);
-
-      // Record the mapping so send() can find the connection by original ID
-      this.peerIdRemap.set(tempPeerId, realPeerId);
-
       // Check if we already have a connection to this peer
       const existing = this.connections.get(realPeerId);
       if (existing) {
@@ -327,10 +328,14 @@ export class WebSocketTransport extends EventEmitter {
           conn.isOutbound = false;
           conn.pendingIdentity = false;
           conn.state = ConnectionState.CLOSED;
+          conn._remapping = false;
+          // Delete temp entry before closing to prevent disconnect handler confusion
+          this.connections.delete(tempPeerId);
           conn.ws.close(1000, 'duplicate_connection');
           return;
         } else {
-          // Close existing, keep new
+          // Close existing, keep new - mark existing to prevent its disconnect handler from interfering
+          existing._closing = true;
           existing.isOutbound = false;
           existing.pendingIdentity = false;
           existing.state = ConnectionState.CLOSED;
@@ -339,10 +344,21 @@ export class WebSocketTransport extends EventEmitter {
         }
       }
 
+      // Update connection ID atomically: set new entry first, then delete old
       conn.peerId = realPeerId;
       this.connections.set(realPeerId, conn);
+      this.connections.delete(tempPeerId);
+
+      // Record the mapping so send() can find the connection by original ID
+      // Enforce bounds with FIFO eviction
+      if (this.peerIdRemap.size >= this.maxPeerIdRemaps) {
+        const oldest = this.peerIdRemap.keys().next().value;
+        if (oldest) this.peerIdRemap.delete(oldest);
+      }
+      this.peerIdRemap.set(tempPeerId, realPeerId);
     }
 
+    conn._remapping = false;
     conn.pendingIdentity = false;
 
     if (address) {
@@ -381,6 +397,13 @@ export class WebSocketTransport extends EventEmitter {
    * @private
    */
   _handleDisconnect(conn, code, reason) {
+    // Skip if connection is being remapped (identity swap in progress)
+    // or if it's being closed as part of duplicate detection
+    if (conn._remapping || conn._closing) {
+      conn.ws = null;
+      return;
+    }
+
     const wasConnected = conn.state === ConnectionState.CONNECTED;
     const wasIntentionallyClosed = conn.state === ConnectionState.CLOSED;
     conn.state = ConnectionState.DISCONNECTED;
@@ -408,6 +431,12 @@ export class WebSocketTransport extends EventEmitter {
       this.connections.delete(conn.peerId);
       if (conn.address) {
         this.addressToPeer.delete(conn.address);
+      }
+      // Clean up any peerIdRemap entries pointing to this peer
+      for (const [tempId, realId] of this.peerIdRemap) {
+        if (realId === conn.peerId) {
+          this.peerIdRemap.delete(tempId);
+        }
       }
     }
   }
