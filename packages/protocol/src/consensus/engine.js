@@ -66,6 +66,8 @@ export class ConsensusEngine extends EventEmitter {
    * @param {number} [options.burned=0] - Node burned tokens
    * @param {number} [options.slotDuration=SLOT_MS] - Slot duration in ms
    * @param {number} [options.confirmationsForFinality=32] - Confirmations needed
+   * @param {number} [options.maxPendingVotes=10000] - Max queued votes for unknown blocks
+   * @param {number} [options.pendingVoteMaxAge=100] - Max slots a pending vote can wait
    */
   constructor(options) {
     super();
@@ -76,6 +78,8 @@ export class ConsensusEngine extends EventEmitter {
     this.burned = options.burned || 0;
     this.slotDuration = options.slotDuration || SLOT_MS || 400;
     this.confirmationsForFinality = options.confirmationsForFinality || 32;
+    this.maxPendingVotes = options.maxPendingVotes || 10000;
+    this.pendingVoteMaxAge = options.pendingVoteMaxAge || 100;
 
     // State
     this.state = ConsensusState.INITIALIZING;
@@ -337,8 +341,15 @@ export class ConsensusEngine extends EventEmitter {
     const record = this.blocks.get(blockHash);
 
     if (!record) {
-      // Don't have the block yet, queue vote
-      this.pendingVotes.push(vote);
+      // Don't have the block yet, queue vote (with bounds)
+      if (this.pendingVotes.length >= this.maxPendingVotes) {
+        // Evict oldest vote to make room
+        this.pendingVotes.shift();
+      }
+      this.pendingVotes.push({
+        vote,
+        receivedSlot: this.currentSlot,
+      });
       return;
     }
 
@@ -835,8 +846,17 @@ export class ConsensusEngine extends EventEmitter {
    */
   _processPendingVotes() {
     const stillPending = [];
+    let expired = 0;
 
-    for (const vote of this.pendingVotes) {
+    for (const pending of this.pendingVotes) {
+      const { vote, receivedSlot } = pending;
+
+      // Evict votes that are too old (block never arrived)
+      if (this.currentSlot - receivedSlot > this.pendingVoteMaxAge) {
+        expired++;
+        continue;
+      }
+
       const blockHash = vote.block_hash || vote.proposal_id;
       const record = this.blocks.get(blockHash);
 
@@ -844,8 +864,12 @@ export class ConsensusEngine extends EventEmitter {
         this._addVote(record, vote);
       } else {
         // Still don't have block, keep pending
-        stillPending.push(vote);
+        stillPending.push(pending);
       }
+    }
+
+    if (expired > 0) {
+      console.warn(`[Consensus] Evicted ${expired} pending votes (block never received)`);
     }
 
     this.pendingVotes = stillPending;
