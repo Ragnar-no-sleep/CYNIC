@@ -60,3 +60,6 @@ export {
   deserialize,
   isValidMessage,
 } from './transport/index.js';
+
+// API
+export { APIServer } from './api/index.js';

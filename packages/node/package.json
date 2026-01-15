@@ -13,6 +13,7 @@
     "./judge": "./src/judge/index.js",
     "./state": "./src/state/index.js",
     "./transport": "./src/transport/index.js",
+    "./api": "./src/api/index.js",
     "./cli": "./src/cli/index.js"
   },
   "scripts": {
@@ -24,6 +25,7 @@
     "@cynic/protocol": "*",
     "chalk": "^5.6.2",
     "commander": "^14.0.2",
+    "express": "^5.2.1",
     "ws": "^8.18.0"
   },
   "keywords": [

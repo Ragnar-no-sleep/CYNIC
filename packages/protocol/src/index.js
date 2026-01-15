@@ -166,3 +166,18 @@ export {
   verifyBlock,
   formatPublicKey,
 } from './crypto/index.js';
+
+// K-Score Protocol
+export {
+  KScoreType,
+  KScoreTier,
+  calculateKScore,
+  getKScoreTier,
+  createKScoreRequest,
+  createKScoreResult,
+  validateKScoreRequest,
+  isHealthyKScore,
+  isExceptionalKScore,
+  calculateKScoreConsensus,
+  getKScoreConfidence,
+} from './kscore/index.js';

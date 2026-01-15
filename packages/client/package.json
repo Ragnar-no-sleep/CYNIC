@@ -1,0 +1,22 @@
+{
+  "name": "@cynic/client",
+  "version": "0.1.0",
+  "description": "CYNIC Client - HTTP client for CYNIC node API",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@cynic/core": "*"
+  },
+  "keywords": [
+    "cynic",
+    "client",
+    "kscore",
+    "holdex"
+  ]
+}
