@@ -99,8 +99,11 @@ export function createKScoreRequest({
   metadata = {},
 }) {
   if (!mint) throw new Error('Missing required field: mint');
-  if (!components || typeof components.D !== 'number') {
-    throw new Error('Invalid components: {D, O, L} required');
+  if (!components ||
+      typeof components.D !== 'number' ||
+      typeof components.O !== 'number' ||
+      typeof components.L !== 'number') {
+    throw new Error('Invalid components: {D, O, L} required as numbers');
   }
   if (!requestor) throw new Error('Missing required field: requestor');
 

@@ -94,6 +94,29 @@ describe('K-Score Protocol', () => {
       assert.throws(() => createKScoreRequest({ mint: 'test', requestor: 'test' }));
       assert.throws(() => createKScoreRequest({ mint: 'test', components: { D: 1, O: 1, L: 1 } }));
     });
+
+    it('should reject missing O or L components', () => {
+      // Missing O
+      assert.throws(
+        () => createKScoreRequest({ mint: 'test', components: { D: 1, L: 1 }, requestor: 'test' }),
+        /Invalid components/
+      );
+      // Missing L
+      assert.throws(
+        () => createKScoreRequest({ mint: 'test', components: { D: 1, O: 1 }, requestor: 'test' }),
+        /Invalid components/
+      );
+      // Missing D
+      assert.throws(
+        () => createKScoreRequest({ mint: 'test', components: { O: 1, L: 1 }, requestor: 'test' }),
+        /Invalid components/
+      );
+      // Non-number component
+      assert.throws(
+        () => createKScoreRequest({ mint: 'test', components: { D: '1', O: 1, L: 1 }, requestor: 'test' }),
+        /Invalid components/
+      );
+    });
   });
 
   describe('validateKScoreRequest', () => {
