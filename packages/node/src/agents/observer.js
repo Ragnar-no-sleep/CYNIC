@@ -60,6 +60,7 @@ export class Observer extends BaseAgent {
 
     // Tool usage tracking
     this.toolUsage = new Map();
+    this.maxToolTypes = options.maxToolTypes || 200;
     this.sequenceBuffer = [];
     this.maxSequenceLength = 10;
   }
@@ -172,12 +173,11 @@ export class Observer extends BaseAgent {
    * @private
    */
   _recordObservation(observation) {
-    this.observations.push(observation);
-
-    // Maintain sliding window
-    if (this.observations.length > this.maxObservations) {
-      this.observations = this.observations.slice(-this.maxObservations);
+    // Enforce bounds before pushing (FIFO eviction)
+    while (this.observations.length >= this.maxObservations) {
+      this.observations.shift();
     }
+    this.observations.push(observation);
 
     // Update tool usage map
     const tool = observation.tool;
@@ -186,6 +186,19 @@ export class Observer extends BaseAgent {
     if (!observation.success) usage.failures++;
     usage.totalDuration += observation.duration;
     usage.lastUsed = observation.timestamp;
+
+    // Bound toolUsage map (evict least recently used if adding new tool)
+    if (!this.toolUsage.has(tool) && this.toolUsage.size >= this.maxToolTypes) {
+      let oldestTool = null;
+      let oldestTime = Infinity;
+      for (const [t, u] of this.toolUsage) {
+        if (u.lastUsed < oldestTime) {
+          oldestTime = u.lastUsed;
+          oldestTool = t;
+        }
+      }
+      if (oldestTool) this.toolUsage.delete(oldestTool);
+    }
     this.toolUsage.set(tool, usage);
 
     // Update sequence buffer
@@ -378,15 +391,14 @@ export class Observer extends BaseAgent {
    * @private
    */
   _recordPattern(pattern) {
+    // Enforce bounds before pushing (FIFO eviction)
+    while (this.detectedPatterns.length >= this.maxPatterns) {
+      this.detectedPatterns.shift();
+    }
     this.detectedPatterns.push({
       ...pattern,
       detectedAt: Date.now(),
     });
-
-    // Keep only recent patterns
-    if (this.detectedPatterns.length > this.maxPatterns) {
-      this.detectedPatterns = this.detectedPatterns.slice(-this.maxPatterns);
-    }
 
     // Also record in base class
     this.recordPattern(pattern);
