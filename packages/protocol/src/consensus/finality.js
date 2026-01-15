@@ -196,9 +196,10 @@ export function checkForkPossibility({
  * Tracks finality status for multiple blocks
  */
 export class FinalityTracker {
-  constructor() {
+  constructor(options = {}) {
     this.blocks = new Map(); // blockHash -> finality info
-    this.finalizedBlocks = new Set();
+    this.finalizedBlocks = new Map(); // blockHash -> timestamp (for FIFO eviction)
+    this.maxFinalizedBlocks = options.maxFinalizedBlocks || 10000;
   }
 
   /**
@@ -231,7 +232,16 @@ export class FinalityTracker {
 
     // Track deterministic finality
     if (finality.status === FinalityStatus.DETERMINISTIC) {
-      this.finalizedBlocks.add(blockHash);
+      // Evict oldest finalized block if at capacity (FIFO eviction)
+      if (!this.finalizedBlocks.has(blockHash) &&
+          this.finalizedBlocks.size >= this.maxFinalizedBlocks) {
+        const oldestKey = this.finalizedBlocks.keys().next().value;
+        if (oldestKey) {
+          this.finalizedBlocks.delete(oldestKey);
+          this.blocks.delete(oldestKey); // Also remove from blocks Map
+        }
+      }
+      this.finalizedBlocks.set(blockHash, Date.now());
     }
 
     return finality;
