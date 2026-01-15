@@ -113,7 +113,8 @@ export function createDigestTool(persistence = null) {
           await persistence.storeKnowledge({
             sourceType: type,
             sourceRef: source,
-            summary: content.slice(0, 500),
+            summary: content.slice(0, 500),  // Summary for quick display
+            content: content,                 // Full content for FTS
             insights: patterns.map(p => `${p.type}: ${p.count}`),
             patterns: patterns,
             category: type,

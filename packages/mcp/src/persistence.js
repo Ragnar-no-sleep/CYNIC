@@ -91,8 +91,14 @@ class MemoryStore {
     const { limit = 10 } = options;
     if (!query) return this.knowledge.slice(-limit);
     const q = query.toLowerCase();
+    // Search in summary, content, and insights
     return this.knowledge
-      .filter(k => JSON.stringify(k).toLowerCase().includes(q))
+      .filter(k => {
+        const summary = (k.summary || '').toLowerCase();
+        const content = (k.content || '').toLowerCase();
+        const insights = JSON.stringify(k.insights || []).toLowerCase();
+        return summary.includes(q) || content.includes(q) || insights.includes(q);
+      })
       .slice(-limit);
   }
 
@@ -407,9 +413,20 @@ export class PersistenceManager {
   async searchKnowledge(query, options = {}) {
     if (this.knowledge) {
       try {
+        // Try FTS search first
         return await this.knowledge.search(query, options);
       } catch (err) {
-        console.error('Error searching knowledge:', err.message);
+        // If FTS fails (migration not run), try fallback search
+        if (err.message.includes('search_vector') || err.message.includes('websearch_to_tsquery')) {
+          console.error('FTS not available, using fallback search');
+          try {
+            return await this.knowledge.searchFallback(query, options);
+          } catch (fallbackErr) {
+            console.error('Error in fallback search:', fallbackErr.message);
+          }
+        } else {
+          console.error('Error searching knowledge:', err.message);
+        }
       }
     }
     if (this._fallback) {

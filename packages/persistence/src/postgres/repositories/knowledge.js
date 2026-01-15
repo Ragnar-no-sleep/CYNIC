@@ -33,15 +33,16 @@ export class KnowledgeRepository {
     const { rows } = await this.db.query(`
       INSERT INTO knowledge (
         knowledge_id, source_type, source_ref,
-        summary, insights, patterns,
+        summary, content, insights, patterns,
         category, tags, q_score, confidence
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING *
     `, [
       knowledgeId,
       knowledge.sourceType,
       knowledge.sourceRef || null,
       knowledge.summary,
+      knowledge.content || null,  // Full content for FTS
       JSON.stringify(knowledge.insights || []),
       JSON.stringify(knowledge.patterns || []),
       knowledge.category || null,
@@ -64,14 +65,53 @@ export class KnowledgeRepository {
   }
 
   /**
-   * Search knowledge
+   * Search knowledge using full-text search
    */
   async search(query, options = {}) {
     const { sourceType, category, tags, limit = 10 } = options;
 
+    // Use PostgreSQL full-text search with ranking
+    let sql = `
+      SELECT *,
+        ts_rank(search_vector, websearch_to_tsquery('english', $1)) as rank
+      FROM knowledge
+      WHERE search_vector @@ websearch_to_tsquery('english', $1)
+    `;
+    const params = [query];
+    let paramIndex = 2;
+
+    if (sourceType) {
+      sql += ` AND source_type = $${paramIndex++}`;
+      params.push(sourceType);
+    }
+
+    if (category) {
+      sql += ` AND category = $${paramIndex++}`;
+      params.push(category);
+    }
+
+    if (tags && tags.length > 0) {
+      sql += ` AND tags && $${paramIndex++}`;
+      params.push(tags);
+    }
+
+    // Order by rank (relevance) first, then q_score
+    sql += ` ORDER BY rank DESC, q_score DESC NULLS LAST, created_at DESC LIMIT $${paramIndex}`;
+    params.push(limit);
+
+    const { rows } = await this.db.query(sql, params);
+    return rows;
+  }
+
+  /**
+   * Fallback search using ILIKE (for databases without FTS migration)
+   */
+  async searchFallback(query, options = {}) {
+    const { sourceType, category, tags, limit = 10 } = options;
+
     let sql = `
       SELECT * FROM knowledge
-      WHERE (summary ILIKE $1 OR insights::text ILIKE $1)
+      WHERE (summary ILIKE $1 OR content ILIKE $1 OR insights::text ILIKE $1)
     `;
     const params = [`%${query}%`];
     let paramIndex = 2;
