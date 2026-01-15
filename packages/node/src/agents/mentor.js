@@ -58,6 +58,7 @@ export class Mentor extends BaseAgent {
 
     // Knowledge base (learned patterns)
     this.knowledge = new Map();
+    this.maxKnowledge = options.maxKnowledge || 500;
 
     // Session context tracking
     this.sessionContext = {
@@ -431,10 +432,11 @@ export class Mentor extends BaseAgent {
    * @private
    */
   _recordWisdom(wisdom) {
-    this.sharedWisdom.push(wisdom);
-    if (this.sharedWisdom.length > this.maxSharedWisdom) {
-      this.sharedWisdom = this.sharedWisdom.slice(-this.maxSharedWisdom);
+    // Enforce bounds before pushing (FIFO eviction)
+    while (this.sharedWisdom.length >= this.maxSharedWisdom) {
+      this.sharedWisdom.shift();
     }
+    this.sharedWisdom.push(wisdom);
 
     // Also record as pattern
     this.recordPattern({
@@ -442,6 +444,26 @@ export class Mentor extends BaseAgent {
       wisdomType: wisdom.type,
       signal: wisdom.signal,
     });
+  }
+
+  /**
+   * Queue wisdom to share later
+   * @param {Object} wisdom - Wisdom to queue
+   */
+  queueWisdom(wisdom) {
+    // Enforce bounds before pushing (FIFO eviction)
+    while (this.wisdomQueue.length >= this.maxWisdomQueue) {
+      this.wisdomQueue.shift();
+    }
+    this.wisdomQueue.push(wisdom);
+  }
+
+  /**
+   * Dequeue next wisdom item
+   * @returns {Object|undefined} Next wisdom or undefined if empty
+   */
+  dequeueWisdom() {
+    return this.wisdomQueue.shift();
   }
 
   /**
@@ -465,6 +487,12 @@ export class Mentor extends BaseAgent {
    * @param {*} value - Knowledge value
    */
   learn(key, value) {
+    // Evict oldest entry if at capacity (skip if updating existing key)
+    if (!this.knowledge.has(key) && this.knowledge.size >= this.maxKnowledge) {
+      const oldest = this.knowledge.keys().next().value;
+      if (oldest) this.knowledge.delete(oldest);
+    }
+
     this.knowledge.set(key, {
       value,
       learnedAt: Date.now(),
