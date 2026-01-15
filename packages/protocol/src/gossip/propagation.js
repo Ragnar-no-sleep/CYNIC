@@ -209,6 +209,7 @@ export class GossipProtocol {
     const peers = this.peerManager.selectGossipPeers(GOSSIP_FANOUT, exclude);
     let sent = 0;
 
+    const errors = [];
     for (const peer of peers) {
       try {
         await this.sendFn(peer, message);
@@ -216,7 +217,13 @@ export class GossipProtocol {
         sent++;
       } catch (err) {
         this.peerManager.recordFailure(peer.id);
+        errors.push({ peerId: peer.id, error: err.message || String(err) });
       }
+    }
+
+    // Log errors if any occurred (don't throw - broadcast should be best-effort)
+    if (errors.length > 0) {
+      console.warn(`[Gossip] Broadcast failures (${errors.length}/${peers.length}):`, errors.map(e => e.peerId).join(', '));
     }
 
     return sent;
@@ -319,7 +326,12 @@ export class GossipProtocol {
     if (!peer) return;
 
     const response = createSyncResponse(blocks, requestId, this.publicKey, this.privateKey);
-    await this.sendFn(peer, response);
+    try {
+      await this.sendFn(peer, response);
+    } catch (err) {
+      console.warn(`[Gossip] Failed to send sync response to ${peerId}:`, err.message || String(err));
+      this.peerManager.recordFailure(peerId);
+    }
   }
 
   /**
@@ -470,7 +482,12 @@ export class GossipProtocol {
       this.privateKey
     );
 
-    await this.sendFn(peer, response);
+    try {
+      await this.sendFn(peer, response);
+    } catch (err) {
+      console.warn(`[Gossip] Failed to send state response to ${peerIdOrPublicKey}:`, err.message || String(err));
+      this.peerManager.recordFailure(peer.id);
+    }
   }
 }
 
