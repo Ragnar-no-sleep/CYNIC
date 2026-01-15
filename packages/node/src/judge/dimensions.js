@@ -1,10 +1,14 @@
 /**
  * CYNIC Dimensions
  *
- * 4 Axioms × N Dimensions (∞ possible, discovered via ResidualDetector)
+ * 25 Dimensions total:
+ * - 4 Axioms × 6 Dimensions = 24 named dimensions
+ * - 1 META dimension: THE_UNNAMEABLE
  *
- * Current snapshot: 24+1 dimensions
- * THE UNNAMEABLE = what exists before being named
+ * THE_UNNAMEABLE = "explained variance" - how well the 24 dimensions
+ * capture the item's quality. High score = low residual = well understood.
+ *
+ * "φ qui se méfie de φ" - κυνικός
  *
  * @module @cynic/node/judge/dimensions
  */
@@ -153,6 +157,17 @@ export const Dimensions = {
       weight: PHI_INV_2,
       threshold: 50,
       description: 'Gives back to ecosystem',
+    },
+  },
+
+  // META - The 25th dimension (transcends axioms)
+  META: {
+    THE_UNNAMEABLE: {
+      weight: PHI,
+      threshold: PHI_INV_2 * 100, // 38.2% - same as anomaly threshold
+      description: 'Explained variance - what the 24 dimensions capture',
+      meta: true,
+      formula: '100 - (residual × 100)', // High when residual is low
     },
   },
 };

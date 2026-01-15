@@ -79,12 +79,12 @@ describe('MCPServer', () => {
   });
 
   describe('tools/list', () => {
-    it('returns all 6 tools', async () => {
+    it('returns all 7 tools', async () => {
       const response = await sendRequest(input, output, 'tools/list');
 
       assert.ok(response.result);
       assert.ok(Array.isArray(response.result.tools));
-      assert.equal(response.result.tools.length, 6);
+      assert.equal(response.result.tools.length, 7);
 
       const toolNames = response.result.tools.map(t => t.name);
       assert.ok(toolNames.includes('brain_cynic_judge'));
@@ -93,6 +93,7 @@ describe('MCPServer', () => {
       assert.ok(toolNames.includes('brain_search'));
       assert.ok(toolNames.includes('brain_patterns'));
       assert.ok(toolNames.includes('brain_cynic_feedback'));
+      assert.ok(toolNames.includes('brain_agents_status'));
     });
   });
 

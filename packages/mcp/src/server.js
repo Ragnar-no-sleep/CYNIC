@@ -13,7 +13,7 @@
 'use strict';
 
 import { PHI_INV, PHI_INV_2, IDENTITY } from '@cynic/core';
-import { CYNICJudge, StateManager, Operator, createIdentity } from '@cynic/node';
+import { CYNICJudge, AgentManager } from '@cynic/node';
 import { createAllTools } from './tools/index.js';
 import { PersistenceManager } from './persistence.js';
 
@@ -34,9 +34,9 @@ export class MCPServer {
    * @param {Object} [options] - Server options
    * @param {Object} [options.node] - CYNICNode instance
    * @param {Object} [options.judge] - CYNICJudge instance
-   * @param {Object} [options.state] - StateManager instance
    * @param {Object} [options.persistence] - PersistenceManager instance
-   * @param {string} [options.dataDir] - Data directory for file-based persistence
+   * @param {Object} [options.agents] - AgentManager instance (The Four Dogs)
+   * @param {string} [options.dataDir] - Data directory for file-based persistence fallback
    * @param {NodeJS.ReadableStream} [options.input] - Input stream (default: stdin)
    * @param {NodeJS.WritableStream} [options.output] - Output stream (default: stdout)
    */
@@ -50,12 +50,14 @@ export class MCPServer {
     // Judge instance (required)
     this.judge = options.judge || new CYNICJudge();
 
-    // State manager (optional, fallback for file-based persistence)
-    this.state = options.state || null;
+    // Data directory for file-based fallback
     this.dataDir = options.dataDir || null;
 
-    // Persistence manager (PostgreSQL + Redis)
+    // Persistence manager (PostgreSQL + Redis with automatic fallback)
     this.persistence = options.persistence || null;
+
+    // Agent manager - The Four Dogs (Guardian, Observer, Digester, Mentor)
+    this.agents = options.agents || new AgentManager();
 
     // Stdio streams
     this.input = options.input || process.stdin;
@@ -76,29 +78,21 @@ export class MCPServer {
    * @private
    */
   async _initialize() {
-    // Initialize persistence (PostgreSQL + Redis) if not provided
+    // Initialize persistence with automatic fallback chain:
+    // PostgreSQL → File-based → In-memory
     if (!this.persistence) {
-      this.persistence = new PersistenceManager();
-      await this.persistence.initialize();
-    }
-
-    // Create state manager if dataDir provided (fallback for file-based)
-    if (this.dataDir && !this.state) {
-      const identity = createIdentity();
-      const operator = new Operator({ identity });
-      this.state = new StateManager({
-        dataDir: this.dataDir,
-        operator,
+      this.persistence = new PersistenceManager({
+        dataDir: this.dataDir, // Pass for file-based fallback
       });
-      await this.state.initialize();
+      await this.persistence.initialize();
     }
 
     // Register tools with current instances
     this.tools = createAllTools({
       judge: this.judge,
       node: this.node,
-      state: this.state,
       persistence: this.persistence,
+      agents: this.agents,
     });
   }
 
@@ -132,16 +126,7 @@ export class MCPServer {
 
     this._running = false;
 
-    // Save state if available (file-based fallback)
-    if (this.state) {
-      try {
-        await this.state.save();
-      } catch (e) {
-        console.error('Error saving state:', e.message);
-      }
-    }
-
-    // Close persistence connections
+    // Close persistence connections (handles file-based save automatically)
     if (this.persistence) {
       try {
         await this.persistence.close();
@@ -305,32 +290,59 @@ export class MCPServer {
       throw new Error(`Tool not found: ${name}`);
     }
 
+    // 🐕 Guardian: PreToolUse check (blocking)
+    // Guardian barks BEFORE the damage - one confirmation saves hours of recovery
+    const guardianResult = await this.agents.process({
+      type: 'PreToolUse',
+      tool: name,
+      input: args,
+      timestamp: Date.now(),
+    });
+
+    if (guardianResult._blocked) {
+      const blockedBy = guardianResult._blockedBy || 'guardian';
+      const message = guardianResult[blockedBy]?.message || 'Operation blocked by Guardian';
+      console.error(`🐕 [BLOCKED] Tool "${name}" blocked by ${blockedBy}: ${message}`);
+      throw new Error(`[BLOCKED] ${message}`);
+    }
+
+    // Log warning if Guardian raised one
+    if (guardianResult.guardian?.response === 'warn') {
+      console.error(`🐕 [WARNING] Tool "${name}": ${guardianResult.guardian.message}`);
+    }
+
     // Execute tool handler
+    const startTime = Date.now();
     const result = await tool.handler(args);
+    const duration = Date.now() - startTime;
+
+    // 🐕 Observer: PostToolUse logging (non-blocking, silent)
+    // Observer watches the meta - repeated failures, unusual sequences, emerging patterns
+    this.agents.process({
+      type: 'PostToolUse',
+      tool: name,
+      input: args,
+      output: result,
+      duration,
+      success: true,
+      timestamp: Date.now(),
+    }).catch(err => {
+      // Observer is non-blocking - log but don't fail the request
+      console.error(`🐕 Observer error: ${err.message}`);
+    });
 
     // Store judgment if it's a judge call
-    if (name === 'brain_cynic_judge') {
-      // Store in persistence (PostgreSQL) first
-      if (this.persistence?.judgments) {
-        try {
-          await this.persistence.storeJudgment({
-            ...result,
-            item: args.item,
-            context: args.context,
-          });
-        } catch (e) {
-          // Log but don't fail the request
-          console.error('Error storing judgment to persistence:', e.message);
-        }
-      }
-
-      // Fallback to file-based state manager
-      if (this.state) {
-        try {
-          this.state.addJudgment(result);
-        } catch (e) {
-          // Ignore storage errors
-        }
+    // PersistenceManager handles fallback automatically (PostgreSQL → File → Memory)
+    if (name === 'brain_cynic_judge' && this.persistence) {
+      try {
+        await this.persistence.storeJudgment({
+          ...result,
+          item: args.item,
+          context: args.context,
+        });
+      } catch (e) {
+        // Log but don't fail the request
+        console.error('Error storing judgment:', e.message);
       }
     }
 
@@ -392,10 +404,12 @@ export class MCPServer {
       running: this._running,
       tools: Object.keys(this.tools),
       hasNode: !!this.node,
-      hasState: !!this.state,
-      hasPersistence: this.persistence?.isAvailable || false,
+      // Unified persistence (PostgreSQL → File → Memory fallback)
+      persistenceBackend: this.persistence?._backend || 'none',
       persistenceCapabilities: this.persistence?.capabilities || {},
       judgeStats: this.judge.getStats(),
+      // 🐕 The Four Dogs status
+      agents: this.agents.getSummary(),
     };
   }
 }

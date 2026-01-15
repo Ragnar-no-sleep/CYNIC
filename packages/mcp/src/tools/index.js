@@ -59,11 +59,10 @@ export function createJudgeTool(judge) {
 
 /**
  * Create digest tool definition
- * @param {Object} state - StateManager instance (optional)
- * @param {Object} persistence - PersistenceManager instance (optional)
+ * @param {Object} persistence - PersistenceManager instance (handles fallback automatically)
  * @returns {Object} Tool definition
  */
-export function createDigestTool(state = null, persistence = null) {
+export function createDigestTool(persistence = null) {
   return {
     name: 'brain_cynic_digest',
     description: 'Digest text content and extract patterns, insights, and knowledge. Stores extracted knowledge for future retrieval.',
@@ -108,8 +107,8 @@ export function createDigestTool(state = null, persistence = null) {
         timestamp: Date.now(),
       };
 
-      // Store in persistence (PostgreSQL) first
-      if (persistence?.knowledge) {
+      // Store in persistence (handles PostgreSQL → File → Memory fallback)
+      if (persistence) {
         try {
           await persistence.storeKnowledge({
             sourceType: type,
@@ -120,20 +119,7 @@ export function createDigestTool(state = null, persistence = null) {
             category: type,
           });
         } catch (e) {
-          console.error('Error storing digest to persistence:', e.message);
-        }
-      }
-
-      // Fallback to file-based state manager
-      if (state?.knowledge) {
-        try {
-          state.knowledge.add({
-            type: 'digest',
-            data: digest,
-            source,
-          });
-        } catch (e) {
-          // Ignore storage errors
+          console.error('Error storing digest:', e.message);
         }
       }
 
@@ -193,7 +179,7 @@ export function createHealthTool(node, judge, persistence = null) {
 
       if (verbose) {
         health.judge = judge.getStats();
-        health.tools = ['brain_cynic_judge', 'brain_cynic_digest', 'brain_health', 'brain_search', 'brain_patterns', 'brain_cynic_feedback'];
+        health.tools = ['brain_cynic_judge', 'brain_cynic_digest', 'brain_health', 'brain_search', 'brain_patterns', 'brain_cynic_feedback', 'brain_agents_status'];
 
         // Add judgment stats from persistence
         if (persistence?.judgments) {
@@ -212,11 +198,10 @@ export function createHealthTool(node, judge, persistence = null) {
 
 /**
  * Create search tool definition
- * @param {Object} state - StateManager instance
- * @param {Object} persistence - PersistenceManager instance (optional)
+ * @param {Object} persistence - PersistenceManager instance (handles fallback automatically)
  * @returns {Object} Tool definition
  */
-export function createSearchTool(state, persistence = null) {
+export function createSearchTool(persistence = null) {
   return {
     name: 'brain_search',
     description: 'Search CYNIC knowledge base for past judgments, patterns, and decisions.',
@@ -235,8 +220,8 @@ export function createSearchTool(state, persistence = null) {
 
       const results = [];
 
-      // Search judgments from persistence (PostgreSQL) first
-      if (persistence?.judgments && (type === 'all' || type === 'judgment')) {
+      // Search judgments (PersistenceManager handles PostgreSQL → File → Memory fallback)
+      if (persistence && (type === 'all' || type === 'judgment')) {
         try {
           const judgments = await persistence.searchJudgments(query, { limit });
           for (const j of judgments) {
@@ -255,8 +240,8 @@ export function createSearchTool(state, persistence = null) {
         }
       }
 
-      // Search knowledge from persistence
-      if (persistence?.knowledge && (type === 'all' || type === 'decision' || type === 'pattern')) {
+      // Search knowledge
+      if (persistence && (type === 'all' || type === 'decision' || type === 'pattern')) {
         try {
           const knowledge = await persistence.searchKnowledge(query, { limit: limit - results.length });
           for (const k of knowledge) {
@@ -270,39 +255,6 @@ export function createSearchTool(state, persistence = null) {
           }
         } catch (e) {
           console.error('Error searching knowledge:', e.message);
-        }
-      }
-
-      // Fallback to file-based state manager if needed
-      if (results.length < limit && state) {
-        const queryLower = query.toLowerCase();
-
-        // Search recent judgments from state
-        if ((type === 'all' || type === 'judgment') && !persistence?.judgments) {
-          const judgments = state.getRecentJudgments?.(100) || [];
-          for (const j of judgments) {
-            const itemStr = JSON.stringify(j.item || {}).toLowerCase();
-            if (itemStr.includes(queryLower)) {
-              results.push({
-                type: 'judgment',
-                id: j.id,
-                score: j.qScore || j.global_score,
-                verdict: j.qVerdict || j.verdict,
-                timestamp: j.metadata?.judgedAt,
-              });
-              if (results.length >= limit) break;
-            }
-          }
-        }
-
-        // Search knowledge tree
-        if (state?.knowledge && (type === 'all' || type !== 'judgment')) {
-          try {
-            const knowledgeResults = state.knowledge.search?.(query, limit - results.length) || [];
-            results.push(...knowledgeResults);
-          } catch (e) {
-            // Ignore search errors
-          }
         }
       }
 
@@ -414,11 +366,10 @@ export function createPatternsTool(judge, persistence = null) {
 
 /**
  * Create feedback tool definition
- * @param {Object} state - StateManager instance
- * @param {Object} persistence - PersistenceManager instance (optional)
+ * @param {Object} persistence - PersistenceManager instance (handles fallback automatically)
  * @returns {Object} Tool definition
  */
-export function createFeedbackTool(state, persistence = null) {
+export function createFeedbackTool(persistence = null) {
   return {
     name: 'brain_cynic_feedback',
     description: 'Provide feedback on a past judgment to improve CYNIC learning. Mark judgments as correct/incorrect with reasoning.',
@@ -449,8 +400,8 @@ export function createFeedbackTool(state, persistence = null) {
       let learningDelta = null;
       let originalScore = null;
 
-      // Store feedback in persistence (PostgreSQL) first
-      if (persistence?.feedback) {
+      // Store feedback (PersistenceManager handles PostgreSQL → File → Memory fallback)
+      if (persistence) {
         try {
           await persistence.storeFeedback({
             judgmentId,
@@ -460,8 +411,8 @@ export function createFeedbackTool(state, persistence = null) {
           });
 
           // Try to get original judgment for delta calculation
-          if (typeof actualScore === 'number' && persistence?.judgments) {
-            const judgments = await persistence.searchJudgments('', { limit: 1 });
+          if (typeof actualScore === 'number') {
+            const judgments = await persistence.getRecentJudgments(100);
             const original = judgments.find(j => j.judgment_id === judgmentId);
             if (original) {
               originalScore = original.q_score;
@@ -469,30 +420,7 @@ export function createFeedbackTool(state, persistence = null) {
             }
           }
         } catch (e) {
-          console.error('Error storing feedback to persistence:', e.message);
-        }
-      }
-
-      // Fallback to file-based state manager
-      if (state?.knowledge) {
-        try {
-          state.knowledge.add({
-            type: 'feedback',
-            data: feedback,
-            linkedTo: judgmentId,
-          });
-        } catch (e) {
-          // Ignore storage errors
-        }
-      }
-
-      // Calculate learning delta from state if not already computed
-      if (learningDelta === null && typeof actualScore === 'number') {
-        const judgments = state?.getRecentJudgments?.(100) || [];
-        const original = judgments.find(j => j.id === judgmentId);
-        if (original) {
-          originalScore = original.qScore || original.global_score;
-          learningDelta = actualScore - originalScore;
+          console.error('Error storing feedback:', e.message);
         }
       }
 
@@ -507,27 +435,105 @@ export function createFeedbackTool(state, persistence = null) {
 }
 
 /**
+ * Create agents status tool definition
+ * @param {Object} agents - AgentManager instance (The Four Dogs)
+ * @returns {Object} Tool definition
+ */
+export function createAgentsStatusTool(agents) {
+  return {
+    name: 'brain_agents_status',
+    description: 'Get status and statistics for The Four Dogs agents (Observer, Digester, Guardian, Mentor). Shows blocks, warnings, patterns detected, and wisdom shared.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        verbose: { type: 'boolean', description: 'Include detailed per-agent statistics' },
+        agent: { type: 'string', enum: ['observer', 'digester', 'guardian', 'mentor'], description: 'Get status for specific agent only' },
+      },
+    },
+    handler: async (params) => {
+      const { verbose = false, agent = null } = params;
+
+      if (!agents) {
+        return {
+          status: 'unavailable',
+          message: 'Agent system not initialized',
+          timestamp: Date.now(),
+        };
+      }
+
+      const summary = agents.getSummary();
+
+      // If specific agent requested
+      if (agent && summary.agents[agent]) {
+        return {
+          agent,
+          ...summary.agents[agent],
+          managerStats: summary.stats,
+          enabled: summary.enabled,
+          timestamp: Date.now(),
+        };
+      }
+
+      // Basic response
+      const response = {
+        enabled: summary.enabled,
+        stats: summary.stats,
+        dogs: {
+          guardian: {
+            description: 'The Watchdog - blocks dangerous operations',
+            blocks: summary.agents.guardian?.decisionsBlocked || 0,
+            warnings: summary.agents.guardian?.decisionsWarned || 0,
+          },
+          observer: {
+            description: 'The Silent Watcher - detects patterns',
+            patterns: summary.agents.observer?.patternsDetected || 0,
+            observations: summary.agents.observer?.totalObservations || 0,
+          },
+          digester: {
+            description: 'The Archivist - extracts knowledge',
+            digests: summary.agents.digester?.totalDigests || 0,
+          },
+          mentor: {
+            description: 'The Wise Elder - shares wisdom',
+            wisdomShared: summary.agents.mentor?.wisdomShared || 0,
+          },
+        },
+        timestamp: Date.now(),
+      };
+
+      // Add verbose details
+      if (verbose) {
+        response.agents = summary.agents;
+      }
+
+      return response;
+    },
+  };
+}
+
+/**
  * Create all tools
  * @param {Object} options - Tool options
  * @param {Object} options.judge - CYNICJudge instance
  * @param {Object} [options.node] - CYNICNode instance
- * @param {Object} [options.state] - StateManager instance
- * @param {Object} [options.persistence] - PersistenceManager instance
+ * @param {Object} [options.persistence] - PersistenceManager instance (handles fallback)
+ * @param {Object} [options.agents] - AgentManager instance (The Four Dogs)
  * @returns {Object} All tools keyed by name
  */
 export function createAllTools(options = {}) {
-  const { judge, node = null, state = null, persistence = null } = options;
+  const { judge, node = null, persistence = null, agents = null } = options;
 
   if (!judge) throw new Error('judge is required');
 
   const tools = {};
   const toolDefs = [
     createJudgeTool(judge),
-    createDigestTool(state, persistence),
+    createDigestTool(persistence),
     createHealthTool(node, judge, persistence),
-    createSearchTool(state, persistence),
+    createSearchTool(persistence),
     createPatternsTool(judge, persistence),
-    createFeedbackTool(state, persistence),
+    createFeedbackTool(persistence),
+    createAgentsStatusTool(agents),
   ];
 
   for (const tool of toolDefs) {
@@ -544,5 +550,6 @@ export default {
   createSearchTool,
   createPatternsTool,
   createFeedbackTool,
+  createAgentsStatusTool,
   createAllTools,
 };

@@ -21,19 +21,21 @@ import { PHI, PHI_INV, PHI_INV_2, AXIOMS } from '@cynic/core';
 import { Verdict } from '@cynic/protocol';
 
 describe('Dimensions', () => {
-  it('should have 4 axioms', () => {
+  it('should have 5 axioms (4 core + META)', () => {
     const axioms = Object.keys(Dimensions);
-    assert.strictEqual(axioms.length, 4);
+    assert.strictEqual(axioms.length, 5);
     assert.ok(axioms.includes('PHI'));
     assert.ok(axioms.includes('VERIFY'));
     assert.ok(axioms.includes('CULTURE'));
     assert.ok(axioms.includes('BURN'));
+    assert.ok(axioms.includes('META')); // 25th dimension axiom
   });
 
-  it('should have 6 dimensions per axiom', () => {
+  it('should have 6 dimensions per core axiom, 1 for META', () => {
     for (const axiom of Object.keys(Dimensions)) {
       const dims = Object.keys(Dimensions[axiom]);
-      assert.strictEqual(dims.length, 6, `${axiom} should have 6 dimensions`);
+      const expected = axiom === 'META' ? 1 : 6;
+      assert.strictEqual(dims.length, expected, `${axiom} should have ${expected} dimensions`);
     }
   });
 
@@ -51,8 +53,8 @@ describe('Dimensions', () => {
   it('should get all dimensions flat', () => {
     const all = getAllDimensions();
 
-    // Should have 24 dimensions (4 axioms × 6)
-    assert.strictEqual(Object.keys(all).length, 24);
+    // Should have 25 dimensions (4 axioms × 6 + 1 META)
+    assert.strictEqual(Object.keys(all).length, 25);
 
     // Each should have axiom property
     for (const [name, config] of Object.entries(all)) {

@@ -142,8 +142,10 @@ export class CYNICJudge {
   _scoreDimensions(item, context) {
     const scores = {};
 
-    // Score base dimensions
+    // Score base dimensions (skip META - calculated after)
     for (const [axiom, dims] of Object.entries(Dimensions)) {
+      if (axiom === 'META') continue; // THE_UNNAMEABLE calculated below
+
       for (const [dimName, config] of Object.entries(dims)) {
         scores[dimName] = this._scoreDimension(dimName, config, item, context);
       }
@@ -159,7 +161,40 @@ export class CYNICJudge {
       scores[dimName] = this._scoreDimension(dimName, config, item, context);
     }
 
+    // Calculate THE_UNNAMEABLE (25th dimension) based on score variance
+    // High variance = high unexplained variance = low UNNAMEABLE score
+    // Low variance = dimensions capture well = high UNNAMEABLE score
+    scores.THE_UNNAMEABLE = this._scoreTheUnnameable(scores);
+
     return scores;
+  }
+
+  /**
+   * Calculate THE_UNNAMEABLE dimension score
+   * Measures "explained variance" - how well 24 dimensions capture the item
+   * High score = low residual = well understood
+   * @private
+   * @param {Object} scores - All other dimension scores
+   * @returns {number} THE_UNNAMEABLE score (0-100)
+   */
+  _scoreTheUnnameable(scores) {
+    const values = Object.values(scores);
+    if (values.length === 0) return 50; // Neutral if no data
+
+    // Calculate variance - proxy for unexplained variance
+    const mean = values.reduce((a, b) => a + b, 0) / values.length;
+    const variance = values.reduce((sum, v) => sum + Math.pow(v - mean, 2), 0) / values.length;
+    const stdDev = Math.sqrt(variance);
+
+    // Normalize: stdDev of 0 = perfect (100), stdDev of 50 = poor (0)
+    // φ⁻² (38.2%) of max stdDev is the anomaly threshold
+    const maxStdDev = 50; // Max possible standard deviation (0-100 range)
+    const normalizedStdDev = Math.min(stdDev / maxStdDev, 1);
+
+    // Invert: low variance = high score
+    const score = 100 * (1 - normalizedStdDev);
+
+    return Math.round(score * 10) / 10;
   }
 
   /**
@@ -367,6 +402,9 @@ export class CYNICJudge {
     const axiomScores = {};
 
     for (const [axiom, dims] of Object.entries(Dimensions)) {
+      // Skip META - THE_UNNAMEABLE is not part of axiom Q-Score calculation
+      if (axiom === 'META') continue;
+
       let weightedSum = 0;
       let totalWeight = 0;
 
@@ -382,6 +420,11 @@ export class CYNICJudge {
       axiomScores[axiom] = totalWeight > 0
         ? Math.round(weightedSum / totalWeight * 10) / 10
         : 50; // Neutral if no data
+    }
+
+    // Store THE_UNNAMEABLE separately (not in Q-Score formula)
+    if (typeof dimensionScores.THE_UNNAMEABLE === 'number') {
+      axiomScores.META = dimensionScores.THE_UNNAMEABLE;
     }
 
     return axiomScores;
