@@ -188,7 +188,7 @@ const SECRET_PATTERNS = [
   },
   {
     id: 'redis-url',
-    pattern: /redis:\/\/[^:]*:[^@]+@[^/]+/,
+    pattern: /rediss?:\/\/[^:]*:[^@]+@[^/]+/,
     severity: 'high',
     description: 'Redis connection string with credentials',
     recommendation: 'Use environment variables for Redis URLs.'
@@ -259,6 +259,7 @@ const SECRET_PATTERNS = [
 const SENSITIVE_FILES = [
   { pattern: /\.env(?:\.local|\.prod|\.production)?$/, severity: 'high', description: 'Environment file' },
   { pattern: /\.env\.[^.]+$/, severity: 'high', description: 'Environment file variant' },
+  { pattern: /\.mcp\.json$/, severity: 'high', description: 'MCP config (may contain credentials)' },
   { pattern: /credentials\.json$/, severity: 'critical', description: 'Credentials file' },
   { pattern: /service[_-]?account.*\.json$/, severity: 'critical', description: 'Service account key' },
   { pattern: /id_rsa|id_ed25519|id_ecdsa/, severity: 'critical', description: 'SSH private key' },
