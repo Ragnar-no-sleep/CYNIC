@@ -17,6 +17,8 @@
 
 import { WebSocketServer, WebSocket } from 'ws';
 import { EventEmitter } from 'events';
+import { createServer as createHttpsServer } from 'https';
+import { readFileSync } from 'fs';
 import { serialize, deserialize } from './serializer.js';
 import { PHI, PHI_INV } from '@cynic/core';
 import { createHeartbeat, signData, verifySignature } from '@cynic/protocol';
@@ -34,6 +36,21 @@ export const ConnectionState = {
 
 /**
  * WebSocket Transport for CYNIC gossip
+ *
+ * SECURITY NOTE: By default uses ws:// (unencrypted). For production deployments
+ * outside a VPN/private network, enable TLS by providing ssl options:
+ *
+ * @example
+ * // Production with TLS (wss://)
+ * const transport = new WebSocketTransport({
+ *   port: 8618,
+ *   publicKey: keypair.publicKey,
+ *   privateKey: keypair.privateKey,
+ *   ssl: {
+ *     key: '/path/to/privkey.pem',
+ *     cert: '/path/to/fullchain.pem',
+ *   },
+ * });
  */
 export class WebSocketTransport extends EventEmitter {
   /**
@@ -47,6 +64,10 @@ export class WebSocketTransport extends EventEmitter {
    * @param {number} [options.reconnectMaxMs=30000] - Max reconnect delay
    * @param {number} [options.maxQueueSize=1000] - Max queued messages per peer
    * @param {number} [options.maxPeerIdRemaps=10000] - Max peer ID remappings to track
+   * @param {Object} [options.ssl] - SSL/TLS config for WSS (secure WebSocket)
+   * @param {string} [options.ssl.key] - Path to private key PEM file
+   * @param {string} [options.ssl.cert] - Path to certificate PEM file
+   * @param {string} [options.ssl.ca] - Path to CA certificate PEM file (optional)
    */
   constructor(options = {}) {
     super();
@@ -60,6 +81,7 @@ export class WebSocketTransport extends EventEmitter {
     this.reconnectMaxMs = options.reconnectMaxMs || 30000;
     this.maxQueueSize = options.maxQueueSize || 1000;
     this.maxPeerIdRemaps = options.maxPeerIdRemaps || 10000;
+    this.ssl = options.ssl || null;
 
     // Server
     this.server = null;
@@ -92,6 +114,10 @@ export class WebSocketTransport extends EventEmitter {
 
   /**
    * Start WebSocket server
+   *
+   * If ssl options are provided, starts a secure WSS server.
+   * Otherwise, starts a plain WS server.
+   *
    * @returns {Promise<void>}
    */
   async startServer() {
@@ -100,26 +126,57 @@ export class WebSocketTransport extends EventEmitter {
     }
 
     return new Promise((resolve, reject) => {
-      this.server = new WebSocketServer({
-        port: this.port,
-        host: this.host,
-      });
+      try {
+        if (this.ssl) {
+          // Create HTTPS server for WSS (secure WebSocket)
+          const httpsOptions = {
+            key: readFileSync(this.ssl.key),
+            cert: readFileSync(this.ssl.cert),
+          };
+          if (this.ssl.ca) {
+            httpsOptions.ca = readFileSync(this.ssl.ca);
+          }
 
-      this.server.on('listening', () => {
-        this.serverRunning = true;
-        this.emit('server:listening', { port: this.port, host: this.host });
-        this._startHeartbeat();
-        resolve();
-      });
+          this.httpsServer = createHttpsServer(httpsOptions);
+          this.server = new WebSocketServer({ server: this.httpsServer });
 
-      this.server.on('error', (err) => {
-        this.emit('server:error', err);
+          this.httpsServer.listen(this.port, this.host, () => {
+            this.serverRunning = true;
+            this.emit('server:listening', { port: this.port, host: this.host, secure: true });
+            this._startHeartbeat();
+            resolve();
+          });
+
+          this.httpsServer.on('error', (err) => {
+            this.emit('server:error', err);
+            reject(err);
+          });
+        } else {
+          // Plain WS server (no TLS)
+          this.server = new WebSocketServer({
+            port: this.port,
+            host: this.host,
+          });
+
+          this.server.on('listening', () => {
+            this.serverRunning = true;
+            this.emit('server:listening', { port: this.port, host: this.host, secure: false });
+            this._startHeartbeat();
+            resolve();
+          });
+
+          this.server.on('error', (err) => {
+            this.emit('server:error', err);
+            reject(err);
+          });
+        }
+
+        this.server.on('connection', (ws, req) => {
+          this._handleIncomingConnection(ws, req);
+        });
+      } catch (err) {
         reject(err);
-      });
-
-      this.server.on('connection', (ws, req) => {
-        this._handleIncomingConnection(ws, req);
-      });
+      }
     });
   }
 
@@ -135,15 +192,35 @@ export class WebSocketTransport extends EventEmitter {
       this._closeConnection(peerId, 'server_shutdown');
     }
 
+    const closePromises = [];
+
     if (this.server) {
-      return new Promise((resolve) => {
-        this.server.close(() => {
-          this.serverRunning = false;
-          this.server = null;
-          this.emit('server:closed');
-          resolve();
-        });
-      });
+      closePromises.push(
+        new Promise((resolve) => {
+          this.server.close(() => {
+            this.server = null;
+            resolve();
+          });
+        })
+      );
+    }
+
+    // Close HTTPS server if WSS was used
+    if (this.httpsServer) {
+      closePromises.push(
+        new Promise((resolve) => {
+          this.httpsServer.close(() => {
+            this.httpsServer = null;
+            resolve();
+          });
+        })
+      );
+    }
+
+    if (closePromises.length > 0) {
+      await Promise.all(closePromises);
+      this.serverRunning = false;
+      this.emit('server:closed');
     }
   }
 
@@ -653,10 +730,10 @@ export class WebSocketTransport extends EventEmitter {
    * @private
    */
   _sendHeartbeats() {
+    // SECURITY: Only include timestamp for liveness checks
+    // Removed uptime and connection count to prevent fingerprinting
     const heartbeat = createHeartbeat(
       {
-        uptime: process.uptime(),
-        connections: this.connections.size,
         timestamp: Date.now(),
       },
       this.publicKey
@@ -713,6 +790,7 @@ export class WebSocketTransport extends EventEmitter {
       ...this.stats,
       serverRunning: this.serverRunning,
       port: this.port,
+      secure: !!this.ssl,
       connections: {
         total: this.connections.size,
         connected,

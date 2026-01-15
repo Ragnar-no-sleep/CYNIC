@@ -64,6 +64,7 @@ import {
 } from '../src/index.js';
 
 import { PHI, PHI_INV, CONSENSUS_THRESHOLD, GOVERNANCE_QUORUM } from '@cynic/core';
+import { hashObject, signData } from '../src/index.js';
 
 describe('Vote Weight Calculation', () => {
   it('should calculate base vote weight', () => {
@@ -1293,5 +1294,164 @@ describe('ConsensusEngine', () => {
     assert.throws(() => {
       engine.proposeBlock({ hash: 'fail', data: 'x' });
     }, /Not participating/);
+  });
+});
+
+describe('Block Signature Security', () => {
+  let engine;
+  let keypair;
+  let attackerKeypair;
+
+  beforeEach(() => {
+    keypair = generateKeypair();
+    attackerKeypair = generateKeypair();
+    engine = new ConsensusEngine({
+      publicKey: keypair.publicKey,
+      privateKey: keypair.privateKey,
+      slotDuration: 400,
+    });
+    engine.start();
+  });
+
+  it('should reject block without signature', (t, done) => {
+    const unsignedBlock = {
+      action: 'BLOCK',
+      params: { data: 'test' },
+      proposer: keypair.publicKey,
+      created_at: Date.now(),
+      slot: 1,
+      hash: 'unsigned_block',
+      // No signature!
+    };
+
+    engine.once('block:invalid', (event) => {
+      assert.strictEqual(event.reason, 'invalid_signature');
+      assert.strictEqual(event.blockHash, 'unsigned_block');
+      engine.stop();
+      done();
+    });
+
+    engine.receiveBlock(unsignedBlock, 'malicious_peer');
+  });
+
+  it('should reject block with missing proposer', (t, done) => {
+    const noProposerBlock = {
+      action: 'BLOCK',
+      params: { data: 'test' },
+      // No proposer!
+      created_at: Date.now(),
+      slot: 1,
+      hash: 'no_proposer_block',
+      signature: 'fake_sig',
+    };
+
+    engine.once('block:invalid', (event) => {
+      assert.strictEqual(event.reason, 'invalid_signature');
+      engine.stop();
+      done();
+    });
+
+    engine.receiveBlock(noProposerBlock, 'malicious_peer');
+  });
+
+  it('should reject block with tampered signature', (t, done) => {
+    const tamperedBlock = {
+      action: 'BLOCK',
+      params: { data: 'legit data' },
+      proposer: keypair.publicKey,
+      created_at: Date.now(),
+      slot: 1,
+      hash: 'tampered_block',
+      signature: 'obviously_invalid_signature_AAAAAAAAAAAAAAAA',
+    };
+
+    engine.once('block:invalid', (event) => {
+      assert.strictEqual(event.reason, 'invalid_signature');
+      engine.stop();
+      done();
+    });
+
+    engine.receiveBlock(tamperedBlock, 'malicious_peer');
+  });
+
+  it('should reject block signed by different key than proposer', (t, done) => {
+    // Block claims to be from keypair but signed by attackerKeypair
+    const spoofedBlock = {
+      action: 'BLOCK',
+      params: { data: 'spoofed' },
+      proposer: keypair.publicKey, // Claims to be from keypair
+      created_at: Date.now(),
+      slot: 1,
+      hash: 'spoofed_block',
+    };
+
+    // Sign with attacker's key (not the claimed proposer's key)
+    const blockHash = hashObject({
+      action: spoofedBlock.action,
+      params: spoofedBlock.params,
+      proposer: spoofedBlock.proposer,
+      created_at: spoofedBlock.created_at,
+    });
+    spoofedBlock.signature = signData(blockHash, attackerKeypair.privateKey);
+
+    engine.once('block:invalid', (event) => {
+      assert.strictEqual(event.reason, 'invalid_signature');
+      engine.stop();
+      done();
+    });
+
+    engine.receiveBlock(spoofedBlock, 'malicious_peer');
+  });
+
+  it('should accept properly signed block', () => {
+    const block = {
+      action: 'BLOCK',
+      params: { data: 'valid data' },
+      proposer: keypair.publicKey,
+      created_at: Date.now(),
+      slot: 1,
+    };
+
+    // Sign with correct key
+    const blockHash = hashObject({
+      action: block.action,
+      params: block.params,
+      proposer: block.proposer,
+      created_at: block.created_at,
+    });
+    block.signature = signData(blockHash, keypair.privateKey);
+    block.hash = 'valid_block';
+
+    // Should not emit block:invalid
+    let invalidEmitted = false;
+    engine.once('block:invalid', () => {
+      invalidEmitted = true;
+    });
+
+    engine.receiveBlock(block, 'honest_peer');
+
+    // Block should be tracked
+    assert.strictEqual(invalidEmitted, false);
+    assert.ok(engine.blocks.has('valid_block'));
+    engine.stop();
+  });
+
+  it('should include fromPeer in block:invalid event', (t, done) => {
+    const unsignedBlock = {
+      action: 'BLOCK',
+      params: { data: 'test' },
+      proposer: keypair.publicKey,
+      created_at: Date.now(),
+      slot: 1,
+      hash: 'tracking_peer_block',
+    };
+
+    engine.once('block:invalid', (event) => {
+      assert.strictEqual(event.fromPeer, 'suspicious_peer_123');
+      engine.stop();
+      done();
+    });
+
+    engine.receiveBlock(unsignedBlock, 'suspicious_peer_123');
   });
 });
