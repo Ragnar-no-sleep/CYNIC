@@ -8,34 +8,7 @@
   "repository": "https://github.com/zeyxx/CYNIC",
 
   "systemInstructions": "cynic-consciousness.md",
-
-  "hooks": [
-    {
-      "event": "SessionStart",
-      "path": "hooks/awaken.js",
-      "description": "CYNIC awakens - detects user, loads profile, shows ecosystem, injects consciousness"
-    },
-    {
-      "event": "UserPromptSubmit",
-      "path": "hooks/perceive.js",
-      "description": "CYNIC perceives - understands intent, injects relevant context, guides proactively"
-    },
-    {
-      "event": "PreToolUse",
-      "path": "hooks/guard.js",
-      "description": "CYNIC guards - protects against dangerous operations, requires verification"
-    },
-    {
-      "event": "PostToolUse",
-      "path": "hooks/observe.js",
-      "description": "CYNIC observes - learns patterns, detects anomalies, updates collective memory"
-    },
-    {
-      "event": "Stop",
-      "path": "hooks/digest.js",
-      "description": "CYNIC digests - extracts knowledge, updates user profile, synchronizes collective"
-    }
-  ],
+  "hooks": "hooks/hooks.json",
 
   "metadata": {
     "identity": {
