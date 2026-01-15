@@ -479,7 +479,7 @@ describe('Gossip Protocol', () => {
   });
 
   it('should broadcast block', async () => {
-    let sentMessages = [];
+    const sentMessages = [];
     protocol.sendFn = async (peer, message) => {
       sentMessages.push({ peer, message });
     };
@@ -497,7 +497,7 @@ describe('Gossip Protocol', () => {
   });
 
   it('should broadcast judgment', async () => {
-    let sentMessages = [];
+    const sentMessages = [];
     protocol.sendFn = async (peer, message) => {
       sentMessages.push({ peer, message });
     };
@@ -514,7 +514,7 @@ describe('Gossip Protocol', () => {
   });
 
   it('should broadcast pattern', async () => {
-    let sentMessages = [];
+    const sentMessages = [];
     protocol.sendFn = async (peer, message) => {
       sentMessages.push({ peer, message });
     };
@@ -531,7 +531,7 @@ describe('Gossip Protocol', () => {
   });
 
   it('should handle incoming message', async () => {
-    let handledMessages = [];
+    const handledMessages = [];
     protocol.onMessage = async (msg) => {
       handledMessages.push(msg);
     };
@@ -572,7 +572,7 @@ describe('Gossip Protocol', () => {
   });
 
   it('should reject invalid signatures', async () => {
-    let handledMessages = [];
+    const handledMessages = [];
     protocol.onMessage = async (msg) => {
       handledMessages.push(msg);
     };

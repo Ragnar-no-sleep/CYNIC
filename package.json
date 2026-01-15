@@ -30,10 +30,19 @@
     "node": ">=20.0.0"
   },
   "_philosophy": {
-    "axioms": ["PHI", "VERIFY", "CULTURE", "BURN"],
+    "axioms": [
+      "PHI",
+      "VERIFY",
+      "CULTURE",
+      "BURN"
+    ],
     "maxConfidence": 0.618,
     "minDoubt": 0.382,
     "greek": "κυνικός",
     "meaning": "comme un chien"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.2",
+    "eslint": "^9.39.2"
   }
 }
