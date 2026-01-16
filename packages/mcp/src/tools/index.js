@@ -16,9 +16,10 @@ import { PHI_INV, PHI_INV_2, IDENTITY, getVerdictFromScore } from '@cynic/core';
  * Create judge tool definition
  * @param {Object} judge - CYNICJudge instance
  * @param {Object} [persistence] - PersistenceManager instance (for storing judgments)
+ * @param {Object} [sessionManager] - SessionManager instance (for user/session context)
  * @returns {Object} Tool definition
  */
-export function createJudgeTool(judge, persistence = null) {
+export function createJudgeTool(judge, persistence = null, sessionManager = null) {
   return {
     name: 'brain_cynic_judge',
     description: `Judge an item using CYNIC's 25-dimension evaluation across 4 axioms (PHI, VERIFY, CULTURE, BURN). Returns Q-Score (0-100), verdict (HOWL/WAG/GROWL/BARK), confidence (max ${(PHI_INV * 100).toFixed(1)}%), and dimension breakdown.`,
@@ -42,6 +43,9 @@ export function createJudgeTool(judge, persistence = null) {
 
       const judgment = judge.judge(item, context);
       const judgmentId = `jdg_${Date.now().toString(36)}`;
+
+      // Get session context for user isolation
+      const sessionContext = sessionManager?.getSessionContext() || {};
 
       const result = {
         requestId: judgmentId,
@@ -71,7 +75,15 @@ export function createJudgeTool(judge, persistence = null) {
             dimensionScores: judgment.dimensionScores || null,
             weaknesses: result.weaknesses,
             context,
+            // Session context for multi-user isolation
+            userId: sessionContext.userId || null,
+            sessionId: sessionContext.sessionId || null,
           });
+
+          // Increment session counter
+          if (sessionManager) {
+            await sessionManager.incrementCounter('judgmentCount');
+          }
         } catch (e) {
           // Log but don't fail the judgment - persistence is best-effort
           console.error('Error persisting judgment:', e.message);
@@ -86,9 +98,10 @@ export function createJudgeTool(judge, persistence = null) {
 /**
  * Create digest tool definition
  * @param {Object} persistence - PersistenceManager instance (handles fallback automatically)
+ * @param {Object} [sessionManager] - SessionManager instance (for user/session context)
  * @returns {Object} Tool definition
  */
-export function createDigestTool(persistence = null) {
+export function createDigestTool(persistence = null, sessionManager = null) {
   return {
     name: 'brain_cynic_digest',
     description: 'Digest text content and extract patterns, insights, and knowledge. Stores extracted knowledge for future retrieval.',
@@ -104,6 +117,9 @@ export function createDigestTool(persistence = null) {
     handler: async (params) => {
       const { content, source = 'unknown', type = 'document' } = params;
       if (!content) throw new Error('Missing required parameter: content');
+
+      // Get session context for user isolation
+      const sessionContext = sessionManager?.getSessionContext() || {};
 
       const words = content.split(/\s+/).length;
       const sentences = content.split(/[.!?]+/).filter(s => s.trim()).length;
@@ -144,7 +160,15 @@ export function createDigestTool(persistence = null) {
             insights: patterns.map(p => `${p.type}: ${p.count}`),
             patterns: patterns,
             category: type,
+            // Session context for multi-user isolation
+            userId: sessionContext.userId || null,
+            sessionId: sessionContext.sessionId || null,
           });
+
+          // Increment session counter
+          if (sessionManager) {
+            await sessionManager.incrementCounter('digestCount');
+          }
         } catch (e) {
           console.error('Error storing digest:', e.message);
         }
@@ -394,9 +418,10 @@ export function createPatternsTool(judge, persistence = null) {
 /**
  * Create feedback tool definition
  * @param {Object} persistence - PersistenceManager instance (handles fallback automatically)
+ * @param {Object} [sessionManager] - SessionManager instance (for user/session context)
  * @returns {Object} Tool definition
  */
-export function createFeedbackTool(persistence = null) {
+export function createFeedbackTool(persistence = null, sessionManager = null) {
   return {
     name: 'brain_cynic_feedback',
     description: 'Provide feedback on a past judgment to improve CYNIC learning. Mark judgments as correct/incorrect with reasoning.',
@@ -415,6 +440,9 @@ export function createFeedbackTool(persistence = null) {
       if (!judgmentId) throw new Error('Missing required parameter: judgmentId');
       if (!outcome) throw new Error('Missing required parameter: outcome');
 
+      // Get session context for user isolation
+      const sessionContext = sessionManager?.getSessionContext() || {};
+
       const feedback = {
         feedbackId: `fb_${Date.now().toString(36)}`,
         judgmentId,
@@ -422,6 +450,9 @@ export function createFeedbackTool(persistence = null) {
         reason,
         actualScore,
         timestamp: Date.now(),
+        // Session context for multi-user isolation
+        userId: sessionContext.userId || null,
+        sessionId: sessionContext.sessionId || null,
       };
 
       let learningDelta = null;
@@ -435,7 +466,15 @@ export function createFeedbackTool(persistence = null) {
             outcome,
             reason,
             actualScore,
+            // Session context for multi-user isolation
+            userId: sessionContext.userId || null,
+            sessionId: sessionContext.sessionId || null,
           });
+
+          // Increment session counter
+          if (sessionManager) {
+            await sessionManager.incrementCounter('feedbackCount');
+          }
 
           // Try to get original judgment for delta calculation
           if (typeof actualScore === 'number') {
@@ -539,28 +578,140 @@ export function createAgentsStatusTool(agents) {
 }
 
 /**
+ * Create session start tool
+ * @param {Object} sessionManager - SessionManager instance
+ * @returns {Object} Tool definition
+ */
+export function createSessionStartTool(sessionManager) {
+  return {
+    name: 'brain_session_start',
+    description: 'Start a new CYNIC session for a user. Sessions provide isolation and tracking of judgments, digests, and feedback.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        userId: {
+          type: 'string',
+          description: 'User identifier (wallet address, email, username). Required for session isolation.',
+        },
+        project: {
+          type: 'string',
+          description: 'Optional project name for context',
+        },
+        metadata: {
+          type: 'object',
+          description: 'Optional metadata to store with the session',
+        },
+      },
+      required: ['userId'],
+    },
+    handler: async (params) => {
+      const { userId, project, metadata } = params;
+
+      if (!userId) throw new Error('userId is required');
+
+      if (!sessionManager) {
+        return {
+          success: false,
+          error: 'Session management not available',
+        };
+      }
+
+      const session = await sessionManager.startSession(userId, { project, metadata });
+
+      return {
+        success: true,
+        sessionId: session.sessionId,
+        userId: session.userId,
+        project: session.project,
+        createdAt: session.createdAt,
+        message: `*tail wag* Session started. Your data is now isolated.`,
+      };
+    },
+  };
+}
+
+/**
+ * Create session end tool
+ * @param {Object} sessionManager - SessionManager instance
+ * @returns {Object} Tool definition
+ */
+export function createSessionEndTool(sessionManager) {
+  return {
+    name: 'brain_session_end',
+    description: 'End the current CYNIC session. Returns session summary with statistics.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        sessionId: {
+          type: 'string',
+          description: 'Session ID to end. If not provided, ends the current session.',
+        },
+      },
+    },
+    handler: async (params) => {
+      const { sessionId } = params;
+
+      if (!sessionManager) {
+        return {
+          success: false,
+          error: 'Session management not available',
+        };
+      }
+
+      // Use provided sessionId or current session
+      const targetSessionId = sessionId || sessionManager.getSessionContext().sessionId;
+
+      if (!targetSessionId) {
+        return {
+          success: false,
+          error: 'No active session to end',
+        };
+      }
+
+      const result = await sessionManager.endSession(targetSessionId);
+
+      if (!result.ended) {
+        return {
+          success: false,
+          error: result.reason,
+        };
+      }
+
+      return {
+        success: true,
+        ...result.summary,
+        message: `*yawn* Session ended. ${result.summary.judgmentCount} judgments recorded.`,
+      };
+    },
+  };
+}
+
+/**
  * Create all tools
  * @param {Object} options - Tool options
  * @param {Object} options.judge - CYNICJudge instance
  * @param {Object} [options.node] - CYNICNode instance
  * @param {Object} [options.persistence] - PersistenceManager instance (handles fallback)
  * @param {Object} [options.agents] - AgentManager instance (The Four Dogs)
+ * @param {Object} [options.sessionManager] - SessionManager instance for multi-user sessions
  * @returns {Object} All tools keyed by name
  */
 export function createAllTools(options = {}) {
-  const { judge, node = null, persistence = null, agents = null } = options;
+  const { judge, node = null, persistence = null, agents = null, sessionManager = null } = options;
 
   if (!judge) throw new Error('judge is required');
 
   const tools = {};
   const toolDefs = [
-    createJudgeTool(judge, persistence),
-    createDigestTool(persistence),
+    createJudgeTool(judge, persistence, sessionManager),
+    createDigestTool(persistence, sessionManager),
     createHealthTool(node, judge, persistence),
     createSearchTool(persistence),
     createPatternsTool(judge, persistence),
-    createFeedbackTool(persistence),
+    createFeedbackTool(persistence, sessionManager),
     createAgentsStatusTool(agents),
+    createSessionStartTool(sessionManager),
+    createSessionEndTool(sessionManager),
   ];
 
   for (const tool of toolDefs) {
@@ -578,5 +729,7 @@ export default {
   createPatternsTool,
   createFeedbackTool,
   createAgentsStatusTool,
+  createSessionStartTool,
+  createSessionEndTool,
   createAllTools,
 };

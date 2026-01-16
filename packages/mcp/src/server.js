@@ -17,6 +17,7 @@ import { PHI_INV, PHI_INV_2, IDENTITY } from '@cynic/core';
 import { CYNICJudge, AgentManager } from '@cynic/node';
 import { createAllTools } from './tools/index.js';
 import { PersistenceManager } from './persistence.js';
+import { SessionManager } from './session-manager.js';
 
 /**
  * MCP Server for CYNIC
@@ -36,6 +37,7 @@ export class MCPServer {
    * @param {Object} [options.node] - CYNICNode instance
    * @param {Object} [options.judge] - CYNICJudge instance
    * @param {Object} [options.persistence] - PersistenceManager instance
+   * @param {Object} [options.sessionManager] - SessionManager instance (for multi-user sessions)
    * @param {Object} [options.agents] - AgentManager instance (The Four Dogs)
    * @param {string} [options.dataDir] - Data directory for file-based persistence fallback
    * @param {string} [options.mode] - Transport mode: 'stdio' (default) or 'http'
@@ -62,6 +64,9 @@ export class MCPServer {
 
     // Persistence manager (PostgreSQL + Redis with automatic fallback)
     this.persistence = options.persistence || null;
+
+    // Session manager for multi-user isolation (created after persistence)
+    this.sessionManager = options.sessionManager || null;
 
     // Agent manager - The Four Dogs (Guardian, Observer, Digester, Mentor)
     this.agents = options.agents || new AgentManager();
@@ -98,12 +103,18 @@ export class MCPServer {
       await this.persistence.initialize();
     }
 
+    // Initialize session manager for multi-user isolation
+    if (!this.sessionManager) {
+      this.sessionManager = new SessionManager(this.persistence);
+    }
+
     // Register tools with current instances
     this.tools = createAllTools({
       judge: this.judge,
       node: this.node,
       persistence: this.persistence,
       agents: this.agents,
+      sessionManager: this.sessionManager,
     });
   }
 
@@ -619,6 +630,8 @@ export class MCPServer {
       judgeStats: this.judge.getStats(),
       // 🐕 The Four Dogs status
       agents: this.agents.getSummary(),
+      // Multi-user sessions
+      sessions: this.sessionManager?.getSummary() || { activeCount: 0 },
     };
   }
 }
