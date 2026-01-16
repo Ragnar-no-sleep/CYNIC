@@ -79,12 +79,12 @@ describe('MCPServer', () => {
   });
 
   describe('tools/list', () => {
-    it('returns all 10 tools', async () => {
+    it('returns all 14 tools', async () => {
       const response = await sendRequest(input, output, 'tools/list');
 
       assert.ok(response.result);
       assert.ok(Array.isArray(response.result.tools));
-      assert.equal(response.result.tools.length, 10);
+      assert.equal(response.result.tools.length, 14);
 
       const toolNames = response.result.tools.map(t => t.name);
       assert.ok(toolNames.includes('brain_cynic_judge'));
@@ -99,6 +99,14 @@ describe('MCPServer', () => {
       assert.ok(toolNames.includes('brain_session_end'));
       // Library cache tool (GAP #4)
       assert.ok(toolNames.includes('brain_docs'));
+      // Ecosystem docs tool (GAP #6)
+      assert.ok(toolNames.includes('brain_ecosystem'));
+      // PoJ chain tool (GAP #7)
+      assert.ok(toolNames.includes('brain_poj_chain'));
+      // Integrator tool (GAP #8)
+      assert.ok(toolNames.includes('brain_integrator'));
+      // Metrics tool (GAP #9)
+      assert.ok(toolNames.includes('brain_metrics'));
     });
   });
 

@@ -1,0 +1,83 @@
+# CYNIC Development Environment
+#
+# Run: docker-compose up
+#
+# "φ distrusts φ" - κυνικός
+
+services:
+  # ===========================================================================
+  # CYNIC MCP Server
+  # ===========================================================================
+  cynic-mcp:
+    build:
+      context: .
+      dockerfile: packages/mcp/Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      MCP_MODE: http
+      PORT: "3000"
+      # Database: constructed at runtime from separate components
+      CYNIC_DB_HOST: postgres
+      CYNIC_DB_PORT: "5432"
+      CYNIC_DB_USER: ${POSTGRES_USER:-cynic}
+      CYNIC_DB_NAME: ${POSTGRES_DB:-cynic}
+      # Password via env file or docker secret in production
+      CYNIC_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      CYNIC_REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  # ===========================================================================
+  # PostgreSQL Database
+  # ===========================================================================
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-cynic}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-cynic}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./packages/persistence/sql:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-cynic} -d $${POSTGRES_DB:-cynic}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # ===========================================================================
+  # Redis Cache (Optional)
+  # ===========================================================================
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:

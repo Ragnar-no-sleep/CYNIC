@@ -1,0 +1,67 @@
+# CYNIC MCP Server - Production Dockerfile
+#
+# Multi-stage build for minimal production image
+#
+# "φ distrusts φ" - κυνικός
+
+# ==============================================================================
+# Stage 1: Dependencies
+# ==============================================================================
+FROM node:20-slim AS deps
+
+WORKDIR /app
+
+# Copy package files for all workspaces
+COPY package.json package-lock.json* ./
+COPY packages/core/package.json ./packages/core/
+COPY packages/node/package.json ./packages/node/
+COPY packages/persistence/package.json ./packages/persistence/
+COPY packages/mcp/package.json ./packages/mcp/
+
+# Install production dependencies only
+RUN npm ci --omit=dev --workspace=@cynic/mcp
+
+# ==============================================================================
+# Stage 2: Production
+# ==============================================================================
+FROM node:20-slim AS production
+
+# Security: Run as non-root user
+RUN groupadd -r cynic && useradd -r -g cynic cynic
+
+WORKDIR /app
+
+# Copy dependencies from deps stage
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/packages/core/node_modules ./packages/core/node_modules 2>/dev/null || true
+COPY --from=deps /app/packages/node/node_modules ./packages/node/node_modules 2>/dev/null || true
+COPY --from=deps /app/packages/persistence/node_modules ./packages/persistence/node_modules 2>/dev/null || true
+COPY --from=deps /app/packages/mcp/node_modules ./packages/mcp/node_modules 2>/dev/null || true
+
+# Copy source code
+COPY package.json ./
+COPY packages/core ./packages/core
+COPY packages/node ./packages/node
+COPY packages/persistence ./packages/persistence
+COPY packages/mcp ./packages/mcp
+
+# Set ownership
+RUN chown -R cynic:cynic /app
+
+# Switch to non-root user
+USER cynic
+
+# Environment defaults
+ENV NODE_ENV=production
+ENV MCP_MODE=http
+ENV PORT=3000
+
+# Expose port
+EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD node -e "fetch('http://localhost:3000/health').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"
+
+# Start server
+CMD ["node", "packages/mcp/bin/mcp.js"]

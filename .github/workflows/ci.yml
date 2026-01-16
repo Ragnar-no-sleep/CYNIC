@@ -29,6 +29,9 @@ jobs:
       - name: Run protocol tests
         run: npm test --workspace=@cynic/protocol
 
+      - name: Run MCP tests
+        run: npm test --workspace=@cynic/mcp
+
   consensus-tests:
     name: Consensus Integration Tests
     needs: test
@@ -92,3 +95,42 @@ jobs:
 
       - name: Run ESLint
         run: npm run lint
+
+  docker:
+    name: Docker Build
+    needs: [test, lint]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: packages/mcp/Dockerfile
+          push: false
+          tags: cynic-mcp:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to Render
+    needs: [test, lint, docker]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Deploy to Render
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -n "$RENDER_DEPLOY_HOOK_URL" ]; then
+            curl -X POST "$RENDER_DEPLOY_HOOK_URL"
+            echo "Deploy triggered successfully"
+          else
+            echo "RENDER_DEPLOY_HOOK_URL not set, skipping deployment"
+          fi

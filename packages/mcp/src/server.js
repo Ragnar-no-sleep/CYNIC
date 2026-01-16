@@ -32,6 +32,11 @@ import { LibrarianService } from './librarian-service.js';
  * - brain_patterns: Pattern detection
  * - brain_cynic_feedback: Learning from outcomes
  */
+// HTTP mode constants
+const MAX_BODY_SIZE = 1024 * 1024; // 1MB max request body
+const REQUEST_TIMEOUT_MS = 30000; // 30 second request timeout
+const SHUTDOWN_TIMEOUT_MS = 10000; // 10 second shutdown grace period
+
 export class MCPServer {
   /**
    * Create MCP server
@@ -78,6 +83,15 @@ export class MCPServer {
     // Librarian service for documentation caching
     this.librarian = options.librarian || null;
 
+    // Ecosystem service for pre-loaded documentation
+    this.ecosystem = options.ecosystem || null;
+
+    // Integrator service for cross-project synchronization
+    this.integrator = options.integrator || null;
+
+    // Metrics service for monitoring
+    this.metrics = options.metrics || null;
+
     // Agent manager - The Four Dogs (Guardian, Observer, Digester, Mentor)
     this.agents = options.agents || new AgentManager();
 
@@ -88,6 +102,7 @@ export class MCPServer {
     // HTTP server (for http mode)
     this._httpServer = null;
     this._sseClients = new Set();
+    this._activeRequests = new Set(); // Track in-flight requests for graceful shutdown
 
     // Request buffer for stdin parsing
     this._buffer = '';
@@ -122,12 +137,64 @@ export class MCPServer {
     if (!this.pojChainManager) {
       this.pojChainManager = new PoJChainManager(this.persistence);
       await this.pojChainManager.initialize();
+
+      // Verify chain integrity at startup
+      if (this.persistence?.pojBlocks) {
+        const verification = await this.pojChainManager.verifyIntegrity();
+        if (verification.valid) {
+          if (verification.blocksChecked > 0) {
+            console.error(`   PoJ Chain: verified ${verification.blocksChecked} blocks`);
+          }
+        } else {
+          console.error(`   *GROWL* PoJ Chain: INTEGRITY ERROR - ${verification.errors.length} invalid links!`);
+          for (const err of verification.errors.slice(0, 3)) {
+            console.error(`     Block ${err.blockNumber}: expected ${err.expected?.slice(0, 16)}...`);
+          }
+        }
+      }
     }
 
     // Initialize Librarian service for documentation caching
     if (!this.librarian) {
       this.librarian = new LibrarianService(this.persistence);
       await this.librarian.initialize();
+    }
+
+    // Initialize Ecosystem service for pre-loaded documentation
+    if (!this.ecosystem) {
+      const { EcosystemService } = await import('./ecosystem-service.js');
+      this.ecosystem = new EcosystemService(this.persistence, {
+        autoRefresh: true,
+      });
+      await this.ecosystem.init();
+      console.error('   Ecosystem: ready');
+    }
+
+    // Initialize Integrator service for cross-project synchronization
+    if (!this.integrator) {
+      const { IntegratorService } = await import('./integrator-service.js');
+      this.integrator = new IntegratorService({
+        workspaceRoot: '/workspaces',
+        autoCheck: false, // Manual checks for now
+      });
+      await this.integrator.init();
+      console.error('   Integrator: ready');
+    }
+
+    // Initialize Metrics service for monitoring
+    if (!this.metrics) {
+      const { MetricsService } = await import('./metrics-service.js');
+      this.metrics = new MetricsService({
+        persistence: this.persistence,
+        sessionManager: this.sessionManager,
+        pojChainManager: this.pojChainManager,
+        librarian: this.librarian,
+        ecosystem: this.ecosystem,
+        integrator: this.integrator,
+        judge: this.judge,
+        agents: this.agents,
+      });
+      console.error('   Metrics: ready');
     }
 
     // Register tools with current instances
@@ -139,6 +206,9 @@ export class MCPServer {
       sessionManager: this.sessionManager,
       pojChainManager: this.pojChainManager,
       librarian: this.librarian,
+      ecosystem: this.ecosystem,
+      integrator: this.integrator,
+      metrics: this.metrics,
     });
   }
 
@@ -233,6 +303,42 @@ export class MCPServer {
       return;
     }
 
+    // Metrics endpoint (Prometheus format)
+    if (url.pathname === '/metrics') {
+      if (!this.metrics) {
+        res.writeHead(503, { 'Content-Type': 'text/plain' });
+        res.end('# Metrics service not available\n');
+        return;
+      }
+      try {
+        const prometheus = await this.metrics.toPrometheus();
+        res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end(prometheus);
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'text/plain' });
+        res.end(`# Error collecting metrics: ${err.message}\n`);
+      }
+      return;
+    }
+
+    // Dashboard endpoint (HTML)
+    if (url.pathname === '/dashboard') {
+      if (!this.metrics) {
+        res.writeHead(503, { 'Content-Type': 'text/plain' });
+        res.end('Dashboard not available');
+        return;
+      }
+      try {
+        const html = await this.metrics.toHTML();
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(html);
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'text/plain' });
+        res.end(`Error generating dashboard: ${err.message}`);
+      }
+      return;
+    }
+
     // SSE endpoint for MCP streaming
     if (url.pathname === '/sse') {
       this._handleSseConnection(req, res);
@@ -290,15 +396,48 @@ export class MCPServer {
    * @private
    */
   async _handleHttpMessage(req, res) {
-    let body = '';
-    for await (const chunk of req) {
-      body += chunk;
-    }
+    const requestId = Symbol('request');
+    this._activeRequests.add(requestId);
+
+    // Set request timeout
+    const timeoutId = setTimeout(() => {
+      if (!res.headersSent) {
+        res.writeHead(408, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          jsonrpc: '2.0',
+          id: null,
+          error: { code: -32000, message: 'Request timeout' },
+        }));
+      }
+      this._activeRequests.delete(requestId);
+    }, REQUEST_TIMEOUT_MS);
 
     try {
+      // Collect body with size limit
+      let body = '';
+      let bodySize = 0;
+
+      for await (const chunk of req) {
+        bodySize += chunk.length;
+        if (bodySize > MAX_BODY_SIZE) {
+          clearTimeout(timeoutId);
+          this._activeRequests.delete(requestId);
+          res.writeHead(413, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            jsonrpc: '2.0',
+            id: null,
+            error: { code: -32000, message: `Request body too large (max ${MAX_BODY_SIZE} bytes)` },
+          }));
+          return;
+        }
+        body += chunk;
+      }
+
       const message = JSON.parse(body);
 
       if (!message.jsonrpc || message.jsonrpc !== '2.0') {
+        clearTimeout(timeoutId);
+        this._activeRequests.delete(requestId);
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
           jsonrpc: '2.0',
@@ -311,6 +450,9 @@ export class MCPServer {
       // Process message
       const result = await this._handleRequestInternal(message);
 
+      clearTimeout(timeoutId);
+      this._activeRequests.delete(requestId);
+
       if (result === null) {
         // Notification - no response
         res.writeHead(204);
@@ -321,6 +463,8 @@ export class MCPServer {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(result));
     } catch (err) {
+      clearTimeout(timeoutId);
+      this._activeRequests.delete(requestId);
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
         jsonrpc: '2.0',
@@ -399,21 +543,45 @@ export class MCPServer {
     if (!this._running) return;
 
     this._running = false;
+    console.error('🐕 CYNIC MCP Server shutting down...');
 
     // Close HTTP server if running
     if (this._httpServer) {
-      await new Promise((resolve) => {
-        // Close all SSE clients
-        for (const client of this._sseClients) {
-          client.end();
-        }
-        this._sseClients.clear();
+      // Stop accepting new connections
+      this._httpServer.close();
 
-        this._httpServer.close(() => {
-          console.error('   HTTP server closed');
-          resolve();
+      // Close all SSE clients
+      for (const client of this._sseClients) {
+        client.end();
+      }
+      this._sseClients.clear();
+
+      // Wait for active requests to complete (with timeout)
+      if (this._activeRequests.size > 0) {
+        console.error(`   Waiting for ${this._activeRequests.size} active request(s)...`);
+
+        const drainPromise = new Promise((resolve) => {
+          const checkInterval = setInterval(() => {
+            if (this._activeRequests.size === 0) {
+              clearInterval(checkInterval);
+              resolve();
+            }
+          }, 100);
         });
-      });
+
+        const timeoutPromise = new Promise((resolve) => {
+          setTimeout(() => {
+            if (this._activeRequests.size > 0) {
+              console.error(`   *GROWL* Forcing shutdown with ${this._activeRequests.size} pending request(s)`);
+            }
+            resolve();
+          }, SHUTDOWN_TIMEOUT_MS);
+        });
+
+        await Promise.race([drainPromise, timeoutPromise]);
+      }
+
+      console.error('   HTTP server closed');
     }
 
     // Flush PoJ chain (create final block from pending judgments)

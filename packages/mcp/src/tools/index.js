@@ -840,6 +840,661 @@ export function createSessionEndTool(sessionManager) {
 }
 
 /**
+ * Create ecosystem docs tool definition
+ * @param {Object} ecosystem - EcosystemService instance
+ * @returns {Object} Tool definition
+ */
+export function createEcosystemTool(ecosystem) {
+  return {
+    name: 'brain_ecosystem',
+    description: 'Access pre-loaded ecosystem documentation (CLAUDE.md, API docs, architecture). Provides context for the $ASDFASDFA ecosystem projects.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['get', 'search', 'list', 'context', 'refresh', 'stats'],
+          description: 'Action: get (specific doc), search (query), list (all docs), context (relevant docs for task), refresh (reload), stats',
+        },
+        project: {
+          type: 'string',
+          description: 'Project name (cynic, holdex, gasdf, ecosystem, asdf-brain)',
+        },
+        docType: {
+          type: 'string',
+          description: 'Document type (claude_md, api_readme, architecture, harmony)',
+        },
+        query: {
+          type: 'string',
+          description: 'Search query or context description',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum results (default 10)',
+        },
+      },
+    },
+    handler: async (params) => {
+      const { action = 'list', project, docType, query, limit = 10 } = params;
+
+      if (!ecosystem) {
+        return {
+          error: 'Ecosystem service not available',
+          hint: 'Ecosystem docs provide pre-loaded project context',
+          timestamp: Date.now(),
+        };
+      }
+
+      switch (action) {
+        case 'get': {
+          if (!project || !docType) {
+            return {
+              error: 'Both project and docType required for get action',
+              hint: 'Use action="list" to see available documents',
+              timestamp: Date.now(),
+            };
+          }
+          const doc = await ecosystem.get(project, docType);
+          if (!doc) {
+            return {
+              error: `Document not found: ${project}/${docType}`,
+              timestamp: Date.now(),
+            };
+          }
+          return {
+            action: 'get',
+            project: doc.project,
+            docType: doc.doc_type || doc.docType,
+            content: doc.content,
+            digest: doc.digest,
+            hasDigest: !!doc.digest,
+            message: `*ears perk* Found ${project}/${docType}.`,
+            timestamp: Date.now(),
+          };
+        }
+
+        case 'search': {
+          if (!query) {
+            return {
+              error: 'query required for search action',
+              timestamp: Date.now(),
+            };
+          }
+          const results = await ecosystem.search(query, { limit });
+          return {
+            action: 'search',
+            query,
+            results,
+            total: results.length,
+            message: `*sniff* Found ${results.length} matches.`,
+            timestamp: Date.now(),
+          };
+        }
+
+        case 'list': {
+          const docs = await ecosystem.list();
+          return {
+            action: 'list',
+            documents: docs.map(d => ({
+              project: d.project,
+              docType: d.doc_type || d.docType,
+              filePath: d.file_path || d.filePath,
+              hasDigest: !!d.digest,
+            })),
+            total: docs.length,
+            message: `*tail wag* ${docs.length} ecosystem docs loaded.`,
+            timestamp: Date.now(),
+          };
+        }
+
+        case 'context': {
+          if (!query) {
+            return {
+              error: 'query required for context action (describe your task)',
+              timestamp: Date.now(),
+            };
+          }
+          const context = await ecosystem.getContextFor(query, { maxDocs: limit });
+          return {
+            action: 'context',
+            query,
+            documents: context.documents.map(d => ({
+              project: d.project,
+              docType: d.docType,
+              contentLength: d.content?.length || 0,
+              hasDigest: !!d.digest,
+            })),
+            totalLength: context.totalLength,
+            count: context.count,
+            message: `*head tilt* Selected ${context.count} relevant docs (${context.totalLength} chars).`,
+            timestamp: Date.now(),
+          };
+        }
+
+        case 'refresh': {
+          const results = await ecosystem.refresh();
+          return {
+            action: 'refresh',
+            ...results,
+            message: `*sniff* Refreshed: ${results.loaded} loaded, ${results.skipped} unchanged, ${results.failed} failed.`,
+            timestamp: Date.now(),
+          };
+        }
+
+        case 'stats': {
+          const stats = await ecosystem.getStats();
+          return {
+            action: 'stats',
+            ...stats,
+            message: `*tail wag* ${stats.total_docs || stats.loadCount || 0} docs, ${stats.searchCount || 0} searches, ${stats.hitCount || 0} hits.`,
+            timestamp: Date.now(),
+          };
+        }
+
+        default:
+          return {
+            error: `Unknown action: ${action}`,
+            validActions: ['get', 'search', 'list', 'context', 'refresh', 'stats'],
+            timestamp: Date.now(),
+          };
+      }
+    },
+  };
+}
+
+/**
+ * Create PoJ chain tool definition
+ * @param {Object} pojChainManager - PoJChainManager instance
+ * @param {Object} persistence - PersistenceManager instance
+ * @returns {Object} Tool definition
+ */
+export function createPoJChainTool(pojChainManager, persistence = null) {
+  return {
+    name: 'brain_poj_chain',
+    description: 'Proof of Judgment chain operations. View chain status, verify integrity, get blocks, and export chain data.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['status', 'verify', 'head', 'block', 'recent', 'stats', 'export', 'flush'],
+          description: 'Action: status (chain state), verify (check integrity), head (latest block), block (get by number), recent (last N blocks), stats (chain stats), export (export chain), flush (force create block)',
+        },
+        blockNumber: {
+          type: 'number',
+          description: 'Block number (for block action)',
+        },
+        limit: {
+          type: 'number',
+          description: 'Number of blocks (for recent/export actions, default 10)',
+        },
+        fromBlock: {
+          type: 'number',
+          description: 'Starting block for verify/export (default 0)',
+        },
+      },
+    },
+    handler: async (params) => {
+      const { action = 'status', blockNumber, limit = 10, fromBlock = 0 } = params;
+
+      if (!pojChainManager) {
+        return {
+          error: 'PoJ chain not available',
+          hint: 'PoJ chain requires PostgreSQL persistence',
+          timestamp: Date.now(),
+        };
+      }
+
+      switch (action) {
+        case 'status': {
+          const status = pojChainManager.getStatus();
+          return {
+            action: 'status',
+            ...status,
+            message: status.initialized
+              ? `*tail wag* Chain at slot ${status.headSlot}, ${status.pendingJudgments} pending.`
+              : '*growl* Chain not initialized.',
+            timestamp: Date.now(),
+          };
+        }
+
+        case 'verify': {
+          const result = await pojChainManager.verifyIntegrity();
+          return {
+            action: 'verify',
+            ...result,
+            message: result.valid
+              ? `*tail wag* Chain verified! ${result.blocksChecked} blocks, no errors.`
+              : `*GROWL* Chain integrity failed! ${result.errors.length} errors found.`,
+            timestamp: Date.now(),
+          };
+        }
+
+        case 'head': {
+          const head = pojChainManager.getHead();
+          if (!head) {
+            return {
+              action: 'head',
+              block: null,
+              message: '*head tilt* No head block (chain empty?).',
+              timestamp: Date.now(),
+            };
+          }
+          return {
+            action: 'head',
+            block: {
+              slot: head.slot,
+              hash: head.hash || head.block_hash,
+              prevHash: head.prev_hash,
+              judgmentCount: head.judgment_count,
+              timestamp: head.timestamp,
+            },
+            message: `*ears perk* Head at slot ${head.slot}.`,
+            timestamp: Date.now(),
+          };
+        }
+
+        case 'block': {
+          if (typeof blockNumber !== 'number') {
+            return {
+              error: 'blockNumber required for block action',
+              timestamp: Date.now(),
+            };
+          }
+          if (!persistence?.pojBlocks) {
+            return {
+              error: 'Persistence not available for block lookup',
+              timestamp: Date.now(),
+            };
+          }
+          const block = await persistence.pojBlocks.findByNumber(blockNumber);
+          if (!block) {
+            return {
+              action: 'block',
+              block: null,
+              message: `*sniff* Block ${blockNumber} not found.`,
+              timestamp: Date.now(),
+            };
+          }
+          return {
+            action: 'block',
+            block: {
+              slot: block.slot,
+              hash: block.hash || block.block_hash,
+              prevHash: block.prev_hash,
+              merkleRoot: block.merkle_root || block.judgments_root,
+              judgmentCount: block.judgment_count,
+              judgmentIds: block.judgment_ids,
+              timestamp: block.timestamp,
+            },
+            message: `*tail wag* Block ${blockNumber} found.`,
+            timestamp: Date.now(),
+          };
+        }
+
+        case 'recent': {
+          if (!persistence?.pojBlocks) {
+            return {
+              error: 'Persistence not available',
+              timestamp: Date.now(),
+            };
+          }
+          const blocks = await persistence.pojBlocks.findRecent(limit);
+          return {
+            action: 'recent',
+            blocks: blocks.map(b => ({
+              slot: b.slot,
+              hash: (b.hash || b.block_hash)?.slice(0, 16) + '...',
+              judgmentCount: b.judgment_count,
+              timestamp: b.timestamp,
+            })),
+            total: blocks.length,
+            message: `*sniff* Found ${blocks.length} recent blocks.`,
+            timestamp: Date.now(),
+          };
+        }
+
+        case 'stats': {
+          if (!persistence?.pojBlocks) {
+            return {
+              error: 'Persistence not available',
+              timestamp: Date.now(),
+            };
+          }
+          const stats = await persistence.pojBlocks.getStats();
+          const managerStats = pojChainManager.getStatus().stats;
+          return {
+            action: 'stats',
+            chain: stats,
+            session: managerStats,
+            message: `*tail wag* ${stats.totalBlocks} blocks, ${stats.totalJudgments} judgments recorded.`,
+            timestamp: Date.now(),
+          };
+        }
+
+        case 'export': {
+          if (!persistence?.pojBlocks) {
+            return {
+              error: 'Persistence not available',
+              timestamp: Date.now(),
+            };
+          }
+          const blocks = await persistence.pojBlocks.findSince(fromBlock, limit);
+          return {
+            action: 'export',
+            fromBlock,
+            blocks: blocks.map(b => ({
+              slot: b.slot,
+              hash: b.hash || b.block_hash,
+              prevHash: b.prev_hash,
+              merkleRoot: b.merkle_root || b.judgments_root,
+              judgmentCount: b.judgment_count,
+              judgmentIds: b.judgment_ids,
+              timestamp: b.timestamp,
+            })),
+            total: blocks.length,
+            message: `*ears perk* Exported ${blocks.length} blocks starting from ${fromBlock}.`,
+            timestamp: Date.now(),
+          };
+        }
+
+        case 'flush': {
+          const block = await pojChainManager.flush();
+          if (block) {
+            return {
+              action: 'flush',
+              block: {
+                slot: block.slot || block.block_number,
+                hash: block.hash || block.block_hash,
+                judgmentCount: block.judgment_count,
+              },
+              message: `*tail wag* Flushed pending judgments to block ${block.slot || block.block_number}.`,
+              timestamp: Date.now(),
+            };
+          }
+          return {
+            action: 'flush',
+            block: null,
+            message: '*yawn* No pending judgments to flush.',
+            timestamp: Date.now(),
+          };
+        }
+
+        default:
+          return {
+            error: `Unknown action: ${action}`,
+            validActions: ['status', 'verify', 'head', 'block', 'recent', 'stats', 'export', 'flush'],
+            timestamp: Date.now(),
+          };
+      }
+    },
+  };
+}
+
+/**
+ * Create integrator tool definition
+ * @param {Object} integrator - IntegratorService instance
+ * @returns {Object} Tool definition
+ */
+export function createIntegratorTool(integrator) {
+  return {
+    name: 'brain_integrator',
+    description: 'Cross-project integration and synchronization. Check sync status, detect drift, get suggestions for keeping shared modules aligned.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['check', 'drifts', 'suggest', 'projects', 'modules', 'stats'],
+          description: 'Action: check (sync status), drifts (current drifts), suggest (sync suggestions), projects (project status), modules (shared modules), stats (service stats)',
+        },
+        project: {
+          type: 'string',
+          description: 'Project name (for projects action)',
+        },
+      },
+    },
+    handler: async (params) => {
+      const { action = 'check', project } = params;
+
+      if (!integrator) {
+        return {
+          error: 'Integrator service not available',
+          hint: 'IntegratorService tracks shared modules across projects',
+          timestamp: Date.now(),
+        };
+      }
+
+      switch (action) {
+        case 'check': {
+          const report = await integrator.checkSync();
+          return {
+            action: 'check',
+            allSynced: report.allSynced,
+            modulesChecked: report.modules.length,
+            driftsFound: report.drifts.length,
+            modules: report.modules.map(m => ({
+              name: m.name,
+              synced: m.synced,
+              mirrorsCount: m.mirrors?.length || 0,
+              driftsCount: m.drifts?.length || 0,
+            })),
+            message: report.allSynced
+              ? `*tail wag* All ${report.modules.length} modules in sync!`
+              : `*GROWL* Found ${report.drifts.length} drifts across ${report.modules.filter(m => !m.synced).length} modules.`,
+            timestamp: Date.now(),
+          };
+        }
+
+        case 'drifts': {
+          const drifts = integrator.getDrifts();
+          return {
+            action: 'drifts',
+            drifts: drifts.map(d => ({
+              type: d.type,
+              module: d.module,
+              canonical: d.canonical,
+              drifted: d.drifted,
+              critical: d.critical,
+            })),
+            total: drifts.length,
+            critical: drifts.filter(d => d.critical).length,
+            message: drifts.length === 0
+              ? `*tail wag* No drifts detected.`
+              : `*sniff* ${drifts.length} drifts (${drifts.filter(d => d.critical).length} critical).`,
+            timestamp: Date.now(),
+          };
+        }
+
+        case 'suggest': {
+          const suggestions = integrator.getSyncSuggestions();
+          return {
+            action: 'suggest',
+            suggestions: suggestions.map(s => ({
+              action: s.action,
+              priority: s.priority,
+              from: s.from,
+              to: s.to,
+              reason: s.reason,
+              command: s.command,
+            })),
+            total: suggestions.length,
+            highPriority: suggestions.filter(s => s.priority === 'high').length,
+            message: suggestions.length === 0
+              ? `*yawn* No sync actions needed.`
+              : `*ears perk* ${suggestions.length} sync actions suggested (${suggestions.filter(s => s.priority === 'high').length} high priority).`,
+            timestamp: Date.now(),
+          };
+        }
+
+        case 'projects': {
+          const status = await integrator.getProjectStatus(project);
+          return {
+            action: 'projects',
+            ...status,
+            message: `*sniff* ${status.available}/${status.total} projects available.`,
+            timestamp: Date.now(),
+          };
+        }
+
+        case 'modules': {
+          const modules = integrator.getSharedModules();
+          return {
+            action: 'modules',
+            modules,
+            total: modules.length,
+            critical: modules.filter(m => m.critical).length,
+            message: `*tail wag* Tracking ${modules.length} shared modules (${modules.filter(m => m.critical).length} critical).`,
+            timestamp: Date.now(),
+          };
+        }
+
+        case 'stats': {
+          const stats = integrator.getStats();
+          return {
+            action: 'stats',
+            ...stats,
+            message: `*ears perk* ${stats.checksPerformed} checks, ${stats.driftsDetected} drifts detected.`,
+            timestamp: Date.now(),
+          };
+        }
+
+        default:
+          return {
+            error: `Unknown action: ${action}`,
+            validActions: ['check', 'drifts', 'suggest', 'projects', 'modules', 'stats'],
+            timestamp: Date.now(),
+          };
+      }
+    },
+  };
+}
+
+/**
+ * Create metrics tool definition
+ * @param {Object} metricsService - MetricsService instance
+ * @returns {Object} Tool definition
+ */
+export function createMetricsTool(metricsService) {
+  return {
+    name: 'brain_metrics',
+    description: 'Get CYNIC metrics in various formats. Prometheus format for monitoring, JSON for inspection, HTML for dashboard.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['collect', 'prometheus', 'alerts', 'clear_alert', 'stats', 'html'],
+          description: 'Action: collect (raw metrics), prometheus (Prometheus format), alerts (active alerts), clear_alert (acknowledge alert), stats (service stats), html (dashboard)',
+        },
+        alertType: {
+          type: 'string',
+          description: 'Alert type to clear (for clear_alert action)',
+        },
+      },
+    },
+    handler: async (params) => {
+      const { action = 'collect', alertType } = params;
+
+      if (!metricsService) {
+        return {
+          error: 'Metrics service not available',
+          hint: 'MetricsService provides monitoring capabilities',
+          timestamp: Date.now(),
+        };
+      }
+
+      switch (action) {
+        case 'collect': {
+          const metrics = await metricsService.collect();
+          return {
+            action: 'collect',
+            metrics,
+            alerts: metricsService.getAlerts(),
+            message: `*sniff* Collected metrics in ${metricsService.getStats().lastCollectMs}ms.`,
+            timestamp: Date.now(),
+          };
+        }
+
+        case 'prometheus': {
+          const prometheus = await metricsService.toPrometheus();
+          return {
+            action: 'prometheus',
+            format: 'text/plain',
+            content: prometheus,
+            message: '*tail wag* Metrics exported in Prometheus format.',
+            timestamp: Date.now(),
+          };
+        }
+
+        case 'alerts': {
+          const alerts = metricsService.getAlerts();
+          return {
+            action: 'alerts',
+            alerts,
+            total: alerts.length,
+            critical: alerts.filter(a => a.level === 'critical').length,
+            warning: alerts.filter(a => a.level === 'warning').length,
+            message: alerts.length === 0
+              ? '*tail wag* No active alerts.'
+              : `*ears perk* ${alerts.length} active alerts (${alerts.filter(a => a.level === 'critical').length} critical).`,
+            timestamp: Date.now(),
+          };
+        }
+
+        case 'clear_alert': {
+          if (!alertType) {
+            return {
+              error: 'alertType required for clear_alert action',
+              availableAlerts: metricsService.getAlerts().map(a => a.type),
+              timestamp: Date.now(),
+            };
+          }
+          const cleared = metricsService.clearAlert(alertType);
+          return {
+            action: 'clear_alert',
+            alertType,
+            cleared,
+            message: cleared
+              ? `*yawn* Alert '${alertType}' acknowledged.`
+              : `*head tilt* Alert '${alertType}' not found.`,
+            timestamp: Date.now(),
+          };
+        }
+
+        case 'stats': {
+          const stats = metricsService.getStats();
+          return {
+            action: 'stats',
+            ...stats,
+            message: `*sniff* ${stats.collectCount} collections, ${stats.alertsTriggered} alerts triggered.`,
+            timestamp: Date.now(),
+          };
+        }
+
+        case 'html': {
+          const html = await metricsService.toHTML();
+          return {
+            action: 'html',
+            format: 'text/html',
+            content: html,
+            message: '*tail wag* Dashboard HTML generated.',
+            timestamp: Date.now(),
+          };
+        }
+
+        default:
+          return {
+            error: `Unknown action: ${action}`,
+            validActions: ['collect', 'prometheus', 'alerts', 'clear_alert', 'stats', 'html'],
+            timestamp: Date.now(),
+          };
+      }
+    },
+  };
+}
+
+/**
  * Create all tools
  * @param {Object} options - Tool options
  * @param {Object} options.judge - CYNICJudge instance
@@ -849,6 +1504,9 @@ export function createSessionEndTool(sessionManager) {
  * @param {Object} [options.sessionManager] - SessionManager instance for multi-user sessions
  * @param {Object} [options.pojChainManager] - PoJChainManager instance for blockchain
  * @param {Object} [options.librarian] - LibrarianService instance for documentation caching
+ * @param {Object} [options.ecosystem] - EcosystemService instance for pre-loaded docs
+ * @param {Object} [options.integrator] - IntegratorService instance for cross-project sync
+ * @param {Object} [options.metrics] - MetricsService instance for monitoring
  * @returns {Object} All tools keyed by name
  */
 export function createAllTools(options = {}) {
@@ -860,6 +1518,9 @@ export function createAllTools(options = {}) {
     sessionManager = null,
     pojChainManager = null,
     librarian = null,
+    ecosystem = null,
+    integrator = null,
+    metrics = null,
   } = options;
 
   if (!judge) throw new Error('judge is required');
@@ -876,6 +1537,10 @@ export function createAllTools(options = {}) {
     createSessionStartTool(sessionManager),
     createSessionEndTool(sessionManager),
     createDocsTool(librarian, persistence),
+    createEcosystemTool(ecosystem),
+    createPoJChainTool(pojChainManager, persistence),
+    createIntegratorTool(integrator),
+    createMetricsTool(metrics),
   ];
 
   for (const tool of toolDefs) {
@@ -896,5 +1561,9 @@ export default {
   createSessionStartTool,
   createSessionEndTool,
   createDocsTool,
+  createEcosystemTool,
+  createPoJChainTool,
+  createIntegratorTool,
+  createMetricsTool,
   createAllTools,
 };
