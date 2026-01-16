@@ -23,6 +23,7 @@ import {
   FeedbackRepository,
   KnowledgeRepository,
   PoJBlockRepository,
+  LibraryCacheRepository,
   SessionStore,
 } from '@cynic/persistence';
 
@@ -231,6 +232,7 @@ export class PersistenceManager {
     this.feedback = null;
     this.knowledge = null;
     this.pojBlocks = null;
+    this.libraryCache = null;
 
     // Fallback store (file or memory)
     this._fallback = null;
@@ -262,6 +264,7 @@ export class PersistenceManager {
         this.feedback = new FeedbackRepository(this.postgres);
         this.knowledge = new KnowledgeRepository(this.postgres);
         this.pojBlocks = new PoJBlockRepository(this.postgres);
+        this.libraryCache = new LibraryCacheRepository(this.postgres);
 
         this._backend = 'postgres';
         console.error('   PostgreSQL: connected');
@@ -558,6 +561,125 @@ export class PersistenceManager {
     return { valid: true, blocksChecked: 0, errors: [] };
   }
 
+  // ===========================================================================
+  // LIBRARY CACHE METHODS
+  // ===========================================================================
+
+  /**
+   * Get cached library documentation
+   * @param {string} libraryId - Library ID
+   * @param {string} query - Search query
+   * @returns {Promise<Object|null>} Cached content or null
+   */
+  async getLibraryDoc(libraryId, query) {
+    if (this.libraryCache) {
+      try {
+        return await this.libraryCache.get(libraryId, query);
+      } catch (err) {
+        console.error('Error getting library doc:', err.message);
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Store library documentation in cache
+   * @param {string} libraryId - Library ID
+   * @param {string} query - Search query
+   * @param {string} content - Documentation content
+   * @param {Object} [metadata] - Additional metadata
+   * @param {number} [ttlHours] - TTL in hours
+   */
+  async setLibraryDoc(libraryId, query, content, metadata = {}, ttlHours = 24) {
+    if (this.libraryCache) {
+      try {
+        return await this.libraryCache.set(libraryId, query, content, metadata, ttlHours);
+      } catch (err) {
+        console.error('Error setting library doc:', err.message);
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Check if library documentation is cached
+   * @param {string} libraryId - Library ID
+   * @param {string} query - Search query
+   * @returns {Promise<boolean>} True if cached
+   */
+  async isLibraryDocCached(libraryId, query) {
+    if (this.libraryCache) {
+      try {
+        return await this.libraryCache.isCached(libraryId, query);
+      } catch (err) {
+        console.error('Error checking library cache:', err.message);
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Clean expired library cache entries
+   * @returns {Promise<number>} Number of cleaned entries
+   */
+  async cleanExpiredCache() {
+    if (this.libraryCache) {
+      try {
+        return await this.libraryCache.cleanExpired();
+      } catch (err) {
+        console.error('Error cleaning cache:', err.message);
+      }
+    }
+    return 0;
+  }
+
+  /**
+   * Invalidate library cache
+   * @param {string} libraryId - Library ID
+   * @returns {Promise<number>} Number of invalidated entries
+   */
+  async invalidateLibraryCache(libraryId) {
+    if (this.libraryCache) {
+      try {
+        return await this.libraryCache.invalidate(libraryId);
+      } catch (err) {
+        console.error('Error invalidating cache:', err.message);
+      }
+    }
+    return 0;
+  }
+
+  /**
+   * Get library cache statistics
+   * @returns {Promise<Object>} Cache statistics
+   */
+  async getLibraryCacheStats() {
+    if (this.libraryCache) {
+      try {
+        return await this.libraryCache.getStats();
+      } catch (err) {
+        console.error('Error getting cache stats:', err.message);
+      }
+    }
+    return { totalEntries: 0, activeEntries: 0, uniqueLibraries: 0 };
+  }
+
+  /**
+   * Get top cached libraries
+   * @param {number} [limit=10] - Max libraries
+   * @returns {Promise<Object[]>} Top libraries
+   */
+  async getTopCachedLibraries(limit = 10) {
+    if (this.libraryCache) {
+      try {
+        return await this.libraryCache.getTopLibraries(limit);
+      } catch (err) {
+        console.error('Error getting top libraries:', err.message);
+      }
+    }
+    return [];
+  }
+
   /**
    * Get health status
    */
@@ -639,6 +761,7 @@ export class PersistenceManager {
       feedback: !!this.feedback || hasFallback,
       knowledge: !!this.knowledge || hasFallback,
       pojChain: !!this.pojBlocks, // No fallback - requires PostgreSQL
+      libraryCache: !!this.libraryCache, // No fallback - requires PostgreSQL
       sessions: !!this.sessionStore,
       cache: !!this.redis,
     };

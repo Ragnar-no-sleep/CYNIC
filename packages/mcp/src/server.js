@@ -19,6 +19,7 @@ import { createAllTools } from './tools/index.js';
 import { PersistenceManager } from './persistence.js';
 import { SessionManager } from './session-manager.js';
 import { PoJChainManager } from './poj-chain-manager.js';
+import { LibrarianService } from './librarian-service.js';
 
 /**
  * MCP Server for CYNIC
@@ -40,6 +41,7 @@ export class MCPServer {
    * @param {Object} [options.persistence] - PersistenceManager instance
    * @param {Object} [options.sessionManager] - SessionManager instance (for multi-user sessions)
    * @param {Object} [options.pojChainManager] - PoJChainManager instance (for PoJ blockchain)
+   * @param {Object} [options.librarian] - LibrarianService instance (for documentation caching)
    * @param {Object} [options.agents] - AgentManager instance (The Four Dogs)
    * @param {string} [options.dataDir] - Data directory for file-based persistence fallback
    * @param {string} [options.mode] - Transport mode: 'stdio' (default) or 'http'
@@ -72,6 +74,9 @@ export class MCPServer {
 
     // PoJ Chain manager for Proof of Judgment blockchain
     this.pojChainManager = options.pojChainManager || null;
+
+    // Librarian service for documentation caching
+    this.librarian = options.librarian || null;
 
     // Agent manager - The Four Dogs (Guardian, Observer, Digester, Mentor)
     this.agents = options.agents || new AgentManager();
@@ -119,6 +124,12 @@ export class MCPServer {
       await this.pojChainManager.initialize();
     }
 
+    // Initialize Librarian service for documentation caching
+    if (!this.librarian) {
+      this.librarian = new LibrarianService(this.persistence);
+      await this.librarian.initialize();
+    }
+
     // Register tools with current instances
     this.tools = createAllTools({
       judge: this.judge,
@@ -127,6 +138,7 @@ export class MCPServer {
       agents: this.agents,
       sessionManager: this.sessionManager,
       pojChainManager: this.pojChainManager,
+      librarian: this.librarian,
     });
   }
 
@@ -655,6 +667,10 @@ export class MCPServer {
       sessions: this.sessionManager?.getSummary() || { activeCount: 0 },
       // PoJ Chain status
       pojChain: this.pojChainManager?.getStatus() || { initialized: false },
+      // Librarian status
+      librarian: this.librarian?._initialized
+        ? { initialized: true, stats: this.librarian._stats }
+        : { initialized: false },
     };
   }
 }

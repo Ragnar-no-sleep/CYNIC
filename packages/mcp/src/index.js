@@ -14,4 +14,5 @@ export { MCPServer } from './server.js';
 export { PersistenceManager } from './persistence.js';
 export { SessionManager } from './session-manager.js';
 export { PoJChainManager } from './poj-chain-manager.js';
+export { LibrarianService } from './librarian-service.js';
 export { default } from './server.js';

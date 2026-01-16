@@ -512,6 +512,148 @@ export function createFeedbackTool(persistence = null, sessionManager = null) {
 }
 
 /**
+ * Create docs tool definition (library documentation cache)
+ * @param {Object} librarian - LibrarianService instance
+ * @param {Object} persistence - PersistenceManager instance
+ * @returns {Object} Tool definition
+ */
+export function createDocsTool(librarian, persistence = null) {
+  return {
+    name: 'brain_docs',
+    description: 'Query library documentation with caching. Fetches from Context7 and caches results for faster future access. Can also show cache statistics.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        libraryId: {
+          type: 'string',
+          description: 'Context7 library ID (e.g., "/vercel/next.js", "/solana-labs/solana-web3.js")',
+        },
+        query: {
+          type: 'string',
+          description: 'Documentation query (e.g., "how to connect wallet", "API reference")',
+        },
+        action: {
+          type: 'string',
+          enum: ['query', 'stats', 'invalidate', 'list'],
+          description: 'Action to perform: query (default), stats (cache stats), invalidate (clear cache), list (show cached libraries)',
+        },
+      },
+    },
+    handler: async (params) => {
+      const { libraryId, query, action = 'query' } = params;
+
+      // Handle non-query actions
+      if (action === 'stats') {
+        if (!librarian) {
+          return { error: 'Librarian service not available', timestamp: Date.now() };
+        }
+        const stats = await librarian.getStats();
+        return {
+          action: 'stats',
+          ...stats,
+          message: `*sniff* Cache has ${stats.cache.activeEntries} active entries with ${(stats.hitRate * 100).toFixed(1)}% hit rate.`,
+          timestamp: Date.now(),
+        };
+      }
+
+      if (action === 'list') {
+        if (!librarian) {
+          return { error: 'Librarian service not available', timestamp: Date.now() };
+        }
+        const libraries = await librarian.getCachedLibraries(20);
+        const ecosystem = librarian.getEcosystemLibraries();
+        return {
+          action: 'list',
+          cachedLibraries: libraries,
+          ecosystemLibraries: ecosystem.map(l => ({ id: l.id, name: l.name, priority: l.priority })),
+          message: `*tail wag* ${libraries.length} libraries cached, ${ecosystem.length} in ecosystem.`,
+          timestamp: Date.now(),
+        };
+      }
+
+      if (action === 'invalidate') {
+        if (!libraryId) {
+          return { error: 'libraryId required for invalidate action', timestamp: Date.now() };
+        }
+        if (!librarian) {
+          return { error: 'Librarian service not available', timestamp: Date.now() };
+        }
+        const result = await librarian.invalidate(libraryId);
+        return {
+          action: 'invalidate',
+          ...result,
+          message: `*growl* Invalidated ${result.invalidated} cache entries for ${libraryId}.`,
+          timestamp: Date.now(),
+        };
+      }
+
+      // Default: query action
+      if (!libraryId || !query) {
+        return {
+          error: 'Both libraryId and query are required for documentation lookup',
+          hint: 'Use action="list" to see available libraries, or action="stats" for cache statistics',
+          timestamp: Date.now(),
+        };
+      }
+
+      if (!librarian) {
+        // Fallback: direct persistence lookup without librarian service
+        if (persistence?.libraryCache) {
+          const cached = await persistence.getLibraryDoc(libraryId, query);
+          if (cached) {
+            return {
+              libraryId,
+              query,
+              content: cached.content,
+              source: 'postgres',
+              cached: true,
+              hitCount: cached.hitCount,
+              message: '*ears perk* Found in cache (direct lookup).',
+              timestamp: Date.now(),
+            };
+          }
+        }
+        return {
+          error: 'Librarian service not available and no cached content found',
+          hint: 'Documentation must be fetched from Context7 - librarian service required',
+          timestamp: Date.now(),
+        };
+      }
+
+      // Query with librarian (no fetcher - cache-only for now)
+      // Note: The actual Context7 fetcher would be injected by the client
+      const result = await librarian.getDocumentation(libraryId, query);
+
+      if (result.content) {
+        return {
+          libraryId,
+          query,
+          content: result.content,
+          source: result.source,
+          cached: result.cached,
+          hitCount: result.hitCount || 0,
+          message: result.cached
+            ? `*tail wag* Found in ${result.source} cache!`
+            : '*sniff* Fetched fresh from source.',
+          timestamp: Date.now(),
+        };
+      }
+
+      return {
+        libraryId,
+        query,
+        content: null,
+        source: 'none',
+        cached: false,
+        message: '*head tilt* No documentation found. Use Context7 to fetch first.',
+        hint: 'Call context7.query-docs to fetch documentation, which will be cached automatically.',
+        timestamp: Date.now(),
+      };
+    },
+  };
+}
+
+/**
  * Create agents status tool definition
  * @param {Object} agents - AgentManager instance (The Four Dogs)
  * @returns {Object} Tool definition
@@ -705,6 +847,8 @@ export function createSessionEndTool(sessionManager) {
  * @param {Object} [options.persistence] - PersistenceManager instance (handles fallback)
  * @param {Object} [options.agents] - AgentManager instance (The Four Dogs)
  * @param {Object} [options.sessionManager] - SessionManager instance for multi-user sessions
+ * @param {Object} [options.pojChainManager] - PoJChainManager instance for blockchain
+ * @param {Object} [options.librarian] - LibrarianService instance for documentation caching
  * @returns {Object} All tools keyed by name
  */
 export function createAllTools(options = {}) {
@@ -715,6 +859,7 @@ export function createAllTools(options = {}) {
     agents = null,
     sessionManager = null,
     pojChainManager = null,
+    librarian = null,
   } = options;
 
   if (!judge) throw new Error('judge is required');
@@ -730,6 +875,7 @@ export function createAllTools(options = {}) {
     createAgentsStatusTool(agents),
     createSessionStartTool(sessionManager),
     createSessionEndTool(sessionManager),
+    createDocsTool(librarian, persistence),
   ];
 
   for (const tool of toolDefs) {
@@ -749,5 +895,6 @@ export default {
   createAgentsStatusTool,
   createSessionStartTool,
   createSessionEndTool,
+  createDocsTool,
   createAllTools,
 };
