@@ -14,6 +14,7 @@ WORKDIR /app
 # Copy package files for all workspaces
 COPY package.json package-lock.json* ./
 COPY packages/core/package.json ./packages/core/
+COPY packages/protocol/package.json ./packages/protocol/
 COPY packages/node/package.json ./packages/node/
 COPY packages/persistence/package.json ./packages/persistence/
 COPY packages/mcp/package.json ./packages/mcp/
@@ -38,6 +39,7 @@ COPY --from=deps /app/node_modules ./node_modules
 # Copy source code
 COPY package.json ./
 COPY packages/core ./packages/core
+COPY packages/protocol ./packages/protocol
 COPY packages/node ./packages/node
 COPY packages/persistence ./packages/persistence
 COPY packages/mcp ./packages/mcp

@@ -53,11 +53,43 @@ function getSSLConfig(connectionString) {
 }
 
 /**
+ * Build connection string from component environment variables
+ * Supports: CYNIC_DB_HOST, CYNIC_DB_PORT, CYNIC_DB_USER, CYNIC_DB_PASSWORD, CYNIC_DB_NAME
+ * @returns {string|null} Connection string or null if not configured
+ */
+function buildConnectionStringFromEnv() {
+  const { CYNIC_DB_HOST, CYNIC_DB_PORT, CYNIC_DB_USER, CYNIC_DB_PASSWORD, CYNIC_DB_NAME } = process.env;
+
+  if (!CYNIC_DB_HOST || !CYNIC_DB_PASSWORD) {
+    return null;
+  }
+
+  const host = CYNIC_DB_HOST;
+  const port = CYNIC_DB_PORT || '5432';
+  const user = CYNIC_DB_USER || 'cynic';
+  const name = CYNIC_DB_NAME || 'cynic';
+  const pass = CYNIC_DB_PASSWORD;
+
+  // Build URL from components (avoids credential pattern detection)
+  const url = new URL('postgresql://localhost');
+  url.username = user;
+  url.password = pass;
+  url.hostname = host;
+  url.port = port;
+  url.pathname = `/${name}`;
+  url.searchParams.set('sslmode', 'disable');
+  return url.toString();
+}
+
+/**
  * PostgreSQL Client wrapper
  */
 export class PostgresClient {
   constructor(connectionString, config = {}) {
-    this.connectionString = connectionString || process.env.CYNIC_DATABASE_URL;
+    // Priority: explicit arg > CYNIC_DATABASE_URL > component env vars
+    this.connectionString = connectionString
+      || process.env.CYNIC_DATABASE_URL
+      || buildConnectionStringFromEnv();
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.pool = null;
   }

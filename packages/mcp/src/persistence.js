@@ -249,7 +249,9 @@ export class PersistenceManager {
   async initialize() {
     if (this._initialized) return this;
 
-    const hasPostgres = !!process.env.CYNIC_DATABASE_URL;
+    // Check for PostgreSQL config: URL or component env vars (host + password required)
+    const hasPostgres = !!process.env.CYNIC_DATABASE_URL
+      || (!!process.env.CYNIC_DB_HOST && !!process.env.CYNIC_DB_PASSWORD);
     const hasRedis = !!process.env.CYNIC_REDIS_URL;
 
     // Try PostgreSQL first (production)
@@ -273,7 +275,7 @@ export class PersistenceManager {
         this.postgres = null;
       }
     } else {
-      console.error('   PostgreSQL: not configured (CYNIC_DATABASE_URL not set)');
+      console.error('   PostgreSQL: not configured (set CYNIC_DATABASE_URL or CYNIC_DB_HOST + CYNIC_DB_PASSWORD)');
     }
 
     // Initialize Redis (optional, for caching/sessions)

@@ -18,13 +18,12 @@ services:
       NODE_ENV: development
       MCP_MODE: http
       PORT: "3000"
-      # Database: constructed at runtime from separate components
+      # PostgreSQL: component env vars (server constructs URL internally)
       CYNIC_DB_HOST: postgres
       CYNIC_DB_PORT: "5432"
       CYNIC_DB_USER: ${POSTGRES_USER:-cynic}
-      CYNIC_DB_NAME: ${POSTGRES_DB:-cynic}
-      # Password via env file or docker secret in production
       CYNIC_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      CYNIC_DB_NAME: ${POSTGRES_DB:-cynic}
       CYNIC_REDIS_URL: redis://redis:6379
     depends_on:
       postgres:
