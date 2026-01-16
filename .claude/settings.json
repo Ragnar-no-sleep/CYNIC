@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node scripts/hooks/awaken.cjs"
+            "command": "node /workspaces/CYNIC-new/scripts/hooks/awaken.cjs"
           }
         ]
       }
@@ -15,7 +15,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node scripts/hooks/perceive.cjs"
+            "command": "node /workspaces/CYNIC-new/scripts/hooks/perceive.cjs"
           }
         ]
       }
@@ -26,7 +26,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node scripts/hooks/guard.cjs"
+            "command": "node /workspaces/CYNIC-new/scripts/hooks/guard.cjs"
           }
         ]
       }
@@ -36,7 +36,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node scripts/hooks/observe.cjs"
+            "command": "node /workspaces/CYNIC-new/scripts/hooks/observe.cjs"
           }
         ]
       }
@@ -46,7 +46,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node scripts/hooks/digest.cjs"
+            "command": "node /workspaces/CYNIC-new/scripts/hooks/digest.cjs"
           }
         ]
       }
