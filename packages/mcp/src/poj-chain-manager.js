@@ -127,8 +127,13 @@ export class PoJChainManager {
    * @param {Object} judgment - Judgment to add (must have judgment_id)
    */
   async addJudgment(judgment) {
-    if (!this._initialized || !this.persistence?.pojBlocks) {
-      return; // PoJ chain not available
+    if (!this.persistence?.pojBlocks) {
+      return; // PoJ chain not available (no persistence)
+    }
+
+    // Auto-initialize if needed (e.g., after reset)
+    if (!this._initialized) {
+      await this.initialize();
     }
 
     this._pendingJudgments.push({
@@ -260,6 +265,126 @@ export class PoJChainManager {
       return { valid: true, blocksChecked: 0, errors: [] };
     }
     return await this.persistence.verifyPoJChain();
+  }
+
+  /**
+   * Export chain data for backup
+   * @param {Object} [options] - Export options
+   * @returns {Promise<Object>} Exportable chain data
+   */
+  async exportChain(options = {}) {
+    const { fromBlock = 0, limit = 1000 } = options;
+
+    if (!this.persistence?.pojBlocks) {
+      return { error: 'Persistence not available', blocks: [] };
+    }
+
+    const blocks = await this.persistence.pojBlocks.findSince(fromBlock, limit);
+    const stats = await this.persistence.pojBlocks.getStats();
+
+    return {
+      version: '1.0.0',
+      exportedAt: new Date().toISOString(),
+      chainStats: stats,
+      blocks: blocks.map(b => ({
+        slot: b.slot,
+        hash: b.hash || b.block_hash,
+        prevHash: b.prev_hash,
+        merkleRoot: b.merkle_root || b.judgments_root,
+        judgmentCount: b.judgment_count,
+        judgmentIds: b.judgment_ids,
+        timestamp: b.timestamp instanceof Date ? b.timestamp.toISOString() : b.timestamp,
+      })),
+      totalBlocks: blocks.length,
+    };
+  }
+
+  /**
+   * Import chain data from backup
+   * @param {Object} chainData - Exported chain data
+   * @param {Object} [options] - Import options
+   * @returns {Promise<Object>} Import result
+   */
+  async importChain(chainData, options = {}) {
+    const { validateLinks = true, skipExisting = true } = options;
+
+    if (!this.persistence?.pojBlocks) {
+      return { error: 'Persistence not available', imported: 0 };
+    }
+
+    if (!chainData?.blocks || !Array.isArray(chainData.blocks)) {
+      return { error: 'Invalid chain data format', imported: 0 };
+    }
+
+    const results = {
+      imported: 0,
+      skipped: 0,
+      errors: [],
+    };
+
+    // Sort blocks by slot
+    const sortedBlocks = [...chainData.blocks].sort((a, b) => a.slot - b.slot);
+
+    // Validate chain links if requested
+    if (validateLinks && sortedBlocks.length > 1) {
+      for (let i = 1; i < sortedBlocks.length; i++) {
+        const block = sortedBlocks[i];
+        const prevBlock = sortedBlocks[i - 1];
+        if (block.prevHash !== prevBlock.hash) {
+          results.errors.push({
+            slot: block.slot,
+            error: `Invalid prev_hash: expected ${prevBlock.hash}, got ${block.prevHash}`,
+          });
+        }
+      }
+
+      if (results.errors.length > 0) {
+        return {
+          error: 'Chain validation failed',
+          ...results,
+        };
+      }
+    }
+
+    // Import blocks
+    for (const block of sortedBlocks) {
+      try {
+        // Check if exists
+        if (skipExisting) {
+          const existing = await this.persistence.pojBlocks.findByNumber(block.slot);
+          if (existing) {
+            results.skipped++;
+            continue;
+          }
+        }
+
+        // Store block
+        await this.persistence.pojBlocks.create({
+          slot: block.slot,
+          hash: block.hash,
+          block_hash: block.hash,
+          prev_hash: block.prevHash,
+          judgments_root: block.merkleRoot,
+          merkle_root: block.merkleRoot,
+          judgments: block.judgmentIds?.map(id => ({ judgment_id: id })) || [],
+          timestamp: new Date(block.timestamp).getTime(),
+        });
+
+        results.imported++;
+      } catch (err) {
+        results.errors.push({
+          slot: block.slot,
+          error: err.message,
+        });
+      }
+    }
+
+    // Update head if we imported blocks
+    if (results.imported > 0) {
+      this._head = await this.persistence.getPoJHead();
+    }
+
+    return results;
   }
 
   /**
