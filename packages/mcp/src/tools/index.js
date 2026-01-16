@@ -1017,8 +1017,8 @@ export function createPoJChainTool(pojChainManager, persistence = null) {
       properties: {
         action: {
           type: 'string',
-          enum: ['status', 'verify', 'head', 'block', 'recent', 'stats', 'export', 'flush'],
-          description: 'Action: status (chain state), verify (check integrity), head (latest block), block (get by number), recent (last N blocks), stats (chain stats), export (export chain), flush (force create block)',
+          enum: ['status', 'verify', 'head', 'block', 'recent', 'stats', 'export', 'flush', 'relink'],
+          description: 'Action: status (chain state), verify (check integrity), head (latest block), block (get by number), recent (last N blocks), stats (chain stats), export (export chain), flush (force create block), relink (repair orphaned judgments)',
         },
         blockNumber: {
           type: 'number',
@@ -1220,10 +1220,52 @@ export function createPoJChainTool(pojChainManager, persistence = null) {
           };
         }
 
+        case 'relink': {
+          // Repair orphaned judgments - link them back to their PoJ blocks
+          if (!persistence?.pojBlocks) {
+            return {
+              error: 'Persistence not available',
+              timestamp: Date.now(),
+            };
+          }
+
+          // First count unlinked
+          const unlinkedBefore = await persistence.pojBlocks.countUnlinkedJudgments();
+
+          if (unlinkedBefore === 0) {
+            return {
+              action: 'relink',
+              unlinkedBefore: 0,
+              totalLinked: 0,
+              message: '*tail wag* All judgments properly linked. Nothing to repair.',
+              timestamp: Date.now(),
+            };
+          }
+
+          // Run the repair
+          const result = await persistence.pojBlocks.relinkOrphanedJudgments();
+
+          // Count after
+          const unlinkedAfter = await persistence.pojBlocks.countUnlinkedJudgments();
+
+          return {
+            action: 'relink',
+            unlinkedBefore,
+            unlinkedAfter,
+            totalLinked: result.totalLinked,
+            blocksProcessed: result.blocksProcessed,
+            details: result.results,
+            message: result.totalLinked > 0
+              ? `*HOWL* L2 chain repaired! Linked ${result.totalLinked} orphaned judgments to ${result.blocksProcessed} blocks.`
+              : `*sniff* Found ${unlinkedBefore} unlinked judgments but couldn't match them to blocks.`,
+            timestamp: Date.now(),
+          };
+        }
+
         default:
           return {
             error: `Unknown action: ${action}`,
-            validActions: ['status', 'verify', 'head', 'block', 'recent', 'stats', 'export', 'flush'],
+            validActions: ['status', 'verify', 'head', 'block', 'recent', 'stats', 'export', 'flush', 'relink'],
             timestamp: Date.now(),
           };
       }

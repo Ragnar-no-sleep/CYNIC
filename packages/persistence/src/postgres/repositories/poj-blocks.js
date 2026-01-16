@@ -19,7 +19,7 @@ export class PoJBlockRepository {
   }
 
   /**
-   * Store a new PoJ block
+   * Store a new PoJ block and link judgments
    * @param {Object} block - Block to store
    * @returns {Promise<Object>} Stored block record
    */
@@ -29,6 +29,9 @@ export class PoJBlockRepository {
       j.judgment_id || j.id || `jdg_${Date.now().toString(36)}`
     );
 
+    const blockHash = block.hash || block.block_hash;
+    const blockNumber = block.slot;
+
     const { rows } = await this.db.query(`
       INSERT INTO poj_blocks (
         block_number, block_hash, prev_hash, merkle_root,
@@ -37,8 +40,8 @@ export class PoJBlockRepository {
       ON CONFLICT (block_number) DO NOTHING
       RETURNING *
     `, [
-      block.slot,
-      block.hash || block.block_hash,
+      blockNumber,
+      blockHash,
       block.prev_hash,
       block.judgments_root || block.merkle_root || '',
       judgmentIds.length,
@@ -46,7 +49,27 @@ export class PoJBlockRepository {
       new Date(block.timestamp),
     ]);
 
-    return rows[0] || null;
+    const storedBlock = rows[0] || null;
+
+    // CRITICAL: Link judgments to this block
+    // This is the L2 chain linkage - judgments become part of the block
+    if (storedBlock && judgmentIds.length > 0) {
+      await this.db.query(`
+        UPDATE judgments
+        SET block_hash = $1,
+            block_number = $2,
+            prev_hash = COALESCE(prev_hash, $3)
+        WHERE judgment_id = ANY($4)
+          AND block_hash IS NULL
+      `, [
+        blockHash,
+        blockNumber,
+        block.prev_hash,
+        judgmentIds,
+      ]);
+    }
+
+    return storedBlock;
   }
 
   /**
@@ -194,6 +217,69 @@ export class PoJBlockRepository {
    */
   async count() {
     const { rows } = await this.db.query('SELECT COUNT(*) FROM poj_blocks');
+    return parseInt(rows[0].count);
+  }
+
+  /**
+   * Re-link orphaned judgments to their blocks
+   * Run this to repair existing data where judgments have NULL block_hash
+   * @returns {Promise<Object>} Repair result
+   */
+  async relinkOrphanedJudgments() {
+    // Find all blocks with their judgment_ids
+    const { rows: blocks } = await this.db.query(`
+      SELECT block_number, block_hash, prev_hash, judgment_ids
+      FROM poj_blocks
+      WHERE judgment_ids IS NOT NULL
+        AND array_length(judgment_ids, 1) > 0
+      ORDER BY block_number ASC
+    `);
+
+    let totalLinked = 0;
+    const results = [];
+
+    for (const block of blocks) {
+      if (!block.judgment_ids || block.judgment_ids.length === 0) continue;
+
+      const { rowCount } = await this.db.query(`
+        UPDATE judgments
+        SET block_hash = $1,
+            block_number = $2,
+            prev_hash = COALESCE(prev_hash, $3)
+        WHERE judgment_id = ANY($4)
+          AND block_hash IS NULL
+      `, [
+        block.block_hash,
+        block.block_number,
+        block.prev_hash,
+        block.judgment_ids,
+      ]);
+
+      if (rowCount > 0) {
+        totalLinked += rowCount;
+        results.push({
+          blockNumber: parseInt(block.block_number),
+          blockHash: block.block_hash.slice(0, 16) + '...',
+          linked: rowCount,
+        });
+      }
+    }
+
+    return {
+      totalLinked,
+      blocksProcessed: blocks.length,
+      results,
+    };
+  }
+
+  /**
+   * Get count of unlinked judgments
+   * @returns {Promise<number>} Count of judgments with NULL block_hash
+   */
+  async countUnlinkedJudgments() {
+    const { rows } = await this.db.query(`
+      SELECT COUNT(*) FROM judgments WHERE block_hash IS NULL
+    `);
     return parseInt(rows[0].count);
   }
 
