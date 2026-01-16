@@ -85,9 +85,21 @@ export class Digester extends BaseAgent {
    * Trigger on conversation end or explicit digest request
    */
   shouldTrigger(event) {
-    return event.type === AgentTrigger.POST_CONVERSATION ||
-           event.type === 'conversation_end' ||
-           event.type === 'digest_request';
+    // DEBUG: Log comparison values
+    const eventType = event.type;
+    const expectedType = AgentTrigger.POST_CONVERSATION;
+    const matches = eventType === expectedType ||
+           eventType === 'conversation_end' ||
+           eventType === 'digest_request' ||
+           event.content !== undefined;  // Fallback: trigger if content is defined
+
+    // Log for debugging (this goes to Render logs on startup/first call)
+    if (this._shouldTriggerCallCount === undefined) {
+      this._shouldTriggerCallCount = 0;
+    }
+    this._shouldTriggerCallCount++;
+
+    return matches;
   }
 
   /**
