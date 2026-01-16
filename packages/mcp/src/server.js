@@ -781,16 +781,13 @@ export class MCPServer {
       timestamp: Date.now(),
     });
 
-    // 🐕 DIGESTER: Trigger SYNCHRONOUSLY on judgments/digests
-    const isDigestableTool = ['brain_cynic_judge', 'brain_cynic_digest'].includes(name);
-    if (isDigestableTool && result) {
-      await this.agents.process({
-        type: 'PostConversation',
-        content: typeof result === 'string' ? result : JSON.stringify(result),
-        tool: name,
-        timestamp: Date.now(),
-      });
-    }
+    // 🐕 DIGESTER: Trigger UNCONDITIONALLY for debugging
+    await this.agents.process({
+      type: 'PostConversation',
+      content: `Tool ${name} result: ${typeof result === 'string' ? result : JSON.stringify(result).slice(0, 200)}`,
+      tool: name,
+      timestamp: Date.now(),
+    });
 
     // Note: Judgment storage now handled inside createJudgeTool handler
     // for better access to full judgment data including dimensionScores
