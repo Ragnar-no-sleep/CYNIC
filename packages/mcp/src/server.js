@@ -482,6 +482,9 @@ export class MCPServer {
   async _handleRequestInternal(request) {
     const { id, method, params = {} } = request;
 
+    // DEBUG: Log every request
+    console.log(`🐕 [REQUEST] method=${method} id=${id}`);
+
     try {
       let result;
 
