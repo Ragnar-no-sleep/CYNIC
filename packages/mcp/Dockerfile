@@ -19,6 +19,7 @@ COPY packages/persistence/package.json ./packages/persistence/
 COPY packages/mcp/package.json ./packages/mcp/
 
 # Install production dependencies only
+# npm workspaces hoist all deps to root node_modules
 RUN npm ci --omit=dev --workspace=@cynic/mcp
 
 # ==============================================================================
@@ -31,12 +32,8 @@ RUN groupadd -r cynic && useradd -r -g cynic cynic
 
 WORKDIR /app
 
-# Copy dependencies from deps stage
+# Copy root node_modules (npm workspaces hoists all deps here)
 COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/packages/core/node_modules ./packages/core/node_modules 2>/dev/null || true
-COPY --from=deps /app/packages/node/node_modules ./packages/node/node_modules 2>/dev/null || true
-COPY --from=deps /app/packages/persistence/node_modules ./packages/persistence/node_modules 2>/dev/null || true
-COPY --from=deps /app/packages/mcp/node_modules ./packages/mcp/node_modules 2>/dev/null || true
 
 # Copy source code
 COPY package.json ./
