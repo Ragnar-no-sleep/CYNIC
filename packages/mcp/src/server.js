@@ -552,21 +552,8 @@ export class MCPServer {
       console.error(`🐕 Observer error: ${err.message}`);
     });
 
-    // Store judgment if it's a judge call
-    // PersistenceManager handles fallback automatically (PostgreSQL → File → Memory)
-    if (name === 'brain_cynic_judge' && this.persistence) {
-      try {
-        await this.persistence.storeJudgment({
-          ...result,
-          qScore: result.score,  // Map score -> qScore for repository
-          item: args.item,
-          context: args.context,
-        });
-      } catch (e) {
-        // Log but don't fail the request
-        console.error('Error storing judgment:', e.message);
-      }
-    }
+    // Note: Judgment storage now handled inside createJudgeTool handler
+    // for better access to full judgment data including dimensionScores
 
     return {
       content: [{

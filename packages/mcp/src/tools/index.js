@@ -15,9 +15,10 @@ import { PHI_INV, PHI_INV_2, IDENTITY, getVerdictFromScore } from '@cynic/core';
 /**
  * Create judge tool definition
  * @param {Object} judge - CYNICJudge instance
+ * @param {Object} [persistence] - PersistenceManager instance (for storing judgments)
  * @returns {Object} Tool definition
  */
-export function createJudgeTool(judge) {
+export function createJudgeTool(judge, persistence = null) {
   return {
     name: 'brain_cynic_judge',
     description: `Judge an item using CYNIC's 25-dimension evaluation across 4 axioms (PHI, VERIFY, CULTURE, BURN). Returns Q-Score (0-100), verdict (HOWL/WAG/GROWL/BARK), confidence (max ${(PHI_INV * 100).toFixed(1)}%), and dimension breakdown.`,
@@ -40,9 +41,10 @@ export function createJudgeTool(judge) {
       if (!item) throw new Error('Missing required parameter: item');
 
       const judgment = judge.judge(item, context);
+      const judgmentId = `jdg_${Date.now().toString(36)}`;
 
-      return {
-        requestId: `jdg_${Date.now().toString(36)}`,
+      const result = {
+        requestId: judgmentId,
         score: judgment.qScore,
         globalScore: judgment.global_score,
         verdict: judgment.qVerdict?.verdict || judgment.verdict,
@@ -53,6 +55,30 @@ export function createJudgeTool(judge) {
         phi: { maxConfidence: PHI_INV, minDoubt: PHI_INV_2 },
         timestamp: Date.now(),
       };
+
+      // Store judgment in persistence (PostgreSQL → File → Memory fallback)
+      if (persistence) {
+        try {
+          await persistence.storeJudgment({
+            item,
+            itemType: item.type || 'unknown',
+            itemContent: typeof item.content === 'string' ? item.content : JSON.stringify(item),
+            qScore: result.score,
+            globalScore: result.globalScore,
+            confidence: result.confidence,
+            verdict: result.verdict,
+            axiomScores: result.axiomScores,
+            dimensionScores: judgment.dimensionScores || null,
+            weaknesses: result.weaknesses,
+            context,
+          });
+        } catch (e) {
+          // Log but don't fail the judgment - persistence is best-effort
+          console.error('Error persisting judgment:', e.message);
+        }
+      }
+
+      return result;
     },
   };
 }
@@ -528,7 +554,7 @@ export function createAllTools(options = {}) {
 
   const tools = {};
   const toolDefs = [
-    createJudgeTool(judge),
+    createJudgeTool(judge, persistence),
     createDigestTool(persistence),
     createHealthTool(node, judge, persistence),
     createSearchTool(persistence),
