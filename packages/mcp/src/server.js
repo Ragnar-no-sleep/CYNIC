@@ -770,12 +770,8 @@ export class MCPServer {
     const result = await tool.handler(args);
     const duration = Date.now() - startTime;
 
-    // DEBUG: Verify this code path is reached
-    console.log(`🐕 [SYNC] Tool "${name}" completed in ${duration}ms, calling Observer...`);
-
-    // 🐕 Observer: PostToolUse - ACTIVELY detecting and persisting patterns
-    // Observer watches the meta - repeated failures, unusual sequences, emerging patterns
-    const observerPromise = this.agents.process({
+    // 🐕 Observer: PostToolUse - SYNCHRONOUS for debugging
+    const observerResult = await this.agents.process({
       type: 'PostToolUse',
       tool: name,
       input: args,
@@ -783,58 +779,18 @@ export class MCPServer {
       duration,
       success: true,
       timestamp: Date.now(),
-    }).then(async (observerResult) => {
-      // DEBUG: Callback entered
-      console.log(`🐕 [CALLBACK] Observer callback entered! Has observer: ${!!observerResult?.observer}, patterns: ${observerResult?.observer?.patterns?.length || 0}`);
-
-      // 🐕 OBSERVER IS AWAKE: Persist detected patterns
-      if (observerResult.observer?.patterns?.length > 0 && this.persistence?.patterns) {
-        for (const pattern of observerResult.observer.patterns) {
-          try {
-            await this.persistence.patterns.upsert({
-              category: pattern.type || 'tool_usage',
-              name: pattern.message?.slice(0, 100) || `${pattern.type}_pattern`,
-              description: pattern.message,
-              confidence: pattern.strength || 0.5,
-              data: {
-                tool: pattern.tool,
-                subtype: pattern.subtype,
-                count: pattern.count,
-                sequence: pattern.sequence,
-                detectedAt: Date.now(),
-              },
-              tags: [pattern.type, name].filter(Boolean),
-            });
-            console.error(`🐕 Observer persisted: ${pattern.type} (${(pattern.strength * 100).toFixed(0)}%)`);
-          } catch (err) {
-            console.error(`🐕 Observer persist error: ${err.message}`);
-          }
-        }
-      }
-
-      // 🐕 DIGESTER: Trigger on significant tool outputs (judgments, digests)
-      const isDigestableTool = ['brain_cynic_judge', 'brain_cynic_digest'].includes(name);
-      console.error(`🐕 Digester check: tool=${name}, isDigestable=${isDigestableTool}, hasResult=${!!result}`);
-      if (isDigestableTool && result) {
-        console.error(`🐕 Digester triggering PostConversation for ${name}`);
-        this.agents.process({
-          type: 'PostConversation',
-          content: typeof result === 'string' ? result : JSON.stringify(result),
-          tool: name,
-          timestamp: Date.now(),
-        }).then(digesterResult => {
-          console.error(`🐕 Digester response: hasDigester=${!!digesterResult.digester}, action=${digesterResult.digester?.action}`);
-          if (digesterResult.digester?.action) {
-            console.error(`🐕 Digester extracted: ${digesterResult.digester.message || 'knowledge'}`);
-          }
-        }).catch(err => {
-          console.error(`🐕 Digester error: ${err.message}`);
-        });
-      }
-    }).catch(err => {
-      // Observer is non-blocking - log but don't fail the request
-      console.error(`🐕 Observer error: ${err.message}`);
     });
+
+    // 🐕 DIGESTER: Trigger SYNCHRONOUSLY on judgments/digests
+    const isDigestableTool = ['brain_cynic_judge', 'brain_cynic_digest'].includes(name);
+    if (isDigestableTool && result) {
+      await this.agents.process({
+        type: 'PostConversation',
+        content: typeof result === 'string' ? result : JSON.stringify(result),
+        tool: name,
+        timestamp: Date.now(),
+      });
+    }
 
     // Note: Judgment storage now handled inside createJudgeTool handler
     // for better access to full judgment data including dimensionScores
