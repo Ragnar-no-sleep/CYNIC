@@ -39,3 +39,11 @@ service-account.json
 
 # CYNIC data (user profiles, collective memory)
 .cynic/
+
+# Runtime test data
+test-data/
+packages/persistence/test-data/
+packages/persistence/scripts/
+
+# Serena LSP cache
+.serena/
