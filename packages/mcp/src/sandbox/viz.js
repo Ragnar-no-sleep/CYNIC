@@ -1245,7 +1245,7 @@ const CYNICViz = {
       if (moduleName && this.codebase.currentLevel === 'packages') {
         // Navigate into the package first
         setTimeout(() => {
-          this.handleCodebaseNavigation(pkg);
+          this.navigateInto(pkg);
 
           // Then find the module after navigation completes
           setTimeout(() => {
