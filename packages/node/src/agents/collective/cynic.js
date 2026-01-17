@@ -31,6 +31,7 @@ import {
   AgentTrigger,
   AgentBehavior,
 } from '../base.js';
+import { SelfSkeptic, createSelfSkeptic } from '../../judge/self-skeptic.js';
 import {
   AgentEvent,
   AgentId,
@@ -763,6 +764,10 @@ export class CollectiveCynic extends BaseAgent {
       useSefirotSeed: options.useSefirotSeed !== false,
     });
 
+    // Self-Skeptic: "φ distrusts φ" - active meta-doubt mechanism
+    // CYNIC doubts even its own decisions
+    this.selfSkeptic = options.selfSkeptic || createSelfSkeptic();
+
     // Subscribe to events if bus available
     if (this.eventBus) {
       this._subscribeToCollective();
@@ -1388,20 +1393,61 @@ export class CollectiveCynic extends BaseAgent {
 
   /**
    * Make a final decision (after consensus or synthesis)
+   * Applies "φ distrusts φ" - even CYNIC's decisions are doubted
    * @param {Object} decisionContext - Context for decision
    * @returns {Object} Decision result
    */
   async makeDecision(decisionContext) {
     this.metaState = MetaState.DECIDING;
 
+    const rawConfidence = Math.min(PHI_INV, decisionContext.confidence || 0.5);
+
     const decision = {
       type: decisionContext.type || CynicDecisionType.SYNTHESIS,
       outcome: decisionContext.outcome,
       reasoning: decisionContext.reasoning || 'φ doute de φ.',
-      confidence: Math.min(PHI_INV, decisionContext.confidence || 0.5),
+      confidence: rawConfidence,
       basedOn: decisionContext.basedOn || [],
       consensusId: decisionContext.consensusId,
     };
+
+    // Apply "φ distrusts φ" - self-skepticism to our own decision
+    // Create a pseudo-judgment for the skeptic to analyze
+    const pseudoJudgment = {
+      id: `decision-${Date.now()}`,
+      qScore: rawConfidence * 100, // Convert to 0-100 scale
+      confidence: rawConfidence,
+      verdict: rawConfidence >= 0.5 ? 'WAG' : 'GROWL',
+      dimensions: {},
+      metadata: { judgedAt: Date.now() },
+      item: {
+        type: 'decision',
+        decisionType: decision.type,
+        outcome: decision.outcome,
+      },
+    };
+
+    const skepticism = this.selfSkeptic.doubt(pseudoJudgment, {
+      previousJudgments: this.decisions.slice(-10).map(d => ({
+        qScore: d.confidence * 100,
+      })),
+    });
+
+    // Update decision with skepticism-adjusted confidence
+    decision.confidence = skepticism.adjustedConfidence;
+    decision.skepticism = {
+      originalConfidence: rawConfidence,
+      adjustedConfidence: skepticism.adjustedConfidence,
+      doubts: skepticism.doubt.reasons,
+      biases: skepticism.biases,
+      counterHypotheses: skepticism.counterHypotheses,
+      recommendation: skepticism.recommendation,
+    };
+
+    // Update reasoning if skepticism found issues
+    if (skepticism.doubt.reasons.length > 0) {
+      decision.reasoning = `${decision.reasoning} (φ doute: ${skepticism.doubt.reasons.length} concern${skepticism.doubt.reasons.length > 1 ? 's' : ''})`;
+    }
 
     const decisionEvent = new CynicDecisionEvent(decision);
 
@@ -1586,6 +1632,8 @@ export class CollectiveCynic extends BaseAgent {
    * @returns {Object} Summary
    */
   getSummary() {
+    const skepticStats = this.selfSkeptic.getStats();
+
     return {
       name: 'CYNIC',
       sefirah: 'Keter',
@@ -1603,6 +1651,12 @@ export class CollectiveCynic extends BaseAgent {
         maxConfidence: CYNIC_CONSTANTS.MAX_CONFIDENCE,
         overrideThreshold: CYNIC_CONSTANTS.OVERRIDE_THRESHOLD,
       },
+      // Self-skepticism summary: "φ distrusts φ"
+      selfSkepticism: {
+        doubtsApplied: skepticStats.metaDoubtsApplied,
+        biasesDetected: skepticStats.biasesDetected,
+        recentBiases: skepticStats.recentBiases,
+      },
       // Relationship learning summary
       relationships: this.relationshipGraph.getSummary(),
     };
@@ -1611,6 +1665,37 @@ export class CollectiveCynic extends BaseAgent {
   // ═══════════════════════════════════════════════════════════════════════════
   // RELATIONSHIP LEARNING - Structure that emerges from observation
   // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Get self-doubt patterns - "φ distrusts φ" introspection
+   * CYNIC analyzes its own skepticism for meta-biases
+   * @returns {Object} Self-doubt patterns and meta-analysis
+   */
+  getSelfDoubtPatterns() {
+    const stats = this.selfSkeptic.getStats();
+    const patterns = this.selfSkeptic.getSelfDoubtPatterns();
+
+    return {
+      // Current skepticism statistics
+      stats: {
+        judgmentsDoubled: stats.judgmentsDoubled,
+        confidenceReductions: stats.confidenceReductions,
+        biasesDetected: stats.biasesDetected,
+        counterArgumentsGenerated: stats.counterArgumentsGenerated,
+        metaDoubtsApplied: stats.metaDoubtsApplied,
+      },
+      // Recent biases detected in our own thinking
+      recentBiases: stats.recentBiases,
+      // Meta-patterns: patterns in our skepticism itself
+      metaPatterns: patterns.patterns,
+      // The recursive truth: even this analysis is bounded by φ
+      phi: {
+        note: 'φ distrusts φ: even this self-analysis is bounded',
+        maxConfidence: CYNIC_CONSTANTS.MAX_CONFIDENCE,
+        minDoubt: 1 - CYNIC_CONSTANTS.MAX_CONFIDENCE,
+      },
+    };
+  }
 
   /**
    * Get learned relationships between agents
@@ -1795,6 +1880,9 @@ export class CollectiveCynic extends BaseAgent {
     if (!keepRelationships) {
       this.relationshipGraph = new RelationshipGraph({ useSefirotSeed: true });
     }
+
+    // Reset self-skeptic (but keep history for bias detection by default)
+    this.selfSkeptic.resetStats();
   }
 
   /**

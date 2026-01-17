@@ -45,6 +45,11 @@ export {
   ResidualDetector,
   JudgmentGraphIntegration,
   LearningService,
+  // Self-Skepticism: "φ distrusts φ"
+  SelfSkeptic,
+  createSelfSkeptic,
+  SKEPTIC_CONSTANTS,
+  BiasType,
 } from './judge/index.js';
 
 // State

@@ -51,11 +51,15 @@ export class CYNICJudge {
    * @param {Object} [options.customDimensions] - Custom dimensions to include
    * @param {Function} [options.scorer] - Custom scoring function
    * @param {import('./learning-service.js').LearningService} [options.learningService] - RLHF learning service
+   * @param {import('./self-skeptic.js').SelfSkeptic} [options.selfSkeptic] - φ distrusts φ skepticism service
+   * @param {boolean} [options.applySkepticism=true] - Whether to automatically apply skepticism to judgments
    */
   constructor(options = {}) {
     this.customDimensions = options.customDimensions || {};
     this.customScorer = options.scorer || null;
     this.learningService = options.learningService || null;
+    this.selfSkeptic = options.selfSkeptic || null;
+    this.applySkepticism = options.applySkepticism !== false; // Default true
 
     // Stats tracking
     this.stats = {
@@ -75,6 +79,15 @@ export class CYNICJudge {
    */
   setLearningService(learningService) {
     this.learningService = learningService;
+  }
+
+  /**
+   * Set self-skeptic service (for post-construction injection)
+   * "φ distrusts φ" - active self-doubt mechanism
+   * @param {import('./self-skeptic.js').SelfSkeptic} selfSkeptic
+   */
+  setSelfSkeptic(selfSkeptic) {
+    this.selfSkeptic = selfSkeptic;
   }
 
   /**
@@ -134,6 +147,26 @@ export class CYNICJudge {
     // Check for anomalies
     if (isAnomalous(judgment)) {
       this._recordAnomaly(judgment, item);
+    }
+
+    // Apply self-skepticism: "φ distrusts φ"
+    // Active doubt mechanism that questions the judgment
+    if (this.selfSkeptic && this.applySkepticism) {
+      const skepticism = this.selfSkeptic.doubt(judgment, context);
+
+      // Enhance judgment with skepticism metadata
+      judgment.skepticism = {
+        originalConfidence: judgment.confidence,
+        adjustedConfidence: skepticism.adjustedConfidence,
+        doubt: skepticism.doubt,
+        biases: skepticism.biases,
+        counterHypotheses: skepticism.counterHypotheses,
+        recommendation: skepticism.recommendation,
+        meta: skepticism.meta,
+      };
+
+      // Update confidence to the skepticism-adjusted value
+      judgment.confidence = skepticism.adjustedConfidence;
     }
 
     // Update stats
@@ -528,6 +561,35 @@ export class CYNICJudge {
     const n = this.stats.totalJudgments;
     this.stats.avgScore =
       (this.stats.avgScore * (n - 1) + judgment.global_score) / n;
+  }
+
+  /**
+   * Judge an item without applying automatic skepticism
+   * Useful when you want to analyze skepticism separately
+   * @param {Object} item - Item to judge
+   * @param {Object} [context] - Judgment context
+   * @returns {Object} Judgment result (without skepticism applied)
+   */
+  judgeRaw(item, context = {}) {
+    const originalSetting = this.applySkepticism;
+    this.applySkepticism = false;
+    const judgment = this.judge(item, context);
+    this.applySkepticism = originalSetting;
+    return judgment;
+  }
+
+  /**
+   * Analyze skepticism for an existing judgment
+   * "φ distrusts φ" - explicit doubt analysis
+   * @param {Object} judgment - Previously created judgment
+   * @param {Object} [context] - Additional context
+   * @returns {Object|null} Skepticism analysis or null if no skeptic
+   */
+  analyzeSkepticism(judgment, context = {}) {
+    if (!this.selfSkeptic) {
+      return null;
+    }
+    return this.selfSkeptic.doubt(judgment, context);
   }
 
   /**
