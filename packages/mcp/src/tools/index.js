@@ -11,6 +11,7 @@
 'use strict';
 
 import { PHI_INV, PHI_INV_2, IDENTITY, getVerdictFromScore } from '@cynic/core';
+import { createMetaTool } from '../meta-dashboard.js';
 
 /**
  * Create judge tool definition
@@ -1731,6 +1732,7 @@ export function createAllTools(options = {}) {
     createPoJChainTool(pojChainManager, persistence),
     createIntegratorTool(integrator),
     createMetricsTool(metrics),
+    createMetaTool(), // CYNIC self-analysis dashboard
   ];
 
   for (const tool of toolDefs) {
@@ -1739,6 +1741,9 @@ export function createAllTools(options = {}) {
 
   return tools;
 }
+
+// Re-export meta tool
+export { createMetaTool } from '../meta-dashboard.js';
 
 export default {
   createJudgeTool,
@@ -1755,5 +1760,6 @@ export default {
   createPoJChainTool,
   createIntegratorTool,
   createMetricsTool,
+  createMetaTool,
   createAllTools,
 };
