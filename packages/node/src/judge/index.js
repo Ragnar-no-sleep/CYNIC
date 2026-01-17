@@ -9,3 +9,4 @@
 export * from './dimensions.js';
 export * from './judge.js';
 export * from './residual.js';
+export * from './graph-integration.js';

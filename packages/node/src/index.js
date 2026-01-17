@@ -43,6 +43,7 @@ export {
   getDimension,
   dimensionRegistry,
   ResidualDetector,
+  JudgmentGraphIntegration,
 } from './judge/index.js';
 
 // State

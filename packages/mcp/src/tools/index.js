@@ -20,9 +20,10 @@ import { createCodeAnalyzer } from '../code-analyzer.js';
  * @param {Object} [persistence] - PersistenceManager instance (for storing judgments)
  * @param {Object} [sessionManager] - SessionManager instance (for user/session context)
  * @param {Object} [pojChainManager] - PoJChainManager instance (for blockchain)
+ * @param {Object} [graphIntegration] - JudgmentGraphIntegration instance (for graph edges)
  * @returns {Object} Tool definition
  */
-export function createJudgeTool(judge, persistence = null, sessionManager = null, pojChainManager = null) {
+export function createJudgeTool(judge, persistence = null, sessionManager = null, pojChainManager = null, graphIntegration = null) {
   return {
     name: 'brain_cynic_judge',
     description: `Judge an item using CYNIC's 25-dimension evaluation across 4 axioms (PHI, VERIFY, CULTURE, BURN). Returns Q-Score (0-100), verdict (HOWL/WAG/GROWL/BARK), confidence (max ${(PHI_INV * 100).toFixed(1)}%), and dimension breakdown.`,
@@ -44,7 +45,10 @@ export function createJudgeTool(judge, persistence = null, sessionManager = null
       const { item, context = {} } = params;
       if (!item) throw new Error('Missing required parameter: item');
 
-      const judgment = judge.judge(item, context);
+      // Use graph integration if available, otherwise direct judge
+      const judgment = graphIntegration
+        ? await graphIntegration.judgeWithGraph(item, context)
+        : judge.judge(item, context);
 
       // Generate fallback ID (used if persistence unavailable)
       let judgmentId = `jdg_${Date.now().toString(36)}`;
@@ -110,6 +114,11 @@ export function createJudgeTool(judge, persistence = null, sessionManager = null
         phi: { maxConfidence: PHI_INV, minDoubt: PHI_INV_2 },
         timestamp: Date.now(),
       };
+
+      // Include graph edge info if available
+      if (judgment.graphEdge) {
+        result.graphEdge = judgment.graphEdge;
+      }
 
       return result;
     },
@@ -1959,6 +1968,7 @@ export function createCodebaseTool(options = {}) {
  * @param {Object} [options.ecosystem] - EcosystemService instance for pre-loaded docs
  * @param {Object} [options.integrator] - IntegratorService instance for cross-project sync
  * @param {Object} [options.metrics] - MetricsService instance for monitoring
+ * @param {Object} [options.graphIntegration] - JudgmentGraphIntegration instance for graph edges
  * @param {Object} [options.codebaseOptions] - Options for code analyzer (rootPath, etc)
  * @returns {Object} All tools keyed by name
  */
@@ -1975,6 +1985,7 @@ export function createAllTools(options = {}) {
     ecosystem = null,
     integrator = null,
     metrics = null,
+    graphIntegration = null, // JudgmentGraphIntegration for graph edges
     codebaseOptions = {},
   } = options;
 
@@ -1982,7 +1993,7 @@ export function createAllTools(options = {}) {
 
   const tools = {};
   const toolDefs = [
-    createJudgeTool(judge, persistence, sessionManager, pojChainManager),
+    createJudgeTool(judge, persistence, sessionManager, pojChainManager, graphIntegration),
     createDigestTool(persistence, sessionManager),
     createHealthTool(node, judge, persistence),
     createSearchTool(persistence),

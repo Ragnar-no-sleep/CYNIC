@@ -115,6 +115,12 @@ export class MCPServer {
     // Metrics service for monitoring
     this.metrics = options.metrics || null;
 
+    // Graph overlay for relationship tracking
+    this.graph = options.graph || null;
+
+    // Judgment-Graph integration (connects judge to graph)
+    this.graphIntegration = options.graphIntegration || null;
+
     // Agent manager - Legacy Four Dogs (Guardian, Observer, Digester, Mentor)
     // Kept for backwards compatibility
     this._legacyAgents = options.agents || new AgentManager();
@@ -237,6 +243,29 @@ export class MCPServer {
       console.error(`   Auth: ${authStatus} (${this.auth.apiKeys.size} keys configured)`);
     }
 
+    // Initialize Graph overlay for relationship tracking
+    if (!this.graph) {
+      const { GraphOverlay } = await import('@cynic/persistence/graph');
+      this.graph = new GraphOverlay({
+        basePath: this.dataDir ? `${this.dataDir}/graph` : './data/graph',
+      });
+      await this.graph.init();
+      console.error('   Graph: ready');
+    }
+
+    // Initialize Judgment-Graph integration (connects judge to graph)
+    if (!this.graphIntegration && this.graph) {
+      const { JudgmentGraphIntegration } = await import('@cynic/node');
+      this.graphIntegration = new JudgmentGraphIntegration({
+        judge: this.judge,
+        graph: this.graph,
+        enrichContext: true,
+        contextDepth: 2,
+      });
+      await this.graphIntegration.init();
+      console.error('   GraphIntegration: ready');
+    }
+
     // Initialize Collective Pack - The Five Dogs + CYNIC (Keter)
     // This is the new harmonious collective consciousness
     if (!this.collective) {
@@ -276,6 +305,7 @@ export class MCPServer {
       ecosystem: this.ecosystem,
       integrator: this.integrator,
       metrics: this.metrics,
+      graphIntegration: this.graphIntegration, // Graph-Judgment connection
     });
   }
 
