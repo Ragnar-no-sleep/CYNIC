@@ -56,6 +56,7 @@ import { CollectiveSage, WisdomType } from './sage.js';
 
 // Import additional dogs (completing the Sefirot tree)
 import { CollectiveJanitor, JANITOR_CONSTANTS, QualitySeverity, IssueType } from './janitor.js';
+import { CollectiveScout, SCOUT_CONSTANTS, DiscoveryType, OpportunityType } from './scout.js';
 
 // Import CYNIC - The Hidden Sixth Dog (Keter)
 import {
@@ -76,6 +77,7 @@ export {
   CollectiveCynic,
   // Additional dogs
   CollectiveJanitor,
+  CollectiveScout,
 };
 
 // Re-export types
@@ -97,6 +99,10 @@ export {
   JANITOR_CONSTANTS,
   QualitySeverity,
   IssueType,
+  // Scout types
+  SCOUT_CONSTANTS,
+  DiscoveryType,
+  OpportunityType,
 };
 
 /**
@@ -110,8 +116,8 @@ export const COLLECTIVE_CONSTANTS = {
   /** Number of original dogs (Fib(5) = 5) */
   DOG_COUNT: 5,
 
-  /** Total agents including CYNIC + Janitor (5 + 2 = 7) */
-  AGENT_COUNT: 7,
+  /** Total agents including CYNIC + Janitor + Scout (5 + 3 = 8) */
+  AGENT_COUNT: 8,
 
   /** Max collective confidence (φ⁻¹) */
   MAX_CONFIDENCE: PHI_INV,
@@ -154,6 +160,7 @@ export class CollectivePack {
     this.eventBus.registerAgent(AgentId.SAGE);
     this.eventBus.registerAgent(AgentId.CYNIC); // The Hidden Dog (Keter)
     this.eventBus.registerAgent(AgentId.JANITOR); // Foundation (Yesod)
+    this.eventBus.registerAgent(AgentId.SCOUT); // Victory (Netzach)
     this.eventBus.registerAgent('collective'); // For pack-level subscriptions
 
     // Create agents with shared infrastructure
@@ -208,7 +215,13 @@ export class CollectivePack {
       profileLevel: this.profileLevel,
     });
 
-    // Agent map for lookup (5 original Dogs + CYNIC + Janitor)
+    // Scout - Victory (Netzach) - Discovery & exploration
+    this.scout = new CollectiveScout({
+      eventBus: this.eventBus,
+      profileLevel: this.profileLevel,
+    });
+
+    // Agent map for lookup (5 original Dogs + CYNIC + Janitor + Scout)
     this.agents = new Map([
       [AgentId.GUARDIAN, this.guardian],
       [AgentId.ANALYST, this.analyst],
@@ -217,6 +230,7 @@ export class CollectivePack {
       [AgentId.SAGE, this.sage],
       [AgentId.CYNIC, this.cynic], // Keter - The Crown
       [AgentId.JANITOR, this.janitor], // Yesod - Foundation
+      [AgentId.SCOUT, this.scout], // Netzach - Victory
     ]);
 
     // Stats
@@ -258,6 +272,7 @@ export class CollectivePack {
     this.sage.setProfileLevel(newLevel);
     this.cynic.setProfileLevel(newLevel);
     this.janitor.profileLevel = newLevel; // Janitor uses direct property
+    this.scout.setProfileLevel(newLevel);
 
     this.collectiveStats.profileUpdates++;
   }
@@ -380,6 +395,7 @@ export class CollectivePack {
         cynic: this.cynic.getSummary(),
         // Additional Dogs
         janitor: this.janitor.getSummary(),
+        scout: this.scout.getSummary(),
       },
       collectiveState: this.cynic.getCollectiveState(),
       collectiveStats: this.collectiveStats,
@@ -439,6 +455,8 @@ export class CollectivePack {
     this.architect.clear();
     this.sage.clear();
     this.cynic.clear();
+    this.janitor.clear();
+    this.scout.clear();
     this.eventBus.reset();
   }
 
@@ -491,6 +509,10 @@ export function createJanitor(options = {}) {
   return new CollectiveJanitor(options);
 }
 
+export function createScout(options = {}) {
+  return new CollectiveScout(options);
+}
+
 export default {
   CollectivePack,
   createCollectivePack,
@@ -504,6 +526,7 @@ export default {
   CollectiveCynic,
   // Additional Dogs (Sefirot)
   CollectiveJanitor,
+  CollectiveScout,
   // Factory functions
   createGuardian,
   createAnalyst,
@@ -512,6 +535,7 @@ export default {
   createSage,
   createCynic,
   createJanitor,
+  createScout,
   // Constants
   COLLECTIVE_CONSTANTS,
   // Types
@@ -532,4 +556,8 @@ export default {
   JANITOR_CONSTANTS,
   QualitySeverity,
   IssueType,
+  // Scout types
+  SCOUT_CONSTANTS,
+  DiscoveryType,
+  OpportunityType,
 };

@@ -92,6 +92,7 @@ export {
   CollectiveCynic,
   // Additional Dogs (Sefirot)
   CollectiveJanitor,
+  CollectiveScout,
   // Factory functions
   createGuardian,
   createAnalyst,
@@ -100,6 +101,7 @@ export {
   createSage,
   createCynic,
   createJanitor,
+  createScout,
   // Constants
   COLLECTIVE_CONSTANTS,
   // Types
@@ -120,6 +122,10 @@ export {
   JANITOR_CONSTANTS,
   QualitySeverity,
   IssueType,
+  // Scout types
+  SCOUT_CONSTANTS,
+  DiscoveryType,
+  OpportunityType,
 } from './collective/index.js';
 
 // Convenience imports for default exports
@@ -139,6 +145,7 @@ import {
   CollectiveSage,
   CollectiveCynic,
   CollectiveJanitor,
+  CollectiveScout,
 } from './collective/index.js';
 
 /**
@@ -345,4 +352,5 @@ export default {
   CollectiveSage,
   CollectiveCynic, // The Hidden Dog (Keter)
   CollectiveJanitor, // Foundation (Yesod)
+  CollectiveScout, // Victory (Netzach)
 };
