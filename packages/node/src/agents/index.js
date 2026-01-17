@@ -93,6 +93,7 @@ export {
   // Additional Dogs (Sefirot)
   CollectiveJanitor,
   CollectiveScout,
+  CollectiveCartographer,
   // Factory functions
   createGuardian,
   createAnalyst,
@@ -102,6 +103,7 @@ export {
   createCynic,
   createJanitor,
   createScout,
+  createCartographer,
   // Constants
   COLLECTIVE_CONSTANTS,
   // Types
@@ -126,6 +128,11 @@ export {
   SCOUT_CONSTANTS,
   DiscoveryType,
   OpportunityType,
+  // Cartographer types
+  CARTOGRAPHER_CONSTANTS,
+  RepoType,
+  ConnectionType,
+  MapIssueType,
 } from './collective/index.js';
 
 // Convenience imports for default exports
@@ -146,6 +153,7 @@ import {
   CollectiveCynic,
   CollectiveJanitor,
   CollectiveScout,
+  CollectiveCartographer,
 } from './collective/index.js';
 
 /**
@@ -353,4 +361,5 @@ export default {
   CollectiveCynic, // The Hidden Dog (Keter)
   CollectiveJanitor, // Foundation (Yesod)
   CollectiveScout, // Victory (Netzach)
+  CollectiveCartographer, // Kingdom (Malkhut)
 };
