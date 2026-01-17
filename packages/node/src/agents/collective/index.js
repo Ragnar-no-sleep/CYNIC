@@ -184,6 +184,7 @@ export class CollectivePack {
     this.eventBus.registerAgent(AgentId.SCOUT); // Victory (Netzach)
     this.eventBus.registerAgent(AgentId.CARTOGRAPHER); // Kingdom (Malkhut)
     this.eventBus.registerAgent(AgentId.ORACLE); // Beauty (Tiferet)
+    this.eventBus.registerAgent(AgentId.DEPLOYER); // Splendor (Hod)
     this.eventBus.registerAgent('collective'); // For pack-level subscriptions
 
     // Create agents with shared infrastructure

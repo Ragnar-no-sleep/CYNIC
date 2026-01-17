@@ -22,6 +22,7 @@
 import { PHI, PHI_INV, PHI_INV_2 } from '@cynic/core';
 import { BaseAgent, AgentTrigger, AgentBehavior, AgentResponse } from '../base.js';
 import {
+  AgentEvent,
   AgentId,
   DeployStartedEvent,
   DeployCompletedEvent,
@@ -152,6 +153,188 @@ export class CollectiveDeployer extends BaseAgent {
 
     // Service configs
     this.serviceConfigs = options.serviceConfigs || new Map();
+
+    // Blocked by threat flag
+    this._blockedByThreat = false;
+    this._pendingMapUpdate = null;
+
+    // Subscribe to collective events
+    if (this.eventBus) {
+      this._subscribeToEvents();
+    }
+  }
+
+  /**
+   * Subscribe to relevant collective events
+   * @private
+   */
+  _subscribeToEvents() {
+    // React to map updates - know when dependencies change
+    this.eventBus.subscribe(
+      AgentEvent.MAP_UPDATED,
+      AgentId.DEPLOYER,
+      this._handleMapUpdated.bind(this)
+    );
+
+    // React to threats - halt deployment if danger
+    this.eventBus.subscribe(
+      AgentEvent.THREAT_BLOCKED,
+      AgentId.DEPLOYER,
+      this._handleThreatBlocked.bind(this)
+    );
+
+    // React to quality reports - check before deploy
+    this.eventBus.subscribe(
+      AgentEvent.QUALITY_REPORT,
+      AgentId.DEPLOYER,
+      this._handleQualityReport.bind(this)
+    );
+
+    // React to consensus responses for deploy decisions
+    this.eventBus.subscribe(
+      AgentEvent.CONSENSUS_RESPONSE,
+      AgentId.DEPLOYER,
+      this._handleConsensusResponse.bind(this)
+    );
+  }
+
+  /**
+   * Handle map update - dependency changes may affect deployments
+   * @private
+   */
+  _handleMapUpdated(event) {
+    const { connections, drifts } = event.data || {};
+
+    // Store pending map update for next deploy check
+    this._pendingMapUpdate = {
+      connections: connections || [],
+      drifts: drifts || [],
+      timestamp: Date.now(),
+    };
+
+    // If there are reality drifts, flag potential issues
+    if (drifts && drifts.length > 0) {
+      this._lastDriftWarning = {
+        count: drifts.length,
+        timestamp: Date.now(),
+      };
+    }
+  }
+
+  /**
+   * Handle threat blocked - halt deployments if security issue
+   * @private
+   */
+  _handleThreatBlocked(event) {
+    const { risk, category, command } = event.data || {};
+
+    // Block all deployments if critical threat
+    if (risk === 'CRITICAL' || risk === 'critical') {
+      this._blockedByThreat = true;
+      this._threatBlockReason = {
+        category,
+        command: command?.substring(0, 50),
+        timestamp: Date.now(),
+      };
+
+      // Cancel current deployment if in progress
+      if (this.currentDeploy && this.currentDeploy.state === DeploymentState.DEPLOYING) {
+        this._cancelDeployment(this.currentDeploy.id, 'Blocked by security threat');
+      }
+    }
+  }
+
+  /**
+   * Handle quality report - verify code quality before deploy
+   * @private
+   */
+  _handleQualityReport(event) {
+    const { issues, severity, score } = event.data || {};
+
+    // Store latest quality assessment
+    this._lastQualityReport = {
+      issues: issues || [],
+      severity,
+      score: score || 0,
+      timestamp: Date.now(),
+    };
+
+    // Block deploy if quality is too low (below φ⁻²)
+    if (score !== undefined && score < DEPLOYER_CONSTANTS.DEPLOY_CONFIDENCE_THRESHOLD) {
+      this._qualityBlockActive = true;
+    } else {
+      this._qualityBlockActive = false;
+    }
+  }
+
+  /**
+   * Handle consensus response - collective decision on deploy
+   * @private
+   */
+  _handleConsensusResponse(event) {
+    const { topic, vote, confidence } = event.data || {};
+
+    // Only care about deploy-related consensus
+    if (topic && topic.includes('deploy')) {
+      this._lastConsensusResponse = {
+        topic,
+        vote,
+        confidence,
+        timestamp: Date.now(),
+      };
+    }
+  }
+
+  /**
+   * Cancel a deployment in progress
+   * @private
+   */
+  _cancelDeployment(deployId, reason) {
+    const deployment = this.deployments.find(d => d.id === deployId);
+    if (deployment) {
+      deployment.state = DeploymentState.CANCELLED;
+      deployment.cancelReason = reason;
+      deployment.cancelledAt = Date.now();
+    }
+
+    if (this.currentDeploy && this.currentDeploy.id === deployId) {
+      this.currentDeploy = null;
+      this.concurrentDeploys = Math.max(0, this.concurrentDeploys - 1);
+    }
+  }
+
+  /**
+   * Check if deployment is allowed based on collective state
+   * @returns {Object} { allowed: boolean, reason?: string }
+   */
+  _checkDeploymentAllowed() {
+    // Check threat block
+    if (this._blockedByThreat) {
+      return {
+        allowed: false,
+        reason: `Blocked by security threat: ${this._threatBlockReason?.category}`,
+      };
+    }
+
+    // Check quality block
+    if (this._qualityBlockActive) {
+      return {
+        allowed: false,
+        reason: `Code quality below threshold (${this._lastQualityReport?.score?.toFixed(2)} < ${DEPLOYER_CONSTANTS.DEPLOY_CONFIDENCE_THRESHOLD})`,
+      };
+    }
+
+    // Check for reality drifts
+    if (this._lastDriftWarning && Date.now() - this._lastDriftWarning.timestamp < 60000) {
+      if (this._lastDriftWarning.count > 3) {
+        return {
+          allowed: false,
+          reason: `${this._lastDriftWarning.count} reality drifts detected - sync required`,
+        };
+      }
+    }
+
+    return { allowed: true };
   }
 
   /**
@@ -272,6 +455,18 @@ export class CollectiveDeployer extends BaseAgent {
         success: false,
         reason: `Max concurrent deploys (${this.settings.maxConcurrent}) reached`,
         blocked: true,
+        response: AgentResponse.BLOCK,
+      };
+    }
+
+    // Check collective state (threats, quality, drifts)
+    const collectiveCheck = this._checkDeploymentAllowed();
+    if (!collectiveCheck.allowed) {
+      return {
+        success: false,
+        reason: collectiveCheck.reason,
+        blocked: true,
+        collectiveBlock: true,
         response: AgentResponse.BLOCK,
       };
     }

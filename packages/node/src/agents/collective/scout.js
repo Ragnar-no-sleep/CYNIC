@@ -81,6 +81,8 @@ export const OpportunityType = {
   PERFORMANCE: 'performance',
   SECURITY: 'security',
   MAINTENANCE: 'maintenance',
+  FEATURE: 'feature',
+  DEPENDENCY: 'dependency',
 };
 
 /**
@@ -809,9 +811,12 @@ export class CollectiveScout extends BaseAgent {
   }
 
   /**
-   * Monitor GitHub activity (stub for future implementation)
+   * Monitor GitHub activity for discoveries
    * @param {Object} options - Monitor options
-   * @returns {Promise<Object>} Activity result
+   * @param {string} options.owner - Repository owner
+   * @param {string} options.repo - Repository name
+   * @param {Date|string} [options.since] - Only activity after this date
+   * @returns {Promise<Object>} Activity result with discoveries
    */
   async monitorGitHub(options = {}) {
     if (!this.githubClient) {
@@ -822,17 +827,240 @@ export class CollectiveScout extends BaseAgent {
     }
 
     const { owner, repo, since } = options;
+    if (!owner || !repo) {
+      return {
+        success: false,
+        error: 'Owner and repo are required',
+      };
+    }
 
-    // Placeholder for GitHub monitoring
-    return {
-      activity: {
-        commits: [],
-        prs: [],
-        issues: [],
-      },
-      discoveries: [],
-      timestamp: Date.now(),
+    const sinceDate = since ? new Date(since) : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000); // Default: last 7 days
+    const discoveries = [];
+    const activity = {
+      commits: [],
+      prs: [],
+      issues: [],
     };
+
+    try {
+      // Fetch recent commits
+      if (this.githubClient.listCommits) {
+        const commits = await this.githubClient.listCommits({ owner, repo, since: sinceDate.toISOString() });
+        activity.commits = commits || [];
+
+        // Analyze commits for patterns
+        for (const commit of activity.commits) {
+          const commitDiscoveries = this._analyzeCommit(commit, owner, repo);
+          discoveries.push(...commitDiscoveries);
+        }
+      }
+
+      // Fetch open PRs
+      if (this.githubClient.listPullRequests) {
+        const prs = await this.githubClient.listPullRequests({ owner, repo, state: 'open' });
+        activity.prs = prs || [];
+
+        // Analyze PRs for opportunities
+        for (const pr of activity.prs) {
+          const prDiscoveries = this._analyzePR(pr, owner, repo);
+          discoveries.push(...prDiscoveries);
+        }
+      }
+
+      // Fetch recent issues
+      if (this.githubClient.listIssues) {
+        const issues = await this.githubClient.listIssues({ owner, repo, state: 'open', since: sinceDate.toISOString() });
+        activity.issues = issues || [];
+
+        // Analyze issues for opportunities
+        for (const issue of activity.issues) {
+          const issueDiscoveries = this._analyzeIssue(issue, owner, repo);
+          discoveries.push(...issueDiscoveries);
+        }
+      }
+
+      // Store discoveries
+      for (const discovery of discoveries) {
+        this.discoveries.set(discovery.id, discovery);
+        this.stats.totalDiscoveries++;
+
+        // Emit discovery event
+        if (this.eventBus) {
+          await this._emitDiscovery(discovery);
+        }
+      }
+
+      return {
+        success: true,
+        activity,
+        discoveries,
+        timestamp: Date.now(),
+        stats: {
+          commits: activity.commits.length,
+          prs: activity.prs.length,
+          issues: activity.issues.length,
+          discoveries: discoveries.length,
+        },
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message,
+        activity,
+        discoveries,
+        timestamp: Date.now(),
+      };
+    }
+  }
+
+  /**
+   * Analyze a commit for discoveries
+   * @private
+   */
+  _analyzeCommit(commit, owner, repo) {
+    const discoveries = [];
+    const message = commit.message || commit.commit?.message || '';
+    const sha = commit.sha || commit.id || '';
+
+    // Detect security-related commits
+    if (/security|fix.*vuln|patch.*cve|upgrade.*dep/i.test(message)) {
+      discoveries.push({
+        id: `gh_commit_security_${sha.substring(0, 8)}`,
+        type: DiscoveryType.VULNERABILITY,
+        source: 'github',
+        path: `${owner}/${repo}`,
+        name: 'Security-related commit detected',
+        description: message.substring(0, 200),
+        confidence: PHI_INV_2,
+        metadata: { sha, owner, repo, type: 'commit' },
+        timestamp: Date.now(),
+      });
+    }
+
+    // Detect breaking changes
+    if (/breaking|major|deprecated/i.test(message)) {
+      discoveries.push({
+        id: `gh_commit_breaking_${sha.substring(0, 8)}`,
+        type: DiscoveryType.OPPORTUNITY,
+        subtype: OpportunityType.MAINTENANCE,
+        source: 'github',
+        path: `${owner}/${repo}`,
+        name: 'Breaking change detected',
+        description: message.substring(0, 200),
+        confidence: PHI_INV_2,
+        metadata: { sha, owner, repo, type: 'commit' },
+        timestamp: Date.now(),
+      });
+    }
+
+    return discoveries;
+  }
+
+  /**
+   * Analyze a PR for discoveries
+   * @private
+   */
+  _analyzePR(pr, owner, repo) {
+    const discoveries = [];
+    const title = pr.title || '';
+    const body = pr.body || '';
+    const number = pr.number;
+
+    // Detect dependency updates (Dependabot, Renovate, etc.)
+    if (/dependabot|renovate|bump|upgrade/i.test(title)) {
+      discoveries.push({
+        id: `gh_pr_deps_${owner}_${repo}_${number}`,
+        type: DiscoveryType.OPPORTUNITY,
+        subtype: OpportunityType.DEPENDENCY,
+        source: 'github',
+        path: `${owner}/${repo}#${number}`,
+        name: 'Dependency update PR',
+        description: title,
+        confidence: PHI_INV,
+        metadata: { number, owner, repo, type: 'pr', url: pr.html_url },
+        timestamp: Date.now(),
+      });
+    }
+
+    // Detect large PRs (potential review needed)
+    if (pr.additions > 500 || pr.changed_files > 20) {
+      discoveries.push({
+        id: `gh_pr_large_${owner}_${repo}_${number}`,
+        type: DiscoveryType.OPPORTUNITY,
+        subtype: OpportunityType.MAINTENANCE,
+        source: 'github',
+        path: `${owner}/${repo}#${number}`,
+        name: 'Large PR needs attention',
+        description: `${pr.additions} additions, ${pr.changed_files} files changed`,
+        confidence: PHI_INV_2,
+        metadata: { number, owner, repo, type: 'pr', additions: pr.additions, files: pr.changed_files },
+        timestamp: Date.now(),
+      });
+    }
+
+    return discoveries;
+  }
+
+  /**
+   * Analyze an issue for discoveries
+   * @private
+   */
+  _analyzeIssue(issue, owner, repo) {
+    const discoveries = [];
+    const title = issue.title || '';
+    const labels = (issue.labels || []).map(l => l.name || l);
+    const number = issue.number;
+
+    // Detect security issues
+    if (labels.some(l => /security|vulnerability|cve/i.test(l)) || /security|vuln/i.test(title)) {
+      discoveries.push({
+        id: `gh_issue_security_${owner}_${repo}_${number}`,
+        type: DiscoveryType.VULNERABILITY,
+        source: 'github',
+        path: `${owner}/${repo}#${number}`,
+        name: 'Security issue reported',
+        description: title,
+        confidence: PHI_INV,
+        metadata: { number, owner, repo, type: 'issue', labels },
+        timestamp: Date.now(),
+      });
+      this.stats.vulnerabilitiesFound++;
+    }
+
+    // Detect bug reports
+    if (labels.some(l => /bug|defect|error/i.test(l))) {
+      discoveries.push({
+        id: `gh_issue_bug_${owner}_${repo}_${number}`,
+        type: DiscoveryType.OPPORTUNITY,
+        subtype: OpportunityType.MAINTENANCE,
+        source: 'github',
+        path: `${owner}/${repo}#${number}`,
+        name: 'Bug report',
+        description: title,
+        confidence: PHI_INV_2,
+        metadata: { number, owner, repo, type: 'issue', labels },
+        timestamp: Date.now(),
+      });
+    }
+
+    // Detect feature requests
+    if (labels.some(l => /enhancement|feature|request/i.test(l))) {
+      discoveries.push({
+        id: `gh_issue_feature_${owner}_${repo}_${number}`,
+        type: DiscoveryType.OPPORTUNITY,
+        subtype: OpportunityType.FEATURE,
+        source: 'github',
+        path: `${owner}/${repo}#${number}`,
+        name: 'Feature request',
+        description: title,
+        confidence: PHI_INV_2,
+        metadata: { number, owner, repo, type: 'issue', labels },
+        timestamp: Date.now(),
+      });
+      this.stats.opportunitiesFound++;
+    }
+
+    return discoveries;
   }
 
   /**

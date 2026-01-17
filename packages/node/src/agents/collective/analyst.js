@@ -41,6 +41,8 @@ import {
   PatternDetectedEvent,
   AnomalyDetectedEvent,
   ProfileUpdatedEvent,
+  ConsensusRequestEvent,
+  ThreatBlockedEvent,
 } from '../events.js';
 import {
   OrganicSignals,
@@ -146,6 +148,118 @@ export class CollectiveAnalyst extends BaseAgent {
 
     // Code analysis cache
     this.codeAnalysisCache = new Map();
+
+    // Subscribe to collective events
+    if (this.eventBus) {
+      this._subscribeToEvents();
+    }
+  }
+
+  /**
+   * Subscribe to relevant collective events
+   * @private
+   */
+  _subscribeToEvents() {
+    // Learn from consensus requests to add behavioral context
+    this.eventBus.subscribe(
+      AgentEvent.CONSENSUS_REQUEST,
+      AgentId.ANALYST,
+      this._handleConsensusRequest.bind(this)
+    );
+
+    // Learn from threats to detect patterns
+    this.eventBus.subscribe(
+      AgentEvent.THREAT_BLOCKED,
+      AgentId.ANALYST,
+      this._handleThreatBlocked.bind(this)
+    );
+  }
+
+  /**
+   * Handle consensus request - add behavioral analysis
+   * @private
+   */
+  _handleConsensusRequest(event) {
+    const { topic, requestedBy } = event.data || {};
+
+    // Add behavioral context to consensus decision
+    const behavioralContext = {
+      recentPatterns: this.patternHistory.slice(-5),
+      currentProfile: this.profileCalculator.getProfile(),
+      errorRate: this.errorRate,
+      toolUsagePattern: this._getToolUsagePattern(),
+    };
+
+    // Store context for potential consensus vote
+    if (!this._consensusContexts) {
+      this._consensusContexts = new Map();
+    }
+    this._consensusContexts.set(event.id, {
+      topic,
+      requestedBy,
+      behavioralContext,
+      timestamp: Date.now(),
+    });
+  }
+
+  /**
+   * Handle threat blocked - learn from security incidents
+   * @private
+   */
+  _handleThreatBlocked(event) {
+    const { command, category, risk } = event.data || {};
+
+    // Record threat pattern for future detection
+    const threatPattern = {
+      category: PatternCategory.ERROR_PATTERN,
+      name: `threat_${category || 'unknown'}`,
+      command: command?.substring(0, 50), // Truncate for safety
+      risk,
+      timestamp: Date.now(),
+    };
+
+    // Add to patterns for learning
+    this._recordPattern(threatPattern);
+
+    // Update anomaly baseline with threat signature
+    const signature = this._generateThreatSignature(command, category);
+    if (signature) {
+      this.anomalyBaseline.set(signature, {
+        type: AnomalyType.SUSPICIOUS_PATTERN,
+        severity: risk,
+        firstSeen: Date.now(),
+        count: 1,
+      });
+    }
+  }
+
+  /**
+   * Get current tool usage pattern summary
+   * @private
+   */
+  _getToolUsagePattern() {
+    const topTools = [...this.toolStats.entries()]
+      .sort((a, b) => b[1].count - a[1].count)
+      .slice(0, 5)
+      .map(([tool, stats]) => ({ tool, ...stats }));
+
+    return {
+      topTools,
+      totalInteractions: this.interactionCount,
+      errorRate: this.errorRate,
+    };
+  }
+
+  /**
+   * Generate threat signature for anomaly detection
+   * @private
+   */
+  _generateThreatSignature(command, category) {
+    if (!command) return null;
+
+    // Extract key tokens from command
+    const tokens = command.split(/\s+/).slice(0, 3).join('_');
+    return `threat:${category}:${tokens}`;
   }
 
   /**

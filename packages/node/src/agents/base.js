@@ -35,9 +35,10 @@ export const AgentTrigger = {
  * Agent behavior modes
  */
 export const AgentBehavior = {
-  BLOCKING: 'blocking',      // Requires confirmation
-  NON_BLOCKING: 'non-blocking', // Runs in background
+  BLOCKING: 'blocking',      // Requires confirmation, can block actions
+  NON_BLOCKING: 'non-blocking', // Runs alongside, doesn't block
   SILENT: 'silent',          // No output unless critical
+  BACKGROUND: 'background',  // On-demand, async operations
 };
 
 /**

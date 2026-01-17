@@ -111,6 +111,9 @@ export const AgentEvent = {
   /** CYNIC introspection request - asks dogs for their current state */
   CYNIC_INTROSPECTION: 'cynic:introspection',
 
+  /** Introspection response from an agent */
+  INTROSPECTION_RESPONSE: 'agent:introspection:response',
+
   // ═══════════════════════════════════════════════════════════════════════════
   // JANITOR EVENTS (Janitor → Others) - Code quality & hygiene
   // ═══════════════════════════════════════════════════════════════════════════
@@ -737,6 +740,30 @@ export class CynicIntrospectionEvent extends AgentEventMessage {
   }
 }
 
+/**
+ * Introspection response from an agent
+ */
+export class IntrospectionResponseEvent extends AgentEventMessage {
+  /**
+   * @param {string} agentId - The responding agent's ID
+   * @param {object} response - Response data
+   * @param {object} [options]
+   */
+  constructor(agentId, response, options = {}) {
+    super(AgentEvent.INTROSPECTION_RESPONSE, agentId, {
+      introspectionId: response.introspectionId,
+      stats: response.stats,
+      patterns: response.patterns,
+      concerns: response.concerns,
+      state: response.state,
+      timestamp: Date.now(),
+    }, {
+      ...options,
+      target: AgentId.CYNIC, // Responses go back to CYNIC
+    });
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // JANITOR EVENT CLASSES
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1054,6 +1081,7 @@ export default {
   CynicGuidanceEvent,
   CynicAwakeningEvent,
   CynicIntrospectionEvent,
+  IntrospectionResponseEvent,
   // Janitor events
   QualityReportEvent,
   AutoFixAppliedEvent,

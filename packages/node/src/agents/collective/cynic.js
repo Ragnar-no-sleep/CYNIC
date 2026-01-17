@@ -41,6 +41,7 @@ import {
   CynicGuidanceEvent,
   CynicAwakeningEvent,
   CynicIntrospectionEvent,
+  IntrospectionResponseEvent,
 } from '../events.js';
 import { ProfileLevel } from '../../profile/calculator.js';
 
@@ -197,6 +198,9 @@ export class CollectiveCynic extends BaseAgent {
     // Active consensus tracking
     this.activeConsensus = new Map();
 
+    // Pending introspection requests (for response collection)
+    this.pendingIntrospections = new Map();
+
     // Last guidance time (for cooldown)
     this.lastGuidanceTime = 0;
 
@@ -240,6 +244,98 @@ export class CollectiveCynic extends BaseAgent {
       this._handleConsensusRequest.bind(this),
       { priority: EventPriority.HIGH }
     );
+
+    // Subscribe to introspection responses from dogs
+    this.eventBus.subscribe(
+      AgentEvent.INTROSPECTION_RESPONSE,
+      AgentId.CYNIC,
+      this._handleIntrospectionResponse.bind(this),
+      { priority: EventPriority.NORMAL }
+    );
+  }
+
+  /**
+   * Handle introspection response from a dog
+   * @private
+   */
+  _handleIntrospectionResponse(event) {
+    const { introspectionId, stats, patterns, concerns, state } = event.data || {};
+    const source = event.source;
+
+    // Find pending introspection
+    const pending = this.pendingIntrospections.get(introspectionId);
+    if (!pending) {
+      return; // Ignore stale responses
+    }
+
+    // Record response
+    pending.responses.set(source, {
+      stats,
+      patterns,
+      concerns,
+      state,
+      timestamp: Date.now(),
+    });
+
+    // Update dog states
+    this.dogStates.set(source, {
+      stats,
+      patterns,
+      concerns,
+      state,
+      lastUpdate: Date.now(),
+    });
+
+    // Check if all expected responses received
+    if (pending.responses.size >= pending.expectedResponses) {
+      pending.resolve(this._aggregateIntrospectionResponses(pending));
+      this.pendingIntrospections.delete(introspectionId);
+    }
+  }
+
+  /**
+   * Aggregate introspection responses from all dogs
+   * @private
+   */
+  _aggregateIntrospectionResponses(pending) {
+    const responses = Array.from(pending.responses.entries());
+
+    // Combine stats from all dogs
+    const combinedStats = {};
+    const allPatterns = [];
+    const allConcerns = [];
+
+    for (const [agentId, response] of responses) {
+      // Merge stats
+      if (response.stats) {
+        combinedStats[agentId] = response.stats;
+      }
+
+      // Collect patterns
+      if (response.patterns) {
+        allPatterns.push(...response.patterns.map(p => ({
+          ...p,
+          source: agentId,
+        })));
+      }
+
+      // Collect concerns
+      if (response.concerns) {
+        allConcerns.push(...response.concerns.map(c => ({
+          ...c,
+          source: agentId,
+        })));
+      }
+    }
+
+    return {
+      success: true,
+      respondedAgents: responses.map(([id]) => id),
+      combinedStats,
+      patterns: allPatterns,
+      concerns: allConcerns,
+      timestamp: Date.now(),
+    };
   }
 
   /**
@@ -790,7 +886,9 @@ export class CollectiveCynic extends BaseAgent {
   /**
    * Request introspection from the collective
    * @param {Object} [options] - Introspection options
-   * @returns {Object} Introspection result
+   * @param {number} [options.timeout] - Timeout in ms (default: 5000)
+   * @param {number} [options.expectedResponses] - Expected number of responses (default: 5)
+   * @returns {Promise<Object>} Introspection result with collected responses
    */
   async introspect(options = {}) {
     const introspectionEvent = new CynicIntrospectionEvent({
@@ -800,14 +898,55 @@ export class CollectiveCynic extends BaseAgent {
       targetAgent: options.targetAgent,
     });
 
-    // Publish
+    const timeout = options.timeout || 5000; // 5 seconds default
+    const expectedResponses = options.expectedResponses || 5; // 5 core dogs
+
+    // Create pending introspection tracker
+    let resolvePromise;
+    const responsePromise = new Promise((resolve) => {
+      resolvePromise = resolve;
+    });
+
+    this.pendingIntrospections.set(introspectionEvent.id, {
+      event: introspectionEvent,
+      responses: new Map(),
+      expectedResponses,
+      resolve: resolvePromise,
+      createdAt: Date.now(),
+    });
+
+    // Publish event to request introspection
     if (this.eventBus) {
       await this.eventBus.publish(introspectionEvent);
     }
 
-    // TODO: Collect responses from dogs (requires response handling)
+    // Wait for responses with timeout
+    const timeoutPromise = new Promise((resolve) => {
+      setTimeout(() => {
+        const pending = this.pendingIntrospections.get(introspectionEvent.id);
+        if (pending) {
+          // Resolve with whatever we have
+          resolve(this._aggregateIntrospectionResponses(pending));
+          this.pendingIntrospections.delete(introspectionEvent.id);
+        } else {
+          resolve({
+            success: true,
+            respondedAgents: [],
+            combinedStats: {},
+            patterns: [],
+            concerns: [],
+            timedOut: true,
+            timestamp: Date.now(),
+          });
+        }
+      }, timeout);
+    });
+
+    // Race between responses and timeout
+    const result = await Promise.race([responsePromise, timeoutPromise]);
+
     return {
-      success: true,
+      ...result,
       introspectionId: introspectionEvent.id,
     };
   }
