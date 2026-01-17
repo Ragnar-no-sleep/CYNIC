@@ -1611,6 +1611,74 @@ export function createMetricsTool(metricsService) {
 }
 
 /**
+ * Create agent diagnostic tool - tests agent routing directly
+ * @param {Object} agents - AgentManager instance
+ * @returns {Object} Tool definition
+ */
+export function createAgentDiagnosticTool(agents) {
+  return {
+    name: 'brain_agent_diagnostic',
+    description: 'INTERNAL: Test agent routing and shouldTrigger logic directly. For debugging only.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        eventType: { type: 'string', description: 'Event type to test (e.g., PostConversation)' },
+        testContent: { type: 'string', description: 'Test content for the event' },
+      },
+    },
+    handler: async (params) => {
+      const { eventType = 'PostConversation', testContent = 'Test content' } = params;
+
+      if (!agents) {
+        return { error: 'Agents not available', timestamp: Date.now() };
+      }
+
+      // Create test event
+      const testEvent = {
+        type: eventType,
+        content: testContent,
+        tool: 'brain_agent_diagnostic',
+        timestamp: Date.now(),
+      };
+
+      // Get the agents object directly
+      const digester = agents.agents?.digester;
+      const observer = agents.agents?.observer;
+
+      // Test shouldTrigger directly
+      const results = {
+        testEvent,
+        digester: digester ? {
+          exists: true,
+          trigger: digester.trigger,
+          shouldTriggerResult: digester.shouldTrigger(testEvent),
+          invocations: digester.stats?.invocations,
+          _shouldTriggerCallCount: digester._shouldTriggerCallCount,
+        } : { exists: false },
+        observer: observer ? {
+          exists: true,
+          trigger: observer.trigger,
+          shouldTriggerResult: observer.shouldTrigger(testEvent),
+          invocations: observer.stats?.invocations,
+        } : { exists: false },
+        managerStats: agents.stats,
+        timestamp: Date.now(),
+      };
+
+      // Also try directly calling agents.process to see what happens
+      try {
+        const processResult = await agents.process(testEvent, {});
+        results.processResult = processResult;
+      } catch (e) {
+        results.processError = e.message;
+      }
+
+      return results;
+    },
+  };
+}
+
+/**
  * Create all tools
  * @param {Object} options - Tool options
  * @param {Object} options.judge - CYNICJudge instance
@@ -1650,6 +1718,7 @@ export function createAllTools(options = {}) {
     createPatternsTool(judge, persistence),
     createFeedbackTool(persistence, sessionManager),
     createAgentsStatusTool(agents),
+    createAgentDiagnosticTool(agents),
     createSessionStartTool(sessionManager),
     createSessionEndTool(sessionManager),
     createDocsTool(librarian, persistence),
