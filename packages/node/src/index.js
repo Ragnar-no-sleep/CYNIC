@@ -44,6 +44,7 @@ export {
   dimensionRegistry,
   ResidualDetector,
   JudgmentGraphIntegration,
+  LearningService,
 } from './judge/index.js';
 
 // State

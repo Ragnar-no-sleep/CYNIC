@@ -50,10 +50,12 @@ export class CYNICJudge {
    * @param {Object} [options] - Judge options
    * @param {Object} [options.customDimensions] - Custom dimensions to include
    * @param {Function} [options.scorer] - Custom scoring function
+   * @param {import('./learning-service.js').LearningService} [options.learningService] - RLHF learning service
    */
   constructor(options = {}) {
     this.customDimensions = options.customDimensions || {};
     this.customScorer = options.scorer || null;
+    this.learningService = options.learningService || null;
 
     // Stats tracking
     this.stats = {
@@ -65,6 +67,14 @@ export class CYNICJudge {
 
     // Anomaly buffer for ResidualDetector
     this.anomalyBuffer = [];
+  }
+
+  /**
+   * Set learning service (for post-construction injection)
+   * @param {import('./learning-service.js').LearningService} learningService
+   */
+  setLearningService(learningService) {
+    this.learningService = learningService;
   }
 
   /**
@@ -371,6 +381,7 @@ export class CYNICJudge {
 
   /**
    * Calculate global score from dimensions
+   * Applies learned weight modifiers from RLHF feedback
    * @private
    */
   _calculateGlobalScore(dimensionScores) {
@@ -383,7 +394,14 @@ export class CYNICJudge {
         this.customDimensions[name] ||
         dimensionRegistry.get(name);
 
-      const weight = config?.weight || 1.0;
+      let weight = config?.weight || 1.0;
+
+      // Apply learned weight modifier from RLHF feedback
+      if (this.learningService) {
+        const modifier = this.learningService.getWeightModifier(name);
+        weight = weight * modifier;
+      }
+
       weightedSum += score * weight;
       totalWeight += weight;
     }
@@ -394,6 +412,7 @@ export class CYNICJudge {
 
   /**
    * Calculate scores aggregated by axiom
+   * Applies learned weight modifiers from RLHF feedback
    * @private
    * @param {Object} dimensionScores - All dimension scores
    * @returns {Object} Axiom scores {PHI, VERIFY, CULTURE, BURN}
@@ -411,8 +430,16 @@ export class CYNICJudge {
       for (const [dimName, config] of Object.entries(dims)) {
         const score = dimensionScores[dimName];
         if (typeof score === 'number') {
-          weightedSum += score * config.weight;
-          totalWeight += config.weight;
+          let weight = config.weight;
+
+          // Apply learned weight modifier from RLHF feedback
+          if (this.learningService) {
+            const modifier = this.learningService.getWeightModifier(dimName);
+            weight = weight * modifier;
+          }
+
+          weightedSum += score * weight;
+          totalWeight += weight;
         }
       }
 
