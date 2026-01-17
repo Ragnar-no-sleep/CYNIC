@@ -1,0 +1,20 @@
+{
+  "name": "@cynic/anchor",
+  "version": "0.1.0",
+  "description": "Solana anchoring - Onchain is truth",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./constants": "./src/constants.js",
+    "./anchorer": "./src/anchorer.js",
+    "./queue": "./src/queue.js"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@cynic/core": "*"
+  },
+  "license": "MIT"
+}

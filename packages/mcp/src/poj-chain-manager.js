@@ -9,8 +9,14 @@
  * - Block signing with operator keys
  * - Signature verification for received blocks
  *
+ * Supports Solana anchoring:
+ * - Anchors block merkle roots to Solana for "onchain is truth"
+ * - Batches anchors for cost efficiency
+ * - Tracks anchor status per block
+ *
  * "The chain remembers, the dog forgets" - κυνικός
  * "Many dogs, one pack" - multi-operator consensus
+ * "Onchain is truth" - anchoring to Solana
  *
  * @module @cynic/mcp/poj-chain-manager
  */
@@ -19,6 +25,20 @@
 
 import crypto from 'crypto';
 import { OperatorRegistry } from './operator-registry.js';
+
+/**
+ * Anchor status for blocks
+ */
+export const AnchorStatus = {
+  /** Block not yet anchored */
+  PENDING: 'PENDING',
+  /** Block queued for anchoring */
+  QUEUED: 'QUEUED',
+  /** Block anchored to Solana */
+  ANCHORED: 'ANCHORED',
+  /** Anchoring failed */
+  FAILED: 'FAILED',
+};
 
 // Default configuration
 const DEFAULT_BATCH_SIZE = 10;     // Create block after N judgments
@@ -65,6 +85,8 @@ export class PoJChainManager {
    * @param {OperatorRegistry} [options.operatorRegistry] - Multi-operator registry
    * @param {boolean} [options.requireSignatures=false] - Require signed blocks
    * @param {boolean} [options.verifyReceivedBlocks=true] - Verify blocks from others
+   * @param {Object} [options.anchorQueue] - AnchorQueue instance for Solana anchoring
+   * @param {boolean} [options.autoAnchor=true] - Auto-anchor blocks to Solana
    */
   constructor(persistence, options = {}) {
     this.persistence = persistence;
@@ -75,6 +97,10 @@ export class PoJChainManager {
     this.operatorRegistry = options.operatorRegistry || null;
     this.requireSignatures = options.requireSignatures || false;
     this.verifyReceivedBlocks = options.verifyReceivedBlocks ?? true;
+
+    // Solana anchoring support
+    this._anchorQueue = options.anchorQueue || null;
+    this._autoAnchor = options.autoAnchor ?? true;
 
     // Legacy single-operator key (for backwards compatibility)
     this._legacyOperatorKey = options.operatorKey || null;
@@ -88,6 +114,9 @@ export class PoJChainManager {
     // Timer for automatic block creation
     this._batchTimer = null;
 
+    // Track anchor status per block
+    this._anchorStatus = new Map();
+
     // Stats
     this._stats = {
       blocksCreated: 0,
@@ -97,6 +126,8 @@ export class PoJChainManager {
       lastBlockTime: null,
       signatureVerifications: 0,
       signatureFailures: 0,
+      blocksAnchored: 0,
+      anchorsFailed: 0,
     };
 
     this._initialized = false;
@@ -276,6 +307,17 @@ export class PoJChainManager {
         this._stats.blocksCreated++;
         this._stats.lastBlockTime = new Date();
 
+        // Queue for Solana anchoring if enabled
+        if (this._anchorQueue && this._autoAnchor) {
+          this._anchorBlock(block);
+        } else {
+          // Mark as PENDING anchor status
+          this._anchorStatus.set(block.hash, {
+            status: AnchorStatus.PENDING,
+            slot: block.slot,
+          });
+        }
+
         console.error(`🔗 PoJ Block #${block.slot} created: ${judgments.length} judgments`);
         return stored;
       }
@@ -286,6 +328,123 @@ export class PoJChainManager {
     }
 
     return null;
+  }
+
+  /**
+   * Anchor a block to Solana
+   * @param {Object} block - Block to anchor
+   * @private
+   */
+  async _anchorBlock(block) {
+    const blockId = `poj_block_${block.slot}`;
+
+    // Mark as queued
+    this._anchorStatus.set(block.hash, {
+      status: AnchorStatus.QUEUED,
+      slot: block.slot,
+      queuedAt: Date.now(),
+    });
+
+    try {
+      // Queue the block's merkle root (judgments_root) for anchoring
+      // The anchor queue will batch and anchor to Solana
+      this._anchorQueue.enqueue(blockId, {
+        type: 'poj_block',
+        slot: block.slot,
+        hash: block.hash,
+        merkleRoot: block.judgments_root,
+        judgmentCount: block.judgments?.length || 0,
+        timestamp: block.timestamp,
+      });
+
+      console.error(`⚓ PoJ Block #${block.slot} queued for Solana anchoring`);
+    } catch (err) {
+      console.error(`Error queuing block for anchor: ${err.message}`);
+      this._anchorStatus.set(block.hash, {
+        status: AnchorStatus.FAILED,
+        slot: block.slot,
+        error: err.message,
+      });
+      this._stats.anchorsFailed++;
+    }
+  }
+
+  /**
+   * Set anchor queue for Solana anchoring
+   * @param {Object} anchorQueue - AnchorQueue instance
+   */
+  setAnchorQueue(anchorQueue) {
+    this._anchorQueue = anchorQueue;
+
+    // Set up callback for anchor completion
+    if (anchorQueue && anchorQueue.onAnchorComplete === undefined) {
+      anchorQueue.onAnchorComplete = (batch, result) => {
+        this._onAnchorComplete(batch, result);
+      };
+    }
+  }
+
+  /**
+   * Handle anchor completion callback
+   * @param {Object} batch - Anchored batch
+   * @param {Object} result - Anchor result
+   * @private
+   */
+  _onAnchorComplete(batch, result) {
+    if (!result.success) return;
+
+    // Update anchor status for all blocks in this batch
+    for (const item of batch.items) {
+      if (item.id.startsWith('poj_block_')) {
+        const slot = parseInt(item.id.replace('poj_block_', ''), 10);
+
+        // Find block by slot
+        for (const [hash, status] of this._anchorStatus.entries()) {
+          if (status.slot === slot) {
+            this._anchorStatus.set(hash, {
+              status: AnchorStatus.ANCHORED,
+              slot,
+              signature: result.signature,
+              anchoredAt: result.timestamp,
+            });
+            this._stats.blocksAnchored++;
+            console.error(`⚓ PoJ Block #${slot} anchored to Solana: ${result.signature.slice(0, 16)}...`);
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Get anchor status for a block
+   * @param {string} blockHash - Block hash
+   * @returns {Object|null} Anchor status
+   */
+  getAnchorStatus(blockHash) {
+    return this._anchorStatus.get(blockHash) || null;
+  }
+
+  /**
+   * Get all pending anchor statuses
+   * @returns {Object[]} Pending anchors
+   */
+  getPendingAnchors() {
+    const pending = [];
+    for (const [hash, status] of this._anchorStatus.entries()) {
+      if (status.status === AnchorStatus.PENDING || status.status === AnchorStatus.QUEUED) {
+        pending.push({ hash, ...status });
+      }
+    }
+    return pending;
+  }
+
+  /**
+   * Check if anchoring is enabled
+   * @returns {boolean}
+   */
+  get isAnchoringEnabled() {
+    return this._anchorQueue !== null;
   }
 
   /**
@@ -377,6 +536,16 @@ export class PoJChainManager {
    * Get chain status
    */
   getStatus() {
+    // Count anchor statuses
+    let anchoredCount = 0;
+    let pendingAnchorCount = 0;
+    for (const status of this._anchorStatus.values()) {
+      if (status.status === AnchorStatus.ANCHORED) anchoredCount++;
+      else if (status.status === AnchorStatus.PENDING || status.status === AnchorStatus.QUEUED) {
+        pendingAnchorCount++;
+      }
+    }
+
     const status = {
       initialized: this._initialized,
       headSlot: this._head?.slot || 0,
@@ -386,6 +555,10 @@ export class PoJChainManager {
       batchTimeout: this.batchTimeout,
       stats: this._stats,
       multiOperator: this.isMultiOperator,
+      // Anchoring status
+      anchoringEnabled: this.isAnchoringEnabled,
+      anchoredBlocks: anchoredCount,
+      pendingAnchors: pendingAnchorCount,
     };
 
     // Add operator info
