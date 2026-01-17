@@ -350,15 +350,46 @@ const CYNICConsole = {
   },
 
   /**
-   * Judge command
+   * Judge command - uses real API when connected
    */
-  judge(args) {
-    this.log('Simulating judgment...', 'system');
+  async judge(args) {
+    // If connected to MCP, use real judgment
+    if (this.engine?.connected) {
+      this.log('Calling brain_cynic_judge...', 'system');
+
+      const item = args ? { content: String(args), type: 'token' } : { type: 'test', content: 'Test judgment' };
+      const result = await this.engine.callTool('brain_cynic_judge', { item });
+
+      if (result.success && result.result) {
+        const r = result.result;
+        this.log('', 'system');
+        this.log('─── Live Judgment ───', 'system');
+        this.log('  Q-Score:    ' + r.qScore + '/100', 'output');
+        this.log('  Confidence: ' + (r.confidence * 100).toFixed(2) + '%', 'output');
+        this.log('  Verdict:    ' + r.verdict, 'output');
+        this.log('  Duration:   ' + result.duration + 'ms', 'system');
+        this.log('', 'system');
+
+        // Update Q-Score display
+        const qScoreEl = document.getElementById('qScoreValue');
+        if (qScoreEl) {
+          qScoreEl.textContent = r.qScore + '/100';
+        }
+
+        return r;
+      } else {
+        this.log('Error: ' + (result.error || 'Unknown error'), 'error');
+        return null;
+      }
+    }
+
+    // Offline mode - simulate
+    this.log('Simulating judgment (offline)...', 'system');
 
     const result = CYNICFormulas.simulateJudgment();
 
     this.log('', 'system');
-    this.log('─── Judgment Result ───', 'system');
+    this.log('─── Simulated Judgment ───', 'system');
     this.log('  Q-Score:    ' + result.qScore.constrained.toFixed(2) + '/100', 'output');
     this.log('  Confidence: ' + (result.qScore.confidence * 100).toFixed(2) + '%', 'output');
     this.log('  Verdict:    ' + result.verdict.emoji + ' ' + result.verdict.verdict, 'output');
@@ -399,10 +430,43 @@ const CYNICConsole = {
   },
 
   /**
-   * Chain commands
+   * Chain commands - uses real API when connected
    */
-  chain(args, subCmd) {
-    // Mock chain data (would come from engine in real impl)
+  async chain(args, subCmd) {
+    // If connected, use real API
+    if (this.engine?.connected) {
+      const action = subCmd || 'head';
+      this.log('Fetching chain ' + action + '...', 'system');
+
+      const result = await this.engine.callTool('brain_poj_chain', {
+        action: action === 'head' ? 'head' : action,
+        blockNumber: action === 'block' ? args : undefined,
+        limit: action === 'recent' ? (args || 5) : undefined
+      });
+
+      if (result.success && result.result) {
+        const r = result.result;
+        this.log('─── PoJ Chain (Live) ───', 'system');
+
+        if (r.head) {
+          this.log('  Block:      #' + r.head.blockNumber, 'output');
+          this.log('  Judgments:  ' + r.head.judgmentCount, 'output');
+          this.log('  Hash:       ' + (r.head.hash || 'N/A').slice(0, 16) + '...', 'output');
+        }
+
+        if (r.stats) {
+          this.log('  Total:      ' + r.stats.totalBlocks + ' blocks', 'output');
+          this.log('  Judgments:  ' + r.stats.totalJudgments, 'output');
+        }
+
+        return r;
+      } else {
+        this.log('Error: ' + (result.error || 'Unknown'), 'error');
+      }
+      return null;
+    }
+
+    // Offline mock data
     const mockChain = {
       head: { number: 130, judgments: 4, hash: '0x7f83b1...', timestamp: new Date().toISOString() },
       blocks: [
@@ -416,12 +480,11 @@ const CYNICConsole = {
     };
 
     if (subCmd === 'head' || !subCmd) {
-      this.log('─── PoJ Chain Head ───', 'system');
+      this.log('─── PoJ Chain (Offline) ───', 'system');
       this.log('  Block:      #' + mockChain.head.number, 'output');
       this.log('  Judgments:  ' + mockChain.head.judgments, 'output');
       this.log('  Hash:       ' + mockChain.head.hash, 'output');
 
-      // Update chain viz
       if (window.CYNICViz) {
         CYNICViz.renderChain('chainViz', mockChain.blocks);
       }
@@ -445,9 +508,46 @@ const CYNICConsole = {
   },
 
   /**
-   * Dog commands
+   * Dog commands - uses real API when connected
    */
-  dog(args, subCmd) {
+  async dog(args, subCmd) {
+    // If connected, use real API
+    if (this.engine?.connected) {
+      this.log('Fetching dogs status...', 'system');
+
+      const result = await this.engine.callTool('brain_agents_status', {
+        verbose: true,
+        agent: subCmd && subCmd !== 'status' ? subCmd : undefined
+      });
+
+      if (result.success && result.result) {
+        const r = result.result;
+        this.log('─── Dogs Status (Live) ───', 'system');
+
+        if (r.agents) {
+          for (const [name, data] of Object.entries(r.agents)) {
+            const status = data.active ? '🟢' : '🔴';
+            this.log('  ' + status + ' ' + name, 'output');
+            if (data.stats) {
+              const stats = Object.entries(data.stats).map(([k, v]) => k + ': ' + v).join(', ');
+              this.log('     ' + stats, 'system');
+            }
+          }
+        }
+
+        if (r.summary) {
+          this.log('', 'system');
+          this.log('  Active: ' + r.summary.active + '/' + r.summary.total, 'output');
+        }
+
+        return r;
+      } else {
+        this.log('Error: ' + (result.error || 'Unknown'), 'error');
+      }
+      return null;
+    }
+
+    // Offline mock data
     const mockDogs = {
       observer: { active: true, events: 127, patterns: 23 },
       digester: { active: true, digests: 89, extractions: 156 },
@@ -456,7 +556,7 @@ const CYNICConsole = {
     };
 
     if (!subCmd || subCmd === 'status') {
-      this.log('─── Dogs Status ───', 'system');
+      this.log('─── Dogs Status (Offline) ───', 'system');
       for (const [name, data] of Object.entries(mockDogs)) {
         const status = data.active ? '🟢' : '🔴';
         this.log('  ' + status + ' ' + name, 'output');
@@ -473,11 +573,43 @@ const CYNICConsole = {
   },
 
   /**
-   * Patterns commands
+   * Patterns commands - uses real API when connected
    */
-  patterns(args) {
+  async patterns(args) {
     const count = args || 5;
 
+    // If connected, use real API
+    if (this.engine?.connected) {
+      this.log('Fetching patterns...', 'system');
+
+      const result = await this.engine.callTool('brain_patterns', {
+        category: 'all',
+        limit: count
+      });
+
+      if (result.success && result.result) {
+        const patterns = result.result.patterns || [];
+        this.log('─── Recent Patterns (Live) (' + patterns.length + ') ───', 'system');
+
+        if (patterns.length === 0) {
+          this.log('  No patterns detected yet', 'system');
+        } else {
+          patterns.forEach((p, i) => {
+            this.log('  ' + (i + 1) + '. [' + (p.category || p.type || 'PATTERN').toUpperCase() + '] ' + p.description, 'output');
+            if (p.confidence !== undefined) {
+              this.log('     Confidence: ' + (p.confidence * 100).toFixed(1) + '%', 'system');
+            }
+          });
+        }
+
+        return patterns;
+      } else {
+        this.log('Error: ' + (result.error || 'Unknown'), 'error');
+      }
+      return null;
+    }
+
+    // Offline mock data
     const mockPatterns = [
       { type: 'anomaly', description: 'Unusual judgment clustering', confidence: 0.72 },
       { type: 'verdict', description: 'GROWL streak detected', confidence: 0.65 },
@@ -486,25 +618,60 @@ const CYNICConsole = {
       { type: 'verdict', description: 'WAG consistency high', confidence: 0.69 }
     ];
 
-    this.log('─── Recent Patterns (' + count + ') ───', 'system');
+    this.log('─── Recent Patterns (Offline) (' + count + ') ───', 'system');
     mockPatterns.slice(0, count).forEach((p, i) => {
       this.log('  ' + (i + 1) + '. [' + p.type.toUpperCase() + '] ' + p.description, 'output');
-      this.log('     Confidence: ' + (p.confidence * 100).toFixed(1) + '%', 'output');
+      this.log('     Confidence: ' + (p.confidence * 100).toFixed(1) + '%', 'system');
     });
 
     return mockPatterns.slice(0, count);
   },
 
   /**
-   * Health check
+   * Health check - uses real API when connected
    */
-  health() {
+  async health() {
+    // If connected, use real API
+    if (this.engine?.connected) {
+      this.log('Fetching health...', 'system');
+
+      const result = await this.engine.callTool('brain_health', {
+        verbose: true
+      });
+
+      if (result.success && result.result) {
+        const h = result.result;
+        this.log('─── System Health (Live) ───', 'system');
+        this.log('  Status:  ' + (h.status || 'ok'), 'output');
+        this.log('  MCP:     🟢 Connected', 'output');
+
+        if (h.services) {
+          for (const [name, svc] of Object.entries(h.services)) {
+            const status = svc.status === 'ok' || svc.healthy ? '🟢' : '🔴';
+            this.log('  ' + name + ': ' + status, 'output');
+          }
+        }
+
+        if (h.stats) {
+          this.log('', 'system');
+          this.log('  Judgments: ' + (h.stats.totalJudgments || 0), 'output');
+          this.log('  Patterns:  ' + (h.stats.totalPatterns || 0), 'output');
+        }
+
+        return h;
+      } else {
+        this.log('Error: ' + (result.error || 'Unknown'), 'error');
+      }
+      return null;
+    }
+
+    // Offline mock data
     const health = {
       status: 'healthy',
       uptime: '2h 34m',
       memory: '45MB',
       connections: {
-        mcp: this.engine?.connected ?? false,
+        mcp: false,
         postgres: true,
         redis: true
       },
@@ -514,11 +681,11 @@ const CYNICConsole = {
       }
     };
 
-    this.log('─── System Health ───', 'system');
+    this.log('─── System Health (Offline) ───', 'system');
     this.log('  Status:  ' + health.status, 'output');
     this.log('  Uptime:  ' + health.uptime, 'output');
     this.log('  Memory:  ' + health.memory, 'output');
-    this.log('  MCP:     ' + (health.connections.mcp ? '🟢' : '🔴'), 'output');
+    this.log('  MCP:     🔴 Offline', 'output');
     this.log('  Dogs:    ' + health.dogs.active + '/' + health.dogs.total + ' active', 'output');
 
     return health;

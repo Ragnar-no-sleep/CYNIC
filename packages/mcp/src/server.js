@@ -13,7 +13,25 @@
 'use strict';
 
 import { createServer } from 'http';
+import { readFile } from 'fs/promises';
+import { join, extname } from 'path';
+import { fileURLToPath } from 'url';
 import { PHI_INV, PHI_INV_2, IDENTITY } from '@cynic/core';
+
+// Get __dirname equivalent for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = join(__filename, '..');
+
+// MIME types for static files
+const MIME_TYPES = {
+  '.html': 'text/html',
+  '.css': 'text/css',
+  '.js': 'application/javascript',
+  '.json': 'application/json',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+};
 import { CYNICJudge, AgentManager } from '@cynic/node';
 import { createAllTools } from './tools/index.js';
 import { PersistenceManager } from './persistence.js';
@@ -351,6 +369,30 @@ export class MCPServer {
       return;
     }
 
+    // Sandbox static files
+    if (url.pathname === '/sandbox' || url.pathname.startsWith('/sandbox/')) {
+      await this._handleSandboxRequest(url, res);
+      return;
+    }
+
+    // REST API for tools (browser-friendly)
+    if (url.pathname.startsWith('/api/tools/')) {
+      await this._handleApiToolRequest(req, res, url);
+      return;
+    }
+
+    // List all available tools (API discovery)
+    if (url.pathname === '/api/tools' && req.method === 'GET') {
+      const tools = Object.values(this.tools).map(t => ({
+        name: t.name,
+        description: t.description,
+        inputSchema: t.inputSchema,
+      }));
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ tools }));
+      return;
+    }
+
     // 404 for unknown routes
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Not found' }));
@@ -389,6 +431,119 @@ export class MCPServer {
     }, 30000);
 
     req.on('close', () => clearInterval(keepAlive));
+  }
+
+  /**
+   * Handle sandbox static file requests
+   * @private
+   */
+  async _handleSandboxRequest(url, res) {
+    try {
+      // Default to index.html
+      let filePath = url.pathname.replace('/sandbox', '') || '/index.html';
+      if (filePath === '' || filePath === '/') {
+        filePath = '/index.html';
+      }
+
+      // Prevent directory traversal
+      if (filePath.includes('..')) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Forbidden' }));
+        return;
+      }
+
+      const fullPath = join(__dirname, 'sandbox', filePath);
+      const ext = extname(fullPath);
+      const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+
+      const content = await readFile(fullPath);
+      res.writeHead(200, { 'Content-Type': contentType });
+      res.end(content);
+    } catch (err) {
+      if (err.code === 'ENOENT') {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'File not found' }));
+      } else {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+    }
+  }
+
+  /**
+   * Handle REST API tool requests
+   * @private
+   */
+  async _handleApiToolRequest(req, res, url) {
+    // Extract tool name from URL: /api/tools/brain_cynic_judge
+    const toolName = url.pathname.replace('/api/tools/', '');
+
+    const tool = this.tools[toolName];
+    if (!tool) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: `Tool not found: ${toolName}` }));
+      return;
+    }
+
+    // GET = get tool info, POST = execute tool
+    if (req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        name: tool.name,
+        description: tool.description,
+        inputSchema: tool.inputSchema,
+      }));
+      return;
+    }
+
+    if (req.method !== 'POST') {
+      res.writeHead(405, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Method not allowed' }));
+      return;
+    }
+
+    try {
+      // Parse request body
+      let body = '';
+      for await (const chunk of req) {
+        body += chunk;
+        if (body.length > MAX_BODY_SIZE) {
+          res.writeHead(413, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Request too large' }));
+          return;
+        }
+      }
+
+      const args = body ? JSON.parse(body) : {};
+
+      // Execute tool (same logic as tools/call)
+      console.error(`🐕 [API] Tool ${toolName} called`);
+      const startTime = Date.now();
+      const result = await tool.handler(args);
+      const duration = Date.now() - startTime;
+
+      // Trigger agents (non-blocking)
+      this.agents.process({
+        type: 'PostToolUse',
+        tool: toolName,
+        input: args,
+        output: result,
+        duration,
+        success: true,
+        timestamp: Date.now(),
+      }).catch(() => {});
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        success: true,
+        result,
+        duration,
+      }));
+    } catch (err) {
+      console.error(`🐕 [API] Tool ${toolName} error: ${err.message}`);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: err.message }));
+    }
   }
 
   /**
