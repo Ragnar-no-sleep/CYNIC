@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CYNIC Sandbox - Conception Environment</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- Three.js for 3D -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <!-- D3.js for graphs -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+  <!-- KaTeX for formulas -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+</head>
+<body>
+  <div class="sandbox">
+    <!-- Header -->
+    <header class="header">
+      <div class="logo">
+        <span class="logo-icon">🐕</span>
+        <span class="logo-text">CYNIC SANDBOX</span>
+      </div>
+      <div class="status">
+        <span class="phi-badge" title="Max confidence φ⁻¹">φ 61.8%</span>
+        <span class="live-indicator" id="liveStatus">● CONNECTING</span>
+      </div>
+    </header>
+
+    <!-- Main Layout -->
+    <div class="main">
+      <!-- Left Sidebar -->
+      <aside class="sidebar-left">
+        <!-- Explorer -->
+        <section class="panel explorer">
+          <h3>📁 EXPLORER</h3>
+          <div class="tree" id="explorerTree"></div>
+        </section>
+
+        <!-- Dogs -->
+        <section class="panel dogs">
+          <h3>🐕 DOGS</h3>
+          <div class="dog-list" id="dogList"></div>
+        </section>
+
+        <!-- Tools -->
+        <section class="panel tools">
+          <h3>🔧 TOOLS</h3>
+          <div class="tool-buttons" id="toolButtons"></div>
+        </section>
+      </aside>
+
+      <!-- Center Content -->
+      <main class="content">
+        <!-- 3D Architecture View -->
+        <section class="panel viz-3d">
+          <div class="panel-header">
+            <h3>3D ARCHITECTURE</h3>
+            <div class="view-controls">
+              <button data-view="overview" class="active">Overview</button>
+              <button data-view="packages">Packages</button>
+              <button data-view="dogs">Dogs</button>
+              <button data-view="flow">Flow</button>
+            </div>
+          </div>
+          <div class="viz-container" id="viz3d"></div>
+        </section>
+
+        <!-- Bottom Row -->
+        <div class="bottom-row">
+          <!-- Matrix -->
+          <section class="panel matrix">
+            <h3>📊 MATRICE 25-DIM</h3>
+            <div class="matrix-content" id="matrixView"></div>
+            <div class="matrix-score">
+              <span class="label">Q-SCORE:</span>
+              <span class="value" id="qScoreValue">--</span>
+            </div>
+          </section>
+
+          <!-- Formulas -->
+          <section class="panel formulas">
+            <h3>🧮 FORMULES LIVE</h3>
+            <div class="formula-list" id="formulaList"></div>
+            <div class="sliders" id="formulaSliders"></div>
+          </section>
+        </div>
+
+        <!-- PoJ Chain -->
+        <section class="panel chain">
+          <div class="panel-header">
+            <h3>⛓️ POJ CHAIN</h3>
+            <span class="chain-status" id="chainStatus">Loading...</span>
+          </div>
+          <div class="chain-viz" id="chainViz"></div>
+        </section>
+
+        <!-- Knowledge Graph -->
+        <section class="panel graph">
+          <div class="panel-header">
+            <h3>🕸️ KNOWLEDGE GRAPH</h3>
+            <button class="expand-btn" id="expandGraph">EXPAND</button>
+          </div>
+          <div class="graph-container" id="knowledgeGraph"></div>
+        </section>
+      </main>
+
+      <!-- Right Sidebar - Console -->
+      <aside class="sidebar-right">
+        <section class="panel console">
+          <h3>💻 CONSOLE</h3>
+          <div class="console-output" id="consoleOutput"></div>
+          <div class="console-input">
+            <span class="prompt">&gt;</span>
+            <input type="text" id="consoleInput" placeholder="judge('token'), chain.head(), ...">
+          </div>
+        </section>
+      </aside>
+    </div>
+
+    <!-- Export Bar -->
+    <footer class="export-bar">
+      <span>EXPORT:</span>
+      <button data-export="png">PNG</button>
+      <button data-export="svg">SVG</button>
+      <button data-export="json">JSON</button>
+      <button data-export="mermaid">Mermaid</button>
+    </footer>
+  </div>
+
+  <!-- Scripts -->
+  <script src="formulas.js"></script>
+  <script src="viz.js"></script>
+  <script src="console.js"></script>
+  <script src="engine.js"></script>
+</body>
+</html>
