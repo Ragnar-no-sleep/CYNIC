@@ -705,6 +705,8 @@ export function createAgentsStatusTool(agents) {
       const response = {
         enabled: summary.enabled,
         stats: summary.stats,
+        // DEBUG: Include debug info from AgentManager
+        _debug: summary._debug || {},
         dogs: {
           guardian: {
             description: 'The Watchdog - blocks dangerous operations',
