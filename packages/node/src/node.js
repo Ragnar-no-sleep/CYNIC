@@ -60,8 +60,8 @@ export class CYNICNode {
       operator: this.operator,
     });
 
-    // Initialize judge
-    this.judge = new CYNICJudge();
+    // Initialize judge (underscore to avoid shadowing judge() method)
+    this._judge = new CYNICJudge();
 
     // Initialize residual detector
     this.residualDetector = new ResidualDetector();
@@ -310,7 +310,7 @@ export class CYNICNode {
    */
   async judge(item, context = {}) {
     // Create judgment
-    const judgment = this.judge.judge(item, context);
+    const judgment = this._judge.judge(item, context);
 
     // Analyze for residuals
     this.residualDetector.analyze(judgment, context);
@@ -344,7 +344,7 @@ export class CYNICNode {
       uptime: this.startedAt ? Date.now() - this.startedAt : 0,
       operator: this.operator.getPublicInfo(),
       state: this.state.getSummary(),
-      judge: this.judge.getStats(),
+      judge: this._judge.getStats(),
       residual: this.residualDetector.getStats(),
       gossip: this.gossip.getStats(),
     };
