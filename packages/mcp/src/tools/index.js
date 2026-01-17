@@ -12,6 +12,7 @@
 
 import { PHI_INV, PHI_INV_2, IDENTITY, getVerdictFromScore } from '@cynic/core';
 import { createMetaTool } from '../meta-dashboard.js';
+import { createCodeAnalyzer } from '../code-analyzer.js';
 
 /**
  * Create judge tool definition
@@ -1617,6 +1618,111 @@ export function createMetricsTool(metricsService) {
 }
 
 /**
+ * Create collective status tool definition
+ * @param {Object} collective - CollectivePack instance (The Five Dogs + CYNIC)
+ * @returns {Object} Tool definition
+ */
+export function createCollectiveStatusTool(collective) {
+  return {
+    name: 'brain_collective_status',
+    description: 'Get status and statistics for The Collective (11 Dogs + CYNIC meta-consciousness). Shows all agents with Sefirot mappings, event bus stats, and CYNIC\'s current state.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        verbose: { type: 'boolean', description: 'Include detailed per-agent statistics' },
+        agent: {
+          type: 'string',
+          enum: ['guardian', 'analyst', 'scholar', 'architect', 'sage', 'cynic', 'janitor', 'scout', 'cartographer', 'oracle', 'deployer'],
+          description: 'Get status for specific agent only',
+        },
+      },
+    },
+    handler: async (params) => {
+      const { verbose = false, agent = null } = params;
+
+      if (!collective) {
+        return {
+          status: 'unavailable',
+          message: '*growl* Collective not initialized. Only legacy agents available.',
+          hint: 'Use brain_agents_status for legacy Four Dogs.',
+          timestamp: Date.now(),
+        };
+      }
+
+      const summary = collective.getSummary();
+      const collectiveState = collective.getCollectiveState();
+
+      // Sefirot mapping for display
+      const sefirotMap = {
+        guardian: { sefira: 'Gevurah', meaning: 'Strength', role: 'Security & Protection' },
+        analyst: { sefira: 'Binah', meaning: 'Understanding', role: 'Pattern Analysis' },
+        scholar: { sefira: 'Daat', meaning: 'Knowledge', role: 'Knowledge Extraction' },
+        architect: { sefira: 'Chesed', meaning: 'Kindness', role: 'Design Review' },
+        sage: { sefira: 'Chochmah', meaning: 'Wisdom', role: 'Guidance & Teaching' },
+        cynic: { sefira: 'Keter', meaning: 'Crown', role: 'Meta-Consciousness' },
+        janitor: { sefira: 'Yesod', meaning: 'Foundation', role: 'Code Quality' },
+        scout: { sefira: 'Netzach', meaning: 'Victory', role: 'Discovery' },
+        cartographer: { sefira: 'Malkhut', meaning: 'Kingdom', role: 'Reality Mapping' },
+        oracle: { sefira: 'Tiferet', meaning: 'Beauty', role: 'Visualization' },
+        deployer: { sefira: 'Hod', meaning: 'Splendor', role: 'Deployment' },
+      };
+
+      // If specific agent requested
+      if (agent && summary.agents[agent]) {
+        const agentSummary = summary.agents[agent];
+        const sefira = sefirotMap[agent];
+        return {
+          agent,
+          sefira: sefira?.sefira,
+          meaning: sefira?.meaning,
+          role: sefira?.role,
+          ...agentSummary,
+          profileLevel: summary.profileLevel,
+          timestamp: Date.now(),
+        };
+      }
+
+      // Build dogs summary with Sefirot info
+      const dogs = {};
+      for (const [name, info] of Object.entries(sefirotMap)) {
+        const agentData = summary.agents[name];
+        dogs[name] = {
+          sefira: info.sefira,
+          meaning: info.meaning,
+          role: info.role,
+          active: !!agentData,
+          ...(agentData ? {
+            invocations: agentData.invocations || agentData.stats?.invocations || 0,
+          } : {}),
+        };
+      }
+
+      // Basic response
+      const response = {
+        status: 'active',
+        dogCount: summary.dogCount,
+        agentCount: summary.agentCount,
+        profileLevel: summary.profileLevel,
+        cynicState: collectiveState?.metaState || 'unknown',
+        eventBusStats: summary.eventBusStats,
+        dogs,
+        collectiveStats: summary.collectiveStats,
+        message: `*tail wag* Collective active. CYNIC at ${collectiveState?.metaState || 'unknown'} state. ${summary.agentCount} agents ready.`,
+        timestamp: Date.now(),
+      };
+
+      // Add verbose details
+      if (verbose) {
+        response.agents = summary.agents;
+        response.collectiveState = collectiveState;
+      }
+
+      return response;
+    },
+  };
+}
+
+/**
  * Create agent diagnostic tool - tests agent routing directly
  * @param {Object} agents - AgentManager instance
  * @returns {Object} Tool definition
@@ -1685,6 +1791,162 @@ export function createAgentDiagnosticTool(agents) {
 }
 
 /**
+ * Create codebase analyzer tool definition
+ * @param {Object} [options] - Options including rootPath
+ * @returns {Object} Tool definition
+ */
+export function createCodebaseTool(options = {}) {
+  // Lazily create analyzer on first use
+  let analyzer = null;
+
+  const getAnalyzer = () => {
+    if (!analyzer) {
+      analyzer = createCodeAnalyzer(options);
+    }
+    return analyzer;
+  };
+
+  return {
+    name: 'brain_codebase',
+    description: 'Analyze CYNIC codebase structure for 3D visualization. Get package hierarchy, search symbols, and view codebase metrics.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['tree', 'package', 'search', 'stats', 'invalidate'],
+          description: 'Action: tree (full hierarchy), package (single package details), search (find symbols), stats (codebase metrics), invalidate (clear cache)',
+        },
+        name: {
+          type: 'string',
+          description: 'Package name for "package" action (e.g., "node", "mcp")',
+        },
+        query: {
+          type: 'string',
+          description: 'Search query for "search" action (symbol name)',
+        },
+      },
+    },
+    handler: async (params) => {
+      const { action = 'tree', name, query } = params;
+      const codeAnalyzer = getAnalyzer();
+
+      switch (action) {
+        case 'tree': {
+          const tree = await codeAnalyzer.getTree();
+          return {
+            action: 'tree',
+            root: tree.root,
+            packages: tree.packages.map(pkg => ({
+              name: pkg.name,
+              shortName: pkg.shortName,
+              path: pkg.path,
+              color: pkg.color,
+              stats: pkg.stats,
+              modules: pkg.modules.map(mod => ({
+                name: mod.name,
+                path: mod.path,
+                lines: mod.lines,
+                classes: mod.classes?.map(cls => ({
+                  name: cls.name,
+                  line: cls.line,
+                  methodCount: cls.methods?.length || 0,
+                  methods: cls.methods?.map(m => ({
+                    name: m.name,
+                    line: m.line,
+                    params: m.params,
+                    visibility: m.visibility,
+                  })),
+                })) || [],
+                functions: mod.functions?.map(fn => ({
+                  name: fn.name,
+                  line: fn.line,
+                  params: fn.params,
+                  exported: fn.exported,
+                })) || [],
+              })),
+            })),
+            stats: tree.stats,
+            message: `*tail wag* Scanned ${tree.stats.packages} packages, ${tree.stats.classes} classes, ${tree.stats.methods} methods.`,
+            timestamp: Date.now(),
+          };
+        }
+
+        case 'package': {
+          if (!name) {
+            return {
+              error: 'name required for package action',
+              hint: 'Provide package name like "node", "mcp", "core"',
+              timestamp: Date.now(),
+            };
+          }
+          const pkg = await codeAnalyzer.getPackage(name);
+          if (!pkg) {
+            return {
+              error: `Package "${name}" not found`,
+              timestamp: Date.now(),
+            };
+          }
+          return {
+            action: 'package',
+            package: pkg,
+            message: `*ears perk* Package ${pkg.name}: ${pkg.stats.modules} modules, ${pkg.stats.classes} classes.`,
+            timestamp: Date.now(),
+          };
+        }
+
+        case 'search': {
+          if (!query) {
+            return {
+              error: 'query required for search action',
+              hint: 'Search for class, method, or function names',
+              timestamp: Date.now(),
+            };
+          }
+          const results = await codeAnalyzer.search(query);
+          return {
+            action: 'search',
+            query,
+            results: results.slice(0, 50), // Limit results
+            total: results.length,
+            message: results.length > 0
+              ? `*sniff* Found ${results.length} symbols matching "${query}".`
+              : `*head tilt* No symbols found matching "${query}".`,
+            timestamp: Date.now(),
+          };
+        }
+
+        case 'stats': {
+          const stats = await codeAnalyzer.getStats();
+          return {
+            action: 'stats',
+            stats,
+            message: `*tail wag* Codebase: ${stats.packages} packages, ${stats.modules} modules, ${stats.lines} lines.`,
+            timestamp: Date.now(),
+          };
+        }
+
+        case 'invalidate': {
+          codeAnalyzer.invalidateCache();
+          return {
+            action: 'invalidate',
+            message: '*growl* Cache invalidated. Next request will rescan.',
+            timestamp: Date.now(),
+          };
+        }
+
+        default:
+          return {
+            error: `Unknown action: ${action}`,
+            validActions: ['tree', 'package', 'search', 'stats', 'invalidate'],
+            timestamp: Date.now(),
+          };
+      }
+    },
+  };
+}
+
+/**
  * Create all tools
  * @param {Object} options - Tool options
  * @param {Object} options.judge - CYNICJudge instance
@@ -1697,6 +1959,7 @@ export function createAgentDiagnosticTool(agents) {
  * @param {Object} [options.ecosystem] - EcosystemService instance for pre-loaded docs
  * @param {Object} [options.integrator] - IntegratorService instance for cross-project sync
  * @param {Object} [options.metrics] - MetricsService instance for monitoring
+ * @param {Object} [options.codebaseOptions] - Options for code analyzer (rootPath, etc)
  * @returns {Object} All tools keyed by name
  */
 export function createAllTools(options = {}) {
@@ -1705,12 +1968,14 @@ export function createAllTools(options = {}) {
     node = null,
     persistence = null,
     agents = null,
+    collective = null, // CollectivePack (The Five Dogs + CYNIC)
     sessionManager = null,
     pojChainManager = null,
     librarian = null,
     ecosystem = null,
     integrator = null,
     metrics = null,
+    codebaseOptions = {},
   } = options;
 
   if (!judge) throw new Error('judge is required');
@@ -1724,6 +1989,7 @@ export function createAllTools(options = {}) {
     createPatternsTool(judge, persistence),
     createFeedbackTool(persistence, sessionManager),
     createAgentsStatusTool(agents),
+    createCollectiveStatusTool(collective), // NEW: The Five Dogs + CYNIC (Keter)
     createAgentDiagnosticTool(agents),
     createSessionStartTool(sessionManager),
     createSessionEndTool(sessionManager),
@@ -1733,6 +1999,7 @@ export function createAllTools(options = {}) {
     createIntegratorTool(integrator),
     createMetricsTool(metrics),
     createMetaTool(), // CYNIC self-analysis dashboard
+    createCodebaseTool(codebaseOptions), // Code structure analyzer
   ];
 
   for (const tool of toolDefs) {
@@ -1753,6 +2020,7 @@ export default {
   createPatternsTool,
   createFeedbackTool,
   createAgentsStatusTool,
+  createCollectiveStatusTool, // NEW: The Five Dogs + CYNIC
   createSessionStartTool,
   createSessionEndTool,
   createDocsTool,
@@ -1761,5 +2029,6 @@ export default {
   createIntegratorTool,
   createMetricsTool,
   createMetaTool,
+  createCodebaseTool,
   createAllTools,
 };

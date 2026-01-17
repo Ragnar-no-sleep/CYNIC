@@ -72,6 +72,170 @@ export const CYNIC_CONSTANTS = {
 
   /** Meta-guidance cooldown in ms (Fib(10) = 55 seconds) */
   GUIDANCE_COOLDOWN_MS: 55000,
+
+  /** Relationship learning rate (φ⁻³ ≈ 0.236) */
+  LEARNING_RATE: PHI_INV_2 * PHI_INV,
+
+  /** Relationship decay rate (φ⁻⁴ ≈ 0.146) */
+  DECAY_RATE: PHI_INV_2 * PHI_INV_2,
+
+  /** Minimum interaction count before relationship is considered learned (Fib(5) = 5) */
+  MIN_INTERACTIONS: 5,
+
+  /** Structure proposal threshold - suggest changes after Fib(8) = 21 learned patterns */
+  STRUCTURE_PROPOSAL_THRESHOLD: 21,
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SEFIROT TEMPLATE - Initial guidance, not law
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Sefirot relationships - CYNIC's initial intuition, subject to learning
+ *
+ * φ-aligned relationship weights based on Tree of Life geometry:
+ *
+ *                    Keter (CYNIC)
+ *                        │
+ *         ┌──────────────┼──────────────┐
+ *         │              │              │
+ *      Binah          (Daat)        Chochmah
+ *    (Analyst)       (Scholar)       (Sage)
+ *         │              │              │
+ *         └──────────────┼──────────────┘
+ *                        │
+ *         ┌──────────────┼──────────────┐
+ *         │              │              │
+ *      Gevurah       Tiferet        Chesed
+ *    (Guardian)      (Oracle)     (Architect)
+ *         │              │              │
+ *         └──────────────┼──────────────┘
+ *                        │
+ *         ┌──────────────┼──────────────┐
+ *         │              │              │
+ *        Hod          Yesod         Netzach
+ *    (Deployer)      (Janitor)       (Scout)
+ *         │              │              │
+ *         └──────────────┴──────────────┘
+ *                        │
+ *                    Malkhut
+ *                 (Cartographer)
+ *
+ * Weight system (φ-aligned):
+ * - φ⁻¹ = 0.618: Direct vertical connections (same pillar)
+ * - φ⁻² = 0.382: Horizontal connections (same level, adjacent)
+ * - φ⁻³ = 0.236: Diagonal connections (different pillar, adjacent level)
+ * - φ⁻⁴ = 0.146: Indirect connections (skip level or far pillar)
+ *
+ * "φ doute de φ" - even this template should be questioned.
+ */
+export const SEFIROT_TEMPLATE = {
+  // φ ratio weights
+  weights: {
+    DIRECT: PHI_INV,       // φ⁻¹ = 0.618 - Direct vertical connection
+    HORIZONTAL: PHI_INV_2, // φ⁻² = 0.382 - Same level, adjacent pillar
+    DIAGONAL: PHI_INV_2 * PHI_INV,  // φ⁻³ ≈ 0.236 - Diagonal connection
+    INDIRECT: PHI_INV_2 * PHI_INV_2, // φ⁻⁴ ≈ 0.146 - Distant connection
+  },
+
+  // Pillar assignments (for geometric reasoning)
+  pillars: {
+    left: ['analyst', 'guardian', 'deployer'],    // Binah, Gevurah, Hod
+    middle: ['scholar', 'oracle', 'janitor', 'cartographer'], // Daat, Tiferet, Yesod, Malkhut
+    right: ['sage', 'architect', 'scout'],        // Chochmah, Chesed, Netzach
+  },
+
+  // Level assignments (0 = top, 3 = bottom)
+  levels: {
+    cynic: 0,       // Keter
+    analyst: 1, sage: 1, scholar: 1,  // Level 1
+    guardian: 2, oracle: 2, architect: 2,  // Level 2
+    deployer: 3, janitor: 3, scout: 3,  // Level 3
+    cartographer: 4,  // Malkhut
+  },
+
+  // Sefirah mappings (agent -> Sefirah)
+  mappings: {
+    cynic: { sefira: 'Keter', meaning: 'Crown', role: 'Meta-consciousness', pillar: 'middle', level: 0 },
+    analyst: { sefira: 'Binah', meaning: 'Understanding', role: 'Analysis', pillar: 'left', level: 1 },
+    sage: { sefira: 'Chochmah', meaning: 'Wisdom', role: 'Guidance', pillar: 'right', level: 1 },
+    scholar: { sefira: 'Daat', meaning: 'Knowledge', role: 'Knowledge extraction', pillar: 'middle', level: 1 },
+    guardian: { sefira: 'Gevurah', meaning: 'Strength', role: 'Protection', pillar: 'left', level: 2 },
+    oracle: { sefira: 'Tiferet', meaning: 'Beauty', role: 'Visualization', pillar: 'middle', level: 2 },
+    architect: { sefira: 'Chesed', meaning: 'Kindness', role: 'Design', pillar: 'right', level: 2 },
+    deployer: { sefira: 'Hod', meaning: 'Splendor', role: 'Deployment', pillar: 'left', level: 3 },
+    janitor: { sefira: 'Yesod', meaning: 'Foundation', role: 'Code hygiene', pillar: 'middle', level: 3 },
+    scout: { sefira: 'Netzach', meaning: 'Victory', role: 'Discovery', pillar: 'right', level: 3 },
+    cartographer: { sefira: 'Malkhut', meaning: 'Kingdom', role: 'Mapping', pillar: 'middle', level: 4 },
+  },
+
+  /**
+   * Calculate initial weight between two agents based on Tree geometry
+   * @param {string} from - Source agent
+   * @param {string} to - Target agent
+   * @returns {number} φ-aligned weight
+   */
+  calculateWeight(from, to) {
+    const fromMapping = this.mappings[from];
+    const toMapping = this.mappings[to];
+
+    if (!fromMapping || !toMapping) return 0;
+
+    const levelDiff = Math.abs(fromMapping.level - toMapping.level);
+    const samePillar = fromMapping.pillar === toMapping.pillar;
+    const adjacentPillar = (
+      (fromMapping.pillar === 'middle') ||
+      (toMapping.pillar === 'middle') ||
+      (fromMapping.pillar === 'left' && toMapping.pillar === 'right') ||
+      (fromMapping.pillar === 'right' && toMapping.pillar === 'left')
+    );
+
+    // Same pillar, adjacent level -> DIRECT (φ⁻¹)
+    if (samePillar && levelDiff === 1) {
+      return this.weights.DIRECT;
+    }
+
+    // Same level, adjacent pillar -> HORIZONTAL (φ⁻²)
+    if (levelDiff === 0 && adjacentPillar) {
+      return this.weights.HORIZONTAL;
+    }
+
+    // Adjacent level, different pillar -> DIAGONAL (φ⁻³)
+    if (levelDiff === 1 && !samePillar) {
+      return this.weights.DIAGONAL;
+    }
+
+    // Everything else -> INDIRECT (φ⁻⁴)
+    if (levelDiff <= 2) {
+      return this.weights.INDIRECT;
+    }
+
+    // Very distant -> no initial connection
+    return 0;
+  },
+
+  /**
+   * Generate all initial affinities based on geometric rules
+   * @returns {Object} Affinities map
+   */
+  generateAffinities() {
+    const agents = Object.keys(this.mappings).filter(a => a !== 'cynic');
+    const affinities = {};
+
+    for (const from of agents) {
+      affinities[from] = {};
+      for (const to of agents) {
+        if (from !== to) {
+          const weight = this.calculateWeight(from, to);
+          if (weight > 0) {
+            affinities[from][to] = weight;
+          }
+        }
+      }
+    }
+
+    return affinities;
+  },
 };
 
 /**
@@ -107,6 +271,386 @@ export const MetaState = {
   DECIDING: 'deciding',       // Making a decision
   GUIDING: 'guiding',         // Providing guidance
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RELATIONSHIP GRAPH - Dynamic learning of agent relationships
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * RelationshipGraph - CYNIC learns agent relationships through observation
+ *
+ * Rather than hardcoding structure, CYNIC observes:
+ * - Which agents interact frequently
+ * - Which collaborations produce positive outcomes
+ * - Which pairs have natural synergy
+ *
+ * The graph evolves based on evidence, with Sefirot as initial seed.
+ */
+export class RelationshipGraph {
+  /**
+   * @param {Object} [options] - Options
+   * @param {boolean} [options.useSefirotSeed=true] - Use Sefirot template as initial values
+   */
+  constructor(options = {}) {
+    // Relationship weights: Map<string, Map<string, RelationshipData>>
+    // Key format: "from:to" -> { weight, interactions, outcomes }
+    this.relationships = new Map();
+
+    // Interaction history for learning
+    this.interactionHistory = [];
+
+    // Structure proposals (when learned patterns diverge from template)
+    this.structureProposals = [];
+
+    // Initialize with Sefirot template if requested
+    if (options.useSefirotSeed !== false) {
+      this._seedFromSefirot();
+    }
+
+    // Statistics
+    this.stats = {
+      totalInteractions: 0,
+      learnedRelationships: 0,
+      structureProposals: 0,
+    };
+  }
+
+  /**
+   * Seed initial weights from Sefirot template
+   * Uses φ-aligned geometric calculations
+   * @private
+   */
+  _seedFromSefirot() {
+    // Generate affinities from geometric rules
+    const affinities = SEFIROT_TEMPLATE.generateAffinities();
+
+    for (const [from, targets] of Object.entries(affinities)) {
+      for (const [to, weight] of Object.entries(targets)) {
+        this._setRelationship(from, to, {
+          weight,
+          source: 'sefirot_template',
+          sefirotWeight: weight, // Store original for comparison
+          interactions: 0,
+          positiveOutcomes: 0,
+          negativeOutcomes: 0,
+          createdAt: Date.now(),
+          lastUpdated: Date.now(),
+        });
+      }
+    }
+  }
+
+  /**
+   * Get relationship key
+   * @private
+   */
+  _getKey(from, to) {
+    return `${from}:${to}`;
+  }
+
+  /**
+   * Set relationship data
+   * @private
+   */
+  _setRelationship(from, to, data) {
+    if (!this.relationships.has(from)) {
+      this.relationships.set(from, new Map());
+    }
+    this.relationships.get(from).set(to, data);
+  }
+
+  /**
+   * Get relationship data
+   * @param {string} from - Source agent
+   * @param {string} to - Target agent
+   * @returns {Object|null} Relationship data or null
+   */
+  getRelationship(from, to) {
+    return this.relationships.get(from)?.get(to) || null;
+  }
+
+  /**
+   * Record an interaction between two agents
+   * @param {string} from - Source agent
+   * @param {string} to - Target agent
+   * @param {Object} context - Interaction context
+   * @returns {Object} Updated relationship
+   */
+  recordInteraction(from, to, context = {}) {
+    let rel = this.getRelationship(from, to);
+
+    if (!rel) {
+      // New relationship discovered through observation
+      rel = {
+        weight: 0.1, // Start with low weight
+        source: 'observed',
+        interactions: 0,
+        positiveOutcomes: 0,
+        negativeOutcomes: 0,
+        createdAt: Date.now(),
+        lastUpdated: Date.now(),
+      };
+    }
+
+    // Update interaction count
+    rel.interactions++;
+    rel.lastUpdated = Date.now();
+
+    // Store interaction for learning
+    this.interactionHistory.push({
+      from,
+      to,
+      context,
+      timestamp: Date.now(),
+    });
+
+    // Trim history
+    while (this.interactionHistory.length > CYNIC_CONSTANTS.MAX_OBSERVED_EVENTS) {
+      this.interactionHistory.shift();
+    }
+
+    this._setRelationship(from, to, rel);
+    this.stats.totalInteractions++;
+
+    return rel;
+  }
+
+  /**
+   * Record outcome of a collaboration
+   * @param {string} from - Source agent
+   * @param {string} to - Target agent
+   * @param {boolean} positive - Whether outcome was positive
+   * @param {number} [magnitude=1] - Magnitude of impact (0-1)
+   */
+  recordOutcome(from, to, positive, magnitude = 1) {
+    let rel = this.getRelationship(from, to);
+
+    if (!rel) {
+      // Create relationship from outcome
+      rel = {
+        weight: positive ? 0.1 : -0.1,
+        source: 'observed',
+        interactions: 1,
+        positiveOutcomes: 0,
+        negativeOutcomes: 0,
+        createdAt: Date.now(),
+        lastUpdated: Date.now(),
+      };
+    }
+
+    // Update outcome counts
+    if (positive) {
+      rel.positiveOutcomes++;
+    } else {
+      rel.negativeOutcomes++;
+    }
+
+    // Calculate new weight using φ-aligned learning
+    const learningRate = CYNIC_CONSTANTS.LEARNING_RATE * magnitude;
+    const delta = positive ? learningRate : -learningRate;
+
+    // Adjust weight, bounded by [-1, 1]
+    rel.weight = Math.max(-1, Math.min(1, rel.weight + delta));
+    rel.lastUpdated = Date.now();
+
+    // Check if relationship is now "learned" (enough evidence)
+    if (rel.interactions >= CYNIC_CONSTANTS.MIN_INTERACTIONS) {
+      rel.learned = true;
+      this.stats.learnedRelationships++;
+    }
+
+    this._setRelationship(from, to, rel);
+
+    // Check for structure proposals
+    this._checkForStructureProposal(from, to, rel);
+  }
+
+  /**
+   * Apply time-based decay to all relationships
+   * Relationships that aren't reinforced gradually decay toward neutral.
+   */
+  applyDecay() {
+    const decay = CYNIC_CONSTANTS.DECAY_RATE;
+    const now = Date.now();
+
+    for (const [from, targets] of this.relationships) {
+      for (const [to, rel] of targets) {
+        // Only decay observed relationships, not template ones
+        if (rel.source === 'observed' && rel.learned) {
+          const timeSinceUpdate = now - rel.lastUpdated;
+          const decayPeriods = timeSinceUpdate / CYNIC_CONSTANTS.INTROSPECTION_INTERVAL_MS;
+
+          if (decayPeriods >= 1) {
+            // Decay toward 0 (neutral)
+            const decayAmount = decay * Math.floor(decayPeriods);
+            if (rel.weight > 0) {
+              rel.weight = Math.max(0, rel.weight - decayAmount);
+            } else if (rel.weight < 0) {
+              rel.weight = Math.min(0, rel.weight + decayAmount);
+            }
+            rel.lastUpdated = now;
+            this._setRelationship(from, to, rel);
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Check if learned patterns diverge from Sefirot template
+   * @private
+   */
+  _checkForStructureProposal(from, to, rel) {
+    // Only consider learned relationships
+    if (!rel.learned) return;
+
+    // Get Sefirot suggested affinity (stored or calculated)
+    const sefirotWeight = rel.sefirotWeight ?? SEFIROT_TEMPLATE.calculateWeight(from, to);
+
+    // Check for significant divergence
+    const divergence = Math.abs(rel.weight - sefirotWeight);
+
+    if (divergence >= PHI_INV_2) { // 38.2% divergence threshold
+      const proposal = {
+        type: rel.weight > sefirotWeight ? 'strengthen' : 'weaken',
+        from,
+        to,
+        currentWeight: rel.weight,
+        sefirotWeight,
+        divergence,
+        evidence: {
+          interactions: rel.interactions,
+          positiveOutcomes: rel.positiveOutcomes,
+          negativeOutcomes: rel.negativeOutcomes,
+        },
+        timestamp: Date.now(),
+      };
+
+      // Avoid duplicate proposals
+      const existingIdx = this.structureProposals.findIndex(
+        p => p.from === from && p.to === to
+      );
+
+      if (existingIdx >= 0) {
+        this.structureProposals[existingIdx] = proposal;
+      } else {
+        this.structureProposals.push(proposal);
+        this.stats.structureProposals++;
+      }
+    }
+  }
+
+  /**
+   * Get strongest relationships for an agent
+   * @param {string} agent - Agent name
+   * @param {number} [limit=5] - Max relationships to return
+   * @returns {Array} Sorted relationships
+   */
+  getStrongestRelationships(agent, limit = 5) {
+    const targets = this.relationships.get(agent);
+    if (!targets) return [];
+
+    return Array.from(targets.entries())
+      .map(([to, data]) => ({ to, ...data }))
+      .sort((a, b) => b.weight - a.weight)
+      .slice(0, limit);
+  }
+
+  /**
+   * Get all learned relationships
+   * @returns {Array} All learned relationships
+   */
+  getLearnedRelationships() {
+    const learned = [];
+
+    for (const [from, targets] of this.relationships) {
+      for (const [to, data] of targets) {
+        if (data.learned) {
+          learned.push({ from, to, ...data });
+        }
+      }
+    }
+
+    return learned.sort((a, b) => b.weight - a.weight);
+  }
+
+  /**
+   * Get current structure proposals
+   * @returns {Array} Structure proposals
+   */
+  getStructureProposals() {
+    return [...this.structureProposals];
+  }
+
+  /**
+   * Export full graph state
+   * @returns {Object} Graph state
+   */
+  export() {
+    const edges = [];
+
+    for (const [from, targets] of this.relationships) {
+      for (const [to, data] of targets) {
+        edges.push({ from, to, ...data });
+      }
+    }
+
+    return {
+      edges,
+      stats: { ...this.stats },
+      structureProposals: [...this.structureProposals],
+      exportedAt: Date.now(),
+    };
+  }
+
+  /**
+   * Import graph state
+   * @param {Object} state - Previously exported state
+   */
+  import(state) {
+    if (!state?.edges) return;
+
+    this.relationships.clear();
+    for (const edge of state.edges) {
+      const { from, to, ...data } = edge;
+      this._setRelationship(from, to, data);
+    }
+
+    if (state.stats) {
+      this.stats = { ...state.stats };
+    }
+
+    if (state.structureProposals) {
+      this.structureProposals = [...state.structureProposals];
+    }
+  }
+
+  /**
+   * Get summary statistics
+   * @returns {Object} Summary
+   */
+  getSummary() {
+    const edges = [];
+    let totalWeight = 0;
+    let learnedCount = 0;
+
+    for (const [from, targets] of this.relationships) {
+      for (const [to, data] of targets) {
+        edges.push({ from, to, weight: data.weight, learned: data.learned });
+        totalWeight += data.weight;
+        if (data.learned) learnedCount++;
+      }
+    }
+
+    return {
+      totalRelationships: edges.length,
+      learnedRelationships: learnedCount,
+      averageWeight: edges.length > 0 ? totalWeight / edges.length : 0,
+      structureProposals: this.structureProposals.length,
+      stats: { ...this.stats },
+    };
+  }
+}
 
 /**
  * Profile-based CYNIC behavior
@@ -213,6 +757,11 @@ export class CollectiveCynic extends BaseAgent {
       overridesApproved: 0,
       consensusParticipated: 0,
     };
+
+    // Relationship graph - CYNIC learns agent relationships
+    this.relationshipGraph = new RelationshipGraph({
+      useSefirotSeed: options.useSefirotSeed !== false,
+    });
 
     // Subscribe to events if bus available
     if (this.eventBus) {
@@ -351,12 +900,68 @@ export class CollectiveCynic extends BaseAgent {
     // Store observed event
     this._recordObservation(event);
 
+    // Learn from agent interactions
+    this._learnFromInteraction(event);
+
     // Update meta-state based on collective activity
     this._updateMetaState(event);
 
     // Check if synthesis is needed
     if (this.observedEvents.length >= CYNIC_CONSTANTS.WISDOM_THRESHOLD) {
       await this._considerSynthesis();
+    }
+  }
+
+  /**
+   * Learn from agent interaction - update relationship weights
+   * @private
+   */
+  _learnFromInteraction(event) {
+    const source = event.source;
+    const payload = event.payload || {};
+
+    // Track agent-to-agent interactions
+    if (payload.targetAgent && payload.targetAgent !== source) {
+      this.relationshipGraph.recordInteraction(source, payload.targetAgent, {
+        eventType: event.type,
+        timestamp: event.timestamp,
+      });
+    }
+
+    // Learn from outcomes
+    if (event.type === AgentEvent.CONSENSUS_REACHED) {
+      // Consensus success - strengthen relationships between participants
+      const participants = payload.participants || [];
+      for (let i = 0; i < participants.length; i++) {
+        for (let j = i + 1; j < participants.length; j++) {
+          this.relationshipGraph.recordOutcome(participants[i], participants[j], true, 0.5);
+          this.relationshipGraph.recordOutcome(participants[j], participants[i], true, 0.5);
+        }
+      }
+    }
+
+    if (event.type === AgentEvent.KNOWLEDGE_EXTRACTED) {
+      // Knowledge extraction - strengthen scholar connections
+      if (source && payload.contributingAgent) {
+        this.relationshipGraph.recordOutcome(source, payload.contributingAgent, true, 0.3);
+      }
+    }
+
+    if (event.type === AgentEvent.THREAT_BLOCKED) {
+      // Threat blocked - strengthen guardian-analyst connection (if analyst detected)
+      if (payload.detectedBy && payload.detectedBy !== source) {
+        this.relationshipGraph.recordOutcome(source, payload.detectedBy, true, 0.7);
+        this.relationshipGraph.recordOutcome(payload.detectedBy, source, true, 0.7);
+      }
+    }
+
+    if (event.type === AgentEvent.PATTERN_DETECTED) {
+      // Pattern detection - record the collaborating agents
+      if (payload.corroboratedBy) {
+        for (const corroborator of payload.corroboratedBy) {
+          this.relationshipGraph.recordOutcome(source, corroborator, true, 0.4);
+        }
+      }
     }
   }
 
@@ -998,7 +1603,110 @@ export class CollectiveCynic extends BaseAgent {
         maxConfidence: CYNIC_CONSTANTS.MAX_CONFIDENCE,
         overrideThreshold: CYNIC_CONSTANTS.OVERRIDE_THRESHOLD,
       },
+      // Relationship learning summary
+      relationships: this.relationshipGraph.getSummary(),
     };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // RELATIONSHIP LEARNING - Structure that emerges from observation
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Get learned relationships between agents
+   * @param {string} [agent] - Optional: get relationships for specific agent
+   * @returns {Object} Relationship data
+   */
+  getLearnedRelationships(agent) {
+    if (agent) {
+      return {
+        agent,
+        strongest: this.relationshipGraph.getStrongestRelationships(agent),
+        sefirotMapping: SEFIROT_TEMPLATE.mappings[agent],
+      };
+    }
+
+    return {
+      all: this.relationshipGraph.getLearnedRelationships(),
+      summary: this.relationshipGraph.getSummary(),
+    };
+  }
+
+  /**
+   * Get structure proposals (where learned patterns diverge from Sefirot template)
+   * @returns {Array} Structure proposals
+   */
+  getStructureProposals() {
+    const proposals = this.relationshipGraph.getStructureProposals();
+
+    return proposals.map(p => ({
+      ...p,
+      sefirotFrom: SEFIROT_TEMPLATE.mappings[p.from],
+      sefirotTo: SEFIROT_TEMPLATE.mappings[p.to],
+      recommendation: this._generateStructureRecommendation(p),
+    }));
+  }
+
+  /**
+   * Generate recommendation from structure proposal
+   * @private
+   */
+  _generateStructureRecommendation(proposal) {
+    const fromSefira = SEFIROT_TEMPLATE.mappings[proposal.from]?.sefira || proposal.from;
+    const toSefira = SEFIROT_TEMPLATE.mappings[proposal.to]?.sefira || proposal.to;
+
+    if (proposal.type === 'strengthen') {
+      return {
+        action: 'strengthen',
+        message: `*ears perk* Les interactions ${fromSefira}-${toSefira} sont plus fortes que prévu par le template. ` +
+                 `Poids observé: ${(proposal.currentWeight * 100).toFixed(1)}% vs Sefirot: ${(proposal.sefirotWeight * 100).toFixed(1)}%. ` +
+                 `Basé sur ${proposal.evidence.interactions} interactions, ${proposal.evidence.positiveOutcomes} positifs.`,
+        confidence: Math.min(PHI_INV, proposal.evidence.interactions / 20),
+      };
+    } else {
+      return {
+        action: 'weaken',
+        message: `*sniff* Les interactions ${fromSefira}-${toSefira} sont plus faibles que prévu. ` +
+                 `Poids observé: ${(proposal.currentWeight * 100).toFixed(1)}% vs Sefirot: ${(proposal.sefirotWeight * 100).toFixed(1)}%. ` +
+                 `${proposal.evidence.negativeOutcomes} outcomes négatifs sur ${proposal.evidence.interactions} interactions.`,
+        confidence: Math.min(PHI_INV, proposal.evidence.interactions / 20),
+      };
+    }
+  }
+
+  /**
+   * Manually record a collaboration outcome (for external feedback)
+   * @param {string} agent1 - First agent
+   * @param {string} agent2 - Second agent
+   * @param {boolean} success - Whether collaboration was successful
+   * @param {number} [magnitude=1] - Impact magnitude (0-1)
+   */
+  recordCollaboration(agent1, agent2, success, magnitude = 1) {
+    this.relationshipGraph.recordOutcome(agent1, agent2, success, magnitude);
+    this.relationshipGraph.recordOutcome(agent2, agent1, success, magnitude);
+  }
+
+  /**
+   * Apply decay to relationships (call periodically)
+   */
+  applyRelationshipDecay() {
+    this.relationshipGraph.applyDecay();
+  }
+
+  /**
+   * Export relationship graph state (for persistence)
+   * @returns {Object} Exportable state
+   */
+  exportRelationships() {
+    return this.relationshipGraph.export();
+  }
+
+  /**
+   * Import relationship graph state (from persistence)
+   * @param {Object} state - Previously exported state
+   */
+  importRelationships(state) {
+    this.relationshipGraph.import(state);
   }
 
   /**
@@ -1061,8 +1769,12 @@ export class CollectiveCynic extends BaseAgent {
 
   /**
    * Clear all data
+   * @param {Object} [options] - Options
+   * @param {boolean} [options.keepRelationships=true] - Keep learned relationships
    */
-  clear() {
+  clear(options = {}) {
+    const keepRelationships = options.keepRelationships !== false;
+
     this.observedEvents = [];
     this.synthesizedPatterns = [];
     this.decisions = [];
@@ -1078,6 +1790,11 @@ export class CollectiveCynic extends BaseAgent {
       overridesApproved: 0,
       consensusParticipated: 0,
     };
+
+    // Optionally reset relationship graph (but keep learned knowledge by default)
+    if (!keepRelationships) {
+      this.relationshipGraph = new RelationshipGraph({ useSefirotSeed: true });
+    }
   }
 
   /**
@@ -1105,4 +1822,6 @@ export default {
   CynicDecisionType,
   CynicGuidanceType,
   MetaState,
+  RelationshipGraph,
+  SEFIROT_TEMPLATE,
 };
