@@ -285,13 +285,13 @@ This architecture is:
 
 ### Remaining Work
 
-| Task | Priority | Effort |
-|------|----------|--------|
-| Solana wallet integration | HIGH | Medium |
-| Full judgment flow refactor | MEDIUM | Large |
-| Burn verification enforcement | MEDIUM | Small |
-| E-Score on-chain snapshots | LOW | Medium |
-| Merkle proof dispute resolution | LOW | Medium |
+| Task | Priority | Effort | Status |
+|------|----------|--------|--------|
+| Solana wallet integration | HIGH | Medium | ✅ DONE |
+| Full judgment flow refactor | MEDIUM | Large | Pending |
+| Burn verification enforcement | MEDIUM | Small | Pending |
+| E-Score on-chain snapshots | LOW | Medium | Pending |
+| Merkle proof dispute resolution | LOW | Medium | Pending |
 
 ### How to Enable Anchoring
 
@@ -331,6 +331,50 @@ if (result.verified) {
 }
 ```
 
+### How to Configure Wallet (NEW)
+
+```javascript
+import {
+  createAnchorer,
+  loadWalletFromFile,
+  loadWalletFromEnv,
+  generateWallet,
+  SolanaCluster,
+} from '@cynic/anchor';
+
+// Option 1: Load from Solana CLI keypair file
+const wallet = loadWalletFromFile('~/.config/solana/id.json');
+
+// Option 2: Load from environment variable
+// Set CYNIC_SOLANA_KEY as JSON array or base58 encoded
+const wallet = loadWalletFromEnv('CYNIC_SOLANA_KEY');
+
+// Option 3: Generate new wallet (for testing)
+const { wallet, secretKey } = generateWallet();
+// WARNING: Store secretKey securely!
+
+// Create anchorer with real Solana connection
+const anchorer = createAnchorer({
+  cluster: SolanaCluster.DEVNET, // or MAINNET
+  wallet,
+});
+
+// Now anchoring is REAL - transactions go to Solana!
+const result = await anchorer.anchor(merkleRoot);
+console.log(`Anchored: ${result.signature}`);
+```
+
+**Wallet Types:**
+- `KEYPAIR` - Direct secret key (64 bytes)
+- `FILE` - Load from Solana CLI JSON file
+- `ENV` - Load from environment variable
+- `ADAPTER` - External wallet (Phantom, etc.)
+
+**Requirements for real anchoring:**
+1. Install: `npm install @solana/web3.js`
+2. Configure wallet with SOL for transaction fees
+3. Use devnet for testing, mainnet for production
+
 ---
 
-*The architecture is ready. Solana wallet integration is the final step for "Onchain is truth".*
+*The architecture is COMPLETE. "Onchain is truth" is now fully implemented.*

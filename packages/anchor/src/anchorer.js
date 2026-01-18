@@ -17,6 +17,7 @@ import {
   SolanaCluster,
   DEFAULT_CONFIG,
 } from './constants.js';
+import { CynicWallet, base58Encode } from './wallet.js';
 
 /**
  * Result of an anchor operation
@@ -203,22 +204,133 @@ export class SolanaAnchorer {
    * @private
    */
   async _sendAnchorTransaction(record) {
+    // Lazy import @solana/web3.js (may not be installed)
+    let Connection, Transaction, TransactionInstruction, PublicKey, Keypair;
+    try {
+      const solanaWeb3 = await import('@solana/web3.js');
+      Connection = solanaWeb3.Connection;
+      Transaction = solanaWeb3.Transaction;
+      TransactionInstruction = solanaWeb3.TransactionInstruction;
+      PublicKey = solanaWeb3.PublicKey;
+      Keypair = solanaWeb3.Keypair;
+    } catch (error) {
+      throw new Error(
+        '@solana/web3.js is required for real anchoring. ' +
+          'Install with: npm install @solana/web3.js'
+      );
+    }
+
     // Build memo data
     const memo = `${ANCHOR_CONSTANTS.MEMO_PREFIX}${record.merkleRoot}`;
+    const memoData = Buffer.from(memo, 'utf-8');
 
-    // This is where we'd use @solana/web3.js
-    // For now, we throw to indicate wallet integration needed
-    throw new Error(
-      'Solana wallet integration required. ' +
-        'Set wallet in config or use simulation mode.'
+    // Memo program ID
+    const MEMO_PROGRAM_ID = new PublicKey(
+      'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr'
     );
 
-    // Real implementation would:
-    // 1. Create memo instruction
-    // 2. Build transaction
-    // 3. Sign with wallet
-    // 4. Send and confirm
-    // 5. Return signature and slot
+    // Create connection
+    const connection = new Connection(this.cluster, 'confirmed');
+
+    // Get payer keypair from wallet
+    let payer;
+    if (this.wallet instanceof CynicWallet) {
+      if (this.wallet._secretKey) {
+        payer = Keypair.fromSecretKey(this.wallet._secretKey);
+      } else if (this.wallet._keypair) {
+        payer = this.wallet._keypair;
+      } else {
+        throw new Error('Wallet does not have signing capability');
+      }
+    } else if (this.wallet && this.wallet.secretKey) {
+      // Raw keypair object
+      payer = Keypair.fromSecretKey(this.wallet.secretKey);
+    } else if (this.wallet && typeof this.wallet.signTransaction === 'function') {
+      // Wallet adapter - handle differently
+      payer = null;
+    } else {
+      throw new Error('Invalid wallet configuration');
+    }
+
+    // Create memo instruction
+    const memoInstruction = new TransactionInstruction({
+      keys: [],
+      programId: MEMO_PROGRAM_ID,
+      data: memoData,
+    });
+
+    // Create and sign transaction
+    const transaction = new Transaction().add(memoInstruction);
+
+    // Get recent blockhash
+    const { blockhash, lastValidBlockHeight } =
+      await connection.getLatestBlockhash('confirmed');
+    transaction.recentBlockhash = blockhash;
+    transaction.lastValidBlockHeight = lastValidBlockHeight;
+
+    let signature;
+    let slot;
+
+    if (payer) {
+      // Sign with keypair
+      transaction.feePayer = payer.publicKey;
+      transaction.sign(payer);
+
+      // Send and confirm
+      signature = await connection.sendRawTransaction(transaction.serialize(), {
+        skipPreflight: false,
+        preflightCommitment: 'confirmed',
+      });
+
+      // Wait for confirmation
+      const confirmation = await connection.confirmTransaction(
+        {
+          signature,
+          blockhash,
+          lastValidBlockHeight,
+        },
+        'confirmed'
+      );
+
+      if (confirmation.value.err) {
+        throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+      }
+
+      // Get slot from transaction
+      const txInfo = await connection.getTransaction(signature, {
+        commitment: 'confirmed',
+      });
+      slot = txInfo?.slot || 0;
+    } else {
+      // Use wallet adapter
+      transaction.feePayer = new PublicKey(this.wallet.publicKey);
+      const signedTx = await this.wallet.signTransaction(transaction);
+
+      signature = await connection.sendRawTransaction(signedTx.serialize(), {
+        skipPreflight: false,
+        preflightCommitment: 'confirmed',
+      });
+
+      const confirmation = await connection.confirmTransaction(
+        {
+          signature,
+          blockhash,
+          lastValidBlockHeight,
+        },
+        'confirmed'
+      );
+
+      if (confirmation.value.err) {
+        throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+      }
+
+      const txInfo = await connection.getTransaction(signature, {
+        commitment: 'confirmed',
+      });
+      slot = txInfo?.slot || 0;
+    }
+
+    return { signature, slot };
   }
 
   /**
@@ -353,19 +465,83 @@ export class SolanaAnchorer {
   /**
    * Verify an anchor exists on Solana
    * @param {string} signature - Solana tx signature
-   * @returns {Promise<boolean>}
+   * @param {string} [expectedMerkleRoot] - Expected merkle root in memo
+   * @returns {Promise<{verified: boolean, slot?: number, memo?: string, error?: string}>}
    */
-  async verifyAnchor(signature) {
+  async verifyAnchor(signature, expectedMerkleRoot = null) {
     // Skip simulation signatures
     if (signature.startsWith('sim_')) {
-      return true; // Simulated anchors are "verified"
+      return { verified: true, simulated: true };
     }
 
-    // Would query Solana to verify transaction exists
-    // For now, return false to indicate verification not implemented
-    throw new Error(
-      'Solana verification requires @solana/web3.js connection'
-    );
+    // Lazy import @solana/web3.js
+    let Connection;
+    try {
+      const solanaWeb3 = await import('@solana/web3.js');
+      Connection = solanaWeb3.Connection;
+    } catch (error) {
+      return {
+        verified: false,
+        error: '@solana/web3.js is required for verification',
+      };
+    }
+
+    try {
+      const connection = new Connection(this.cluster, 'confirmed');
+
+      // Get transaction
+      const tx = await connection.getTransaction(signature, {
+        commitment: 'confirmed',
+        maxSupportedTransactionVersion: 0,
+      });
+
+      if (!tx) {
+        return { verified: false, error: 'Transaction not found' };
+      }
+
+      // Extract memo from transaction logs
+      let memoContent = null;
+      if (tx.meta?.logMessages) {
+        for (const log of tx.meta.logMessages) {
+          // Memo program logs the memo content
+          if (log.includes('Program log: Memo')) {
+            const match = log.match(/Memo \(len \d+\): "(.+)"/);
+            if (match) {
+              memoContent = match[1];
+            }
+          }
+          // Also check for raw memo
+          if (log.includes(ANCHOR_CONSTANTS.MEMO_PREFIX)) {
+            memoContent = log;
+          }
+        }
+      }
+
+      // Verify merkle root if provided
+      if (expectedMerkleRoot && memoContent) {
+        const expectedMemo = `${ANCHOR_CONSTANTS.MEMO_PREFIX}${expectedMerkleRoot}`;
+        if (!memoContent.includes(expectedMerkleRoot)) {
+          return {
+            verified: false,
+            slot: tx.slot,
+            memo: memoContent,
+            error: 'Merkle root mismatch',
+          };
+        }
+      }
+
+      return {
+        verified: true,
+        slot: tx.slot,
+        memo: memoContent,
+        blockTime: tx.blockTime,
+      };
+    } catch (error) {
+      return {
+        verified: false,
+        error: error.message,
+      };
+    }
   }
 
   /**

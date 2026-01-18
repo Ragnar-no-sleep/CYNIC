@@ -58,3 +58,16 @@ export { SolanaAnchorer, createAnchorer } from './anchorer.js';
 
 // Queue
 export { AnchorQueue, createAnchorQueue } from './queue.js';
+
+// Wallet
+export {
+  WalletType,
+  CynicWallet,
+  loadWalletFromFile,
+  loadWalletFromEnv,
+  generateWallet,
+  saveWalletToFile,
+  getDefaultWalletPath,
+  base58Encode,
+  base58Decode,
+} from './wallet.js';

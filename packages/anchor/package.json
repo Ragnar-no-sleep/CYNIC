@@ -8,13 +8,22 @@
     ".": "./src/index.js",
     "./constants": "./src/constants.js",
     "./anchorer": "./src/anchorer.js",
-    "./queue": "./src/queue.js"
+    "./queue": "./src/queue.js",
+    "./wallet": "./src/wallet.js"
   },
   "scripts": {
     "test": "node --test test/*.test.js"
   },
   "dependencies": {
     "@cynic/core": "*"
+  },
+  "peerDependencies": {
+    "@solana/web3.js": "^1.87.0"
+  },
+  "peerDependenciesMeta": {
+    "@solana/web3.js": {
+      "optional": true
+    }
   },
   "license": "MIT"
 }
