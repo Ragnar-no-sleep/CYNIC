@@ -430,13 +430,15 @@ export class ArchView {
     if (this.api) {
       try {
         const result = await this.api.codebase('tree');
-        if (result.success && result.result) {
-          this.codebaseData = result.result;
-          this._renderCodebaseTree(treeContainer, result.result);
+        if (result.success && result.result?.packages?.length > 0) {
+          // Transform API response to tree structure
+          const treeData = this._transformCodebaseData(result.result);
+          this.codebaseData = treeData;
+          this._renderCodebaseTree(treeContainer, treeData);
 
           // Update 3D scene
           if (this.threeScene) {
-            this.threeScene.loadCodebaseTree(result.result);
+            this.threeScene.loadCodebaseTree(treeData);
           }
           return;
         }
@@ -447,6 +449,30 @@ export class ArchView {
 
     // Fallback: show mock structure
     this._renderCodebaseTree(treeContainer, this._getMockCodebase());
+  }
+
+  /**
+   * Transform API codebase response to tree structure
+   */
+  _transformCodebaseData(apiData) {
+    const { packages = [] } = apiData;
+
+    return {
+      name: 'packages',
+      type: 'package',
+      children: packages.map(pkg => ({
+        name: pkg.name,
+        type: 'package',
+        path: pkg.path,
+        count: pkg.moduleCount || 0,
+        children: (pkg.modules || []).map(mod => ({
+          name: mod.name,
+          type: 'module',
+          path: mod.path,
+          children: [],
+        })),
+      })),
+    };
   }
 
   /**
