@@ -17,6 +17,9 @@ COPY packages/core/package.json ./packages/core/
 COPY packages/protocol/package.json ./packages/protocol/
 COPY packages/node/package.json ./packages/node/
 COPY packages/persistence/package.json ./packages/persistence/
+COPY packages/holdex/package.json ./packages/holdex/
+COPY packages/gasdf/package.json ./packages/gasdf/
+COPY packages/zk/package.json ./packages/zk/
 COPY packages/mcp/package.json ./packages/mcp/
 
 # Install production dependencies only
@@ -42,6 +45,9 @@ COPY packages/core ./packages/core
 COPY packages/protocol ./packages/protocol
 COPY packages/node ./packages/node
 COPY packages/persistence ./packages/persistence
+COPY packages/holdex ./packages/holdex
+COPY packages/gasdf ./packages/gasdf
+COPY packages/zk ./packages/zk
 COPY packages/mcp ./packages/mcp
 
 # Set ownership

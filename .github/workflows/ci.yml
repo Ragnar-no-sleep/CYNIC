@@ -26,8 +26,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Run core tests
+        run: npm test --workspace=@cynic/core
+
       - name: Run protocol tests
         run: npm test --workspace=@cynic/protocol
+
+      - name: Run node tests
+        run: npm test --workspace=@cynic/node
+
+      - name: Run holdex tests
+        run: npm test --workspace=@cynic/holdex
+
+      - name: Run gasdf tests
+        run: npm test --workspace=@cynic/gasdf
 
       - name: Run MCP tests
         run: npm test --workspace=@cynic/mcp
