@@ -115,7 +115,7 @@ describe('Collective Agents', () => {
       const summary = pack.getSummary();
 
       assert.strictEqual(summary.agentCount, 11);
-      assert.strictEqual(summary.dogCount, 5);
+      assert.strictEqual(summary.dogCount, 11);
       assert.ok(summary.agents.guardian);
       assert.ok(summary.agents.analyst);
       assert.ok(summary.agents.scholar);
@@ -1205,8 +1205,8 @@ function sum(arr) {
 
   describe('φ-Alignment', () => {
     it('should use Fibonacci numbers for bounds', () => {
-      // 5 dogs (Fib(5)) + CYNIC + Janitor + Scout + Cartographer + Oracle + Deployer = 11 agents total
-      assert.strictEqual(COLLECTIVE_CONSTANTS.DOG_COUNT, 5);
+      // 11 Dogs (Sefirot Tree) = all agents are Dogs now
+      assert.strictEqual(COLLECTIVE_CONSTANTS.DOG_COUNT, 11);
       assert.strictEqual(COLLECTIVE_CONSTANTS.AGENT_COUNT, 11);
     });
 
