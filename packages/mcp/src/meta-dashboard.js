@@ -245,36 +245,33 @@ export const CYNIC_ARCHITECTURE = {
   // IDENTIFIED GAPS
   // ─────────────────────────────────────────────────────────────────────────
   gaps: {
-    critical: [
+    critical: [],
+    important: [],
+    completed: [
       {
         id: 'GAP-001',
         area: 'Integration',
         title: 'HolDex Integration',
-        description: 'K-Score submission flow exists but not connected to live HolDex',
-        priority: 'HIGH',
-        packages: ['client', 'node'],
+        description: '@cynic/holdex package: K-Score integration, φ-aligned harmony constants, HolDexClient API',
+        completedAt: '2026-01-18',
+        packages: ['holdex'],
       },
       {
         id: 'GAP-002',
         area: 'Integration',
         title: 'GASdf Integration + Burn Verification',
-        description: 'Gasless transactions AND on-chain burn verification via alonisthe.dev/burns. Currently burns are trusted, not verified.',
-        priority: 'HIGH',
-        packages: ['protocol', 'node'],
-        note: 'ONCHAIN_TRUTH_VIOLATION: ConsensusEngine accepts burned value without Solana verification',
+        description: '@cynic/gasdf package: Gasless transactions, φ-aligned fees (76.4% burn, 23.6% treasury). Burns API verification in @cynic/node/burns.js',
+        completedAt: '2026-01-18',
+        packages: ['gasdf', 'node'],
       },
-    ],
-    important: [
       {
         id: 'GAP-003',
         area: 'Privacy',
         title: 'ZK/Light Protocol',
-        description: 'Zero-knowledge proofs for E-Score privacy not implemented',
-        priority: 'MEDIUM',
-        packages: ['node', 'protocol'],
+        description: '@cynic/zk package: Noir circuits for E-Score privacy proofs, prover/verifier infrastructure',
+        completedAt: '2026-01-18',
+        packages: ['zk'],
       },
-    ],
-    completed: [
       {
         id: 'GAP-004',
         area: 'Agents',
@@ -336,7 +333,7 @@ export const CYNIC_ARCHITECTURE = {
         'Merkle anchoring: Optional, not mandatory',
         'PoJ Chain: P2P consensus, not anchored to Solana L1',
       ],
-      resolution: 'GAP-002 (GASdf) will add burn verification',
+      resolution: 'GAP-002 COMPLETE: @cynic/gasdf + @cynic/node/burns.js provide on-chain burn verification',
     },
     privacyStack: {
       status: 'COMPLETE_OFFCHAIN',
