@@ -160,6 +160,8 @@ export class CollectiveAnalyst extends BaseAgent {
    * @private
    */
   _subscribeToEvents() {
+    console.error('[ANALYST] _subscribeToEvents called, registering hook subscriptions...');
+
     // Learn from consensus requests to add behavioral context
     this.eventBus.subscribe(
       AgentEvent.CONSENSUS_REQUEST,
@@ -203,6 +205,13 @@ export class CollectiveAnalyst extends BaseAgent {
       AgentId.ANALYST,
       this._handleHookPattern.bind(this)
     );
+
+    console.error('[ANALYST] Hook subscriptions registered:', {
+      HOOK_POST_TOOL: AgentEvent.HOOK_POST_TOOL,
+      HOOK_SESSION_START: AgentEvent.HOOK_SESSION_START,
+      HOOK_SESSION_STOP: AgentEvent.HOOK_SESSION_STOP,
+      HOOK_PATTERN: AgentEvent.HOOK_PATTERN,
+    });
   }
 
   /**
@@ -274,6 +283,7 @@ export class CollectiveAnalyst extends BaseAgent {
   _handleHookPostTool(event) {
     const { toolName, isError, patterns, inputSize } = event.data || {};
     this.stats.invocations++;
+    console.error(`[ANALYST] _handleHookPostTool: tool=${toolName}, invocations=${this.stats.invocations}`);
 
     if (toolName) {
       // Track tool usage
