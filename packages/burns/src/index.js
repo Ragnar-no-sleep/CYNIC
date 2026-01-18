@@ -3,15 +3,18 @@
  *
  * "Onchain is truth - burns must be verified" - κυνικός
  *
- * This package verifies burn transactions via the alonisthe.dev/burns API.
+ * This package verifies burn transactions on Solana blockchain.
  * Burns are a core part of the CYNIC ecosystem - operators must burn to participate.
  *
  * ## Usage
  *
  * ```javascript
- * import { createBurnVerifier } from '@cynic/burns';
+ * import { createBurnVerifier, SolanaCluster } from '@cynic/burns';
  *
- * const verifier = createBurnVerifier();
+ * // On-chain verification (preferred)
+ * const verifier = createBurnVerifier({
+ *   solanaCluster: SolanaCluster.MAINNET,
+ * });
  *
  * // Verify a burn
  * const result = await verifier.verify('tx_signature_here');
@@ -30,10 +33,18 @@
 
 'use strict';
 
-// Verifier
+// Verifier (main interface)
 export {
   BurnVerifier,
   createBurnVerifier,
   BurnStatus,
   DEFAULT_CONFIG,
 } from './verifier.js';
+
+// Solana on-chain verifier
+export {
+  SolanaBurnVerifier,
+  createSolanaBurnVerifier,
+  SolanaCluster,
+  BURN_ADDRESSES,
+} from './solana-verifier.js';

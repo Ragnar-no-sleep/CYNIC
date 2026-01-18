@@ -152,4 +152,9 @@ export {
   BurnVerifier,
   BurnStatus,
   DEFAULT_CONFIG as BURNS_DEFAULT_CONFIG,
+  // Solana on-chain verifier
+  SolanaBurnVerifier,
+  createSolanaBurnVerifier,
+  BURN_ADDRESSES,
+  // Note: SolanaCluster is already exported from @cynic/anchor
 } from '@cynic/burns';

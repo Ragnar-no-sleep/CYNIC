@@ -1,19 +1,21 @@
 {
   "name": "@cynic/burns",
-  "version": "0.1.0",
-  "description": "Burn verification via alonisthe.dev/burns API",
+  "version": "0.2.0",
+  "description": "Solana on-chain burn verification for CYNIC ecosystem",
   "type": "module",
   "main": "src/index.js",
   "exports": {
     ".": "./src/index.js",
     "./verifier": "./src/verifier.js",
+    "./solana-verifier": "./src/solana-verifier.js",
     "./cache": "./src/cache.js"
   },
   "scripts": {
     "test": "node --test test/*.test.js"
   },
   "dependencies": {
-    "@cynic/core": "*"
+    "@cynic/core": "*",
+    "@solana/web3.js": "^1.95.0"
   },
   "license": "MIT"
 }

@@ -1,7 +1,9 @@
 /**
  * @cynic/burns - Burn Verifier
  *
- * Verifies burns via alonisthe.dev/burns API.
+ * Verifies burns via:
+ * 1. Direct Solana on-chain verification (preferred)
+ * 2. External API fallback (alonisthe.dev/burns)
  *
  * "Onchain is truth - burns must be verified" - κυνικός
  *
@@ -11,6 +13,7 @@
 'use strict';
 
 import { PHI_INV } from '@cynic/core';
+import { SolanaBurnVerifier, SolanaCluster } from './solana-verifier.js';
 
 /**
  * Burn verification result
@@ -51,18 +54,28 @@ export const DEFAULT_CONFIG = {
   retries: 3,
   cacheEnabled: true,
   cacheTtl: 24 * 60 * 60 * 1000, // 24 hours
+  // Solana on-chain verification (preferred over API)
+  solanaCluster: null, // Set to SolanaCluster.MAINNET for on-chain verification
+  solanaCommitment: 'confirmed',
 };
 
 /**
  * Burn Verifier
  *
- * Verifies that a burn transaction actually occurred on-chain
- * by calling the alonisthe.dev/burns API.
+ * Verifies that a burn transaction actually occurred on-chain.
+ *
+ * Two modes:
+ * 1. **On-chain** (preferred): Direct Solana RPC verification
+ * 2. **API**: External API fallback (alonisthe.dev/burns)
+ *
+ * Use on-chain mode by setting `solanaCluster` in config.
  */
 export class BurnVerifier {
   /**
    * @param {Object} config - Configuration
-   * @param {string} [config.apiUrl] - Burns API URL
+   * @param {string} [config.solanaCluster] - Solana cluster URL for on-chain verification
+   * @param {string} [config.solanaCommitment] - Solana commitment level
+   * @param {string} [config.apiUrl] - Burns API URL (fallback)
    * @param {number} [config.timeout] - Request timeout in ms
    * @param {number} [config.retries] - Number of retries
    * @param {boolean} [config.cacheEnabled] - Enable caching
@@ -77,7 +90,21 @@ export class BurnVerifier {
     this.cacheTtl = config.cacheTtl || DEFAULT_CONFIG.cacheTtl;
     this.onVerify = config.onVerify;
 
-    // Simple in-memory cache
+    // ═══════════════════════════════════════════════════════════════════════
+    // On-chain verification (preferred)
+    // ═══════════════════════════════════════════════════════════════════════
+    this.solanaCluster = config.solanaCluster || null;
+    this.solanaVerifier = null;
+
+    if (this.solanaCluster) {
+      this.solanaVerifier = new SolanaBurnVerifier({
+        cluster: this.solanaCluster,
+        commitment: config.solanaCommitment || DEFAULT_CONFIG.solanaCommitment,
+      });
+      console.log(`🔥 Burns: On-chain verification enabled (${this.solanaCluster})`);
+    }
+
+    // Simple in-memory cache (used when no solana verifier)
     this.cache = new Map();
 
     // Stats
@@ -86,11 +113,15 @@ export class BurnVerifier {
       totalFailed: 0,
       totalCacheHits: 0,
       totalApiCalls: 0,
+      totalOnchainCalls: 0,
     };
   }
 
   /**
    * Verify a burn transaction
+   *
+   * Uses on-chain verification if solanaCluster is configured,
+   * otherwise falls back to external API.
    *
    * @param {string} txSignature - Solana transaction signature
    * @param {Object} [options] - Verification options
@@ -109,6 +140,33 @@ export class BurnVerifier {
         cached: false,
       };
     }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // ON-CHAIN VERIFICATION (preferred)
+    // ═══════════════════════════════════════════════════════════════════════
+    if (this.solanaVerifier) {
+      this.stats.totalOnchainCalls++;
+
+      const result = await this.solanaVerifier.verify(txSignature, options);
+
+      // Update stats
+      if (result.verified) {
+        this.stats.totalVerified++;
+      } else {
+        this.stats.totalFailed++;
+      }
+
+      // Callback
+      if (this.onVerify) {
+        this.onVerify(result);
+      }
+
+      return result;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // API FALLBACK
+    // ═══════════════════════════════════════════════════════════════════════
 
     // Check cache first
     if (this.cacheEnabled && !options.skipCache) {
@@ -352,12 +410,21 @@ export class BurnVerifier {
    * @returns {Object}
    */
   getStats() {
-    return {
+    const stats = {
       ...this.stats,
       cacheSize: this.cache.size,
       apiUrl: this.apiUrl,
       cacheEnabled: this.cacheEnabled,
+      onchainEnabled: !!this.solanaVerifier,
     };
+
+    // Include Solana verifier stats if available
+    if (this.solanaVerifier) {
+      stats.solanaCluster = this.solanaCluster;
+      stats.solanaCacheSize = this.solanaVerifier.cache.size;
+    }
+
+    return stats;
   }
 
   /**

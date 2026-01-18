@@ -134,12 +134,16 @@ export class CYNICNode {
     this._burnsConfig = {
       enabled: options.burns?.enabled || false,
       minAmount: options.burns?.minAmount || Math.floor(PHI_INV * 1_000_000_000), // φ⁻¹ SOL default
+      // Use same cluster as anchor, or allow override
+      cluster: options.burns?.cluster || options.anchor?.cluster || SolanaCluster.MAINNET,
     };
 
     this._burnVerifier = createBurnVerifier({
+      // Enable on-chain verification (preferred over external API)
+      solanaCluster: this._burnsConfig.cluster,
       onVerify: (result) => {
         if (result.verified) {
-          console.log(`🔥 Burn verified: ${result.amount / 1e9} SOL`);
+          console.log(`🔥 Burn verified on-chain: ${result.amount / 1e9} SOL (${result.burnType})`);
         }
       },
     });
