@@ -299,8 +299,8 @@ export class CollectiveAnalyst extends BaseAgent {
     }
 
     // Emit pattern detected if significant
-    if (this.detectedPatterns.length > 0 && this.detectedPatterns.length % 5 === 0) {
-      this._emitPatternDetected(this.detectedPatterns[this.detectedPatterns.length - 1]);
+    if (this.patternHistory.length > 0 && this.patternHistory.length % 5 === 0) {
+      this._emitPatternDetected(this.patternHistory[this.patternHistory.length - 1]);
     }
   }
 
