@@ -151,11 +151,21 @@ export class AuthService {
 
   /**
    * Check if a path is public (no auth required)
+   * Supports both exact matches and prefix matches (paths ending with /)
    * @param {string} path - Request path
    * @returns {boolean}
    */
   isPublicPath(path) {
-    return this.publicPaths.has(path);
+    // Exact match
+    if (this.publicPaths.has(path)) return true;
+
+    // Prefix match for dashboard and other public route prefixes
+    for (const publicPath of this.publicPaths) {
+      // Check if it's a prefix match (e.g., /dashboard matches /dashboard/js/app.js)
+      if (path.startsWith(publicPath + '/')) return true;
+    }
+
+    return false;
   }
 
   /**
