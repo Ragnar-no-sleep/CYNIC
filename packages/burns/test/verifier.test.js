@@ -4,7 +4,7 @@
  * "Onchain is truth - burns must be verified" - κυνικός
  */
 
-import { describe, it, beforeEach, mock } from 'node:test';
+import { describe, it, beforeEach, afterEach, mock } from 'node:test';
 import assert from 'node:assert';
 
 import {
@@ -79,8 +79,10 @@ describe('@cynic/burns - BurnVerifier', () => {
     });
   });
 
-  // Restore fetch after tests
-  // Note: In real tests, use afterEach, but keeping simple for now
+  // Restore fetch after each test to prevent affecting other test files
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
 
   describe('Creation', () => {
     it('should create verifier with default config', () => {
@@ -278,11 +280,4 @@ describe('@cynic/burns - BurnVerifier', () => {
     });
   });
 
-  // Cleanup
-  describe('Cleanup', () => {
-    it('should restore fetch', () => {
-      globalThis.fetch = originalFetch;
-      assert.ok(true);
-    });
-  });
 });

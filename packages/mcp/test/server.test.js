@@ -43,7 +43,7 @@ async function sendRequest(input, output, method, params = {}, id = 1) {
   return null;
 }
 
-describe('MCPServer', () => {
+describe('MCPServer', { timeout: 30000 }, () => {
   let server;
   let input;
   let outputStream;
@@ -68,10 +68,16 @@ describe('MCPServer', () => {
       await server.stop();
       server = null;
     }
-    // End the input stream to prevent hanging
+    // End and destroy the input stream to prevent hanging
     if (input) {
       input.push(null);
+      input.destroy();
     }
+    if (outputStream) {
+      outputStream.destroy();
+    }
+    // Give a moment for cleanup
+    await new Promise(r => setTimeout(r, 10));
   });
 
   describe('initialize', () => {

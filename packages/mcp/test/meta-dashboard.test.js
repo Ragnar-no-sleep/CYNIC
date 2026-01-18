@@ -152,7 +152,7 @@ describe('MetaDashboard', () => {
     it('includes v2 collective details', () => {
       const status = dashboard.getDogsStatus();
 
-      assert.ok(status.v2.implemented >= 5);
+      assert.equal(status.v2.implemented, 11); // All 11 collective dogs
       assert.ok(Array.isArray(status.v2.list));
       for (const dog of status.v2.list) {
         assert.ok(dog.id);
@@ -161,11 +161,13 @@ describe('MetaDashboard', () => {
       }
     });
 
-    it('includes missing dogs', () => {
+    it('tracks missing dogs (all 11 now implemented)', () => {
       const status = dashboard.getDogsStatus();
 
-      assert.ok(status.missing.count >= 5);
+      // All 11 collective dogs are now implemented
+      assert.equal(status.missing.count, 0);
       assert.ok(Array.isArray(status.missing.list));
+      assert.equal(status.missing.list.length, 0);
     });
 
     it('calculates total correctly', () => {

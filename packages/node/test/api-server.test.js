@@ -57,8 +57,9 @@ function createMockNode(overrides = {}) {
   };
 }
 
-// Use incrementing ports to avoid conflicts between tests
-let nextPort = 19100;
+// Use random ports to avoid conflicts between tests when running with other test files
+// Start from a high port range to avoid common conflicts
+let nextPort = 29000 + Math.floor(Math.random() * 1000);
 function getTestPort() {
   return nextPort++;
 }
@@ -80,25 +81,38 @@ async function request(server, method, path, body = null, headers = {}) {
     options.body = JSON.stringify(body);
   }
 
-  const response = await fetch(url, options);
-  const text = await response.text();
-  let data;
   try {
-    data = JSON.parse(text);
-  } catch {
-    data = text;
+    const response = await fetch(url, options);
+    const text = await response.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = text;
+    }
+    return { status: response.status, data };
+  } catch (err) {
+    console.error(`Request failed: ${method} ${url}`, err.message);
+    throw err;
   }
-
-  return { status: response.status, data };
 }
 
 describe('APIServer', () => {
   let server;
 
   afterEach(async () => {
-    if (server && server.server) {
-      await server.stop();
+    if (server) {
+      try {
+        if (server.server) {
+          await server.stop();
+        }
+      } catch {
+        // Ignore cleanup errors
+      }
+      server = null;
     }
+    // Give time for sockets to close
+    await new Promise(r => setTimeout(r, 50));
   });
 
   describe('constructor', () => {

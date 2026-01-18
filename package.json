@@ -8,7 +8,7 @@
     "packages/*"
   ],
   "scripts": {
-    "test": "node --test",
+    "test": "node --test --experimental-test-isolation=none",
     "lint": "eslint .",
     "build": "echo 'No build step - pure JavaScript'"
   },
