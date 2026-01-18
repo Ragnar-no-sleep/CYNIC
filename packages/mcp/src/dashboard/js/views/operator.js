@@ -137,28 +137,52 @@ export class OperatorView {
   }
 
   /**
-   * Handle SSE events
+   * Handle judgment event (called by app.js)
+   */
+  onJudgment(judgment) {
+    this._addAlert({
+      type: 'info',
+      message: `Judgment: ${judgment?.verdict || 'PROCESSED'} (Q=${judgment?.qScore || '?'})`,
+      timestamp: Date.now(),
+    });
+    // Update metrics
+    const currentJudgments = parseInt(document.getElementById('metric-judgments')?.textContent || '0');
+    this.metricsCards.updateCard('judgments', currentJudgments + 1);
+  }
+
+  /**
+   * Handle new block event (called by app.js)
+   */
+  onNewBlock(block) {
+    this.chainViz.addBlock(block);
+    this._addAlert({
+      type: 'success',
+      message: `New block #${block?.blockNumber} created`,
+      timestamp: Date.now(),
+    });
+    // Update block count
+    const currentBlocks = parseInt(document.getElementById('metric-blocks')?.textContent || '0');
+    this.metricsCards.updateCard('blocks', currentBlocks + 1);
+  }
+
+  /**
+   * Add alert (public API)
+   */
+  addAlert(alert) {
+    this._addAlert(alert);
+  }
+
+  /**
+   * Handle SSE events (generic handler)
    */
   handleEvent(event) {
     switch (event.type) {
       case 'judgment':
-        this._addAlert({
-          type: 'info',
-          message: `Judgment: ${event.data?.verdict || 'PROCESSED'} (Q=${event.data?.qScore || '?'})`,
-          timestamp: Date.now(),
-        });
-        // Update metrics
-        const currentJudgments = parseInt(document.getElementById('metric-judgments')?.textContent || '0');
-        this.metricsCards.updateCard('judgments', currentJudgments + 1);
+        this.onJudgment(event.data);
         break;
 
       case 'block':
-        this.chainViz.addBlock(event.data);
-        this._addAlert({
-          type: 'success',
-          message: `New block #${event.data?.blockNumber} created`,
-          timestamp: Date.now(),
-        });
+        this.onNewBlock(event.data);
         break;
 
       case 'pattern':
