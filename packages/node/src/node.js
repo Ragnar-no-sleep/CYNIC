@@ -19,6 +19,14 @@ import {
   calculateConsensus,
   ConsensusType,
 } from '@cynic/protocol';
+import {
+  createAnchorer,
+  createAnchorQueue,
+  SolanaCluster,
+  AnchorStatus,
+  ANCHOR_CONSTANTS,
+} from '@cynic/anchor';
+import { createBurnVerifier, BurnStatus } from '@cynic/burns';
 import { Operator } from './operator/operator.js';
 import { CYNICJudge } from './judge/judge.js';
 import { ResidualDetector } from './judge/residual.js';
@@ -46,6 +54,14 @@ export class CYNICNode {
    * @param {string} [options.name] - Node name
    * @param {Object} [options.identity] - Existing identity to use
    * @param {Function} [options.sendFn] - Network send function
+   * @param {Object} [options.anchor] - Anchoring options
+   * @param {string} [options.anchor.cluster] - Solana cluster (devnet/mainnet)
+   * @param {Object} [options.anchor.wallet] - CynicWallet for signing
+   * @param {boolean} [options.anchor.enabled=false] - Enable anchoring
+   * @param {boolean} [options.anchor.autoAnchor=true] - Auto-anchor blocks
+   * @param {Object} [options.burns] - Burns verification options
+   * @param {boolean} [options.burns.enabled=false] - Require burn verification
+   * @param {number} [options.burns.minAmount] - Minimum burn amount (lamports)
    */
   constructor(options = {}) {
     // Initialize operator
@@ -73,6 +89,59 @@ export class CYNICNode {
       address: options.address || process.env.CYNIC_ADDRESS || 'localhost',
       onMessage: this._handleMessage.bind(this),
       sendFn: options.sendFn || (async () => {}),
+    });
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Solana Anchoring - "Onchain is truth"
+    // ═══════════════════════════════════════════════════════════════════════
+
+    this._anchorConfig = {
+      enabled: options.anchor?.enabled || false,
+      autoAnchor: options.anchor?.autoAnchor ?? true,
+      cluster: options.anchor?.cluster || SolanaCluster.DEVNET,
+    };
+
+    // Create anchorer (simulation mode if no wallet)
+    this._anchorer = createAnchorer({
+      cluster: this._anchorConfig.cluster,
+      wallet: options.anchor?.wallet || null,
+      onAnchor: (record) => {
+        console.log(`⚓ Anchored: ${record.signature?.slice(0, 20)}...`);
+      },
+      onError: (record, error) => {
+        console.error(`⚓ Anchor failed: ${error.message}`);
+      },
+    });
+
+    // Create anchor queue
+    this._anchorQueue = createAnchorQueue({
+      anchorer: this._anchorer,
+      batchSize: ANCHOR_CONSTANTS.ANCHOR_BATCH_SIZE, // φ-aligned: 38
+      intervalMs: ANCHOR_CONSTANTS.ANCHOR_INTERVAL_MS, // φ-aligned: 61,803ms
+      autoStart: false,
+      onBatchReady: (batch) => {
+        console.log(`⚓ Batch ready: ${batch.items.length} items`);
+      },
+      onAnchorComplete: (batch, result) => {
+        console.log(`⚓ Batch anchored: ${result.signature?.slice(0, 20)}...`);
+      },
+    });
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Burns Verification - "Don't extract, burn"
+    // ═══════════════════════════════════════════════════════════════════════
+
+    this._burnsConfig = {
+      enabled: options.burns?.enabled || false,
+      minAmount: options.burns?.minAmount || Math.floor(PHI_INV * 1_000_000_000), // φ⁻¹ SOL default
+    };
+
+    this._burnVerifier = createBurnVerifier({
+      onVerify: (result) => {
+        if (result.verified) {
+          console.log(`🔥 Burn verified: ${result.amount / 1e9} SOL`);
+        }
+      },
     });
 
     // Node status
@@ -106,17 +175,28 @@ export class CYNICNode {
       // Start timers
       this._startTimers();
 
+      // Start anchor queue if enabled
+      if (this._anchorConfig.enabled && this._anchorConfig.autoAnchor) {
+        this._anchorQueue.startTimer();
+        console.log(`⚓ Anchoring enabled (${this._anchorConfig.cluster})`);
+      }
+
       this.status = NodeStatus.RUNNING;
       this.startedAt = Date.now();
 
       console.log(`🐕 CYNIC Node started: ${this.operator.identity.name}`);
       console.log(`   ID: ${this.operator.id.slice(0, 16)}...`);
       console.log(`   E-Score: ${this.operator.getEScore()}`);
+      if (this._burnsConfig.enabled) {
+        console.log(`🔥 Burns verification enabled (min: ${this._burnsConfig.minAmount / 1e9} SOL)`);
+      }
 
       return {
         success: true,
         nodeId: this.operator.id,
         name: this.operator.identity.name,
+        anchoring: this._anchorConfig.enabled,
+        burns: this._burnsConfig.enabled,
       };
     } catch (err) {
       this.status = NodeStatus.STOPPED;
@@ -136,6 +216,18 @@ export class CYNICNode {
 
     // Stop timers
     this._stopTimers();
+
+    // Stop anchor queue and flush pending
+    if (this._anchorConfig.enabled) {
+      this._anchorQueue.stopTimer();
+
+      // Flush any pending anchors
+      const pendingCount = this._anchorQueue.getQueueLength();
+      if (pendingCount > 0) {
+        console.log(`⚓ Flushing ${pendingCount} pending anchors...`);
+        await this._anchorQueue.flush();
+      }
+    }
 
     // Save state
     await this.state.save();
@@ -306,9 +398,48 @@ export class CYNICNode {
    * Judge an item
    * @param {Object} item - Item to judge
    * @param {Object} [context] - Judgment context
+   * @param {string} [context.burnTx] - Burn transaction for verification
+   * @param {string} [context.expectedBurner] - Expected burner address
    * @returns {Object} Judgment result
    */
   async judge(item, context = {}) {
+    // ═══════════════════════════════════════════════════════════════════════
+    // Burns Verification - "Don't extract, burn"
+    // ═══════════════════════════════════════════════════════════════════════
+
+    if (this._burnsConfig.enabled) {
+      if (!context.burnTx) {
+        return {
+          success: false,
+          error: 'Burns verification enabled - burnTx required in context',
+          code: 'BURN_REQUIRED',
+        };
+      }
+
+      const burnVerification = await this._burnVerifier.verify(context.burnTx, {
+        minAmount: this._burnsConfig.minAmount,
+        expectedBurner: context.expectedBurner,
+      });
+
+      if (!burnVerification.verified) {
+        return {
+          success: false,
+          error: `Burn verification failed: ${burnVerification.error}`,
+          code: 'BURN_INVALID',
+          burnVerification,
+        };
+      }
+
+      // Attach burn info to context
+      context.burnVerified = true;
+      context.burnAmount = burnVerification.amount;
+      context.burner = burnVerification.burner;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Create Judgment
+    // ═══════════════════════════════════════════════════════════════════════
+
     // Create judgment
     const judgment = this._judge.judge(item, context);
 
@@ -328,7 +459,31 @@ export class CYNICNode {
     // Update operator stats
     this.operator.recordJudgment();
 
-    return judgment;
+    // ═══════════════════════════════════════════════════════════════════════
+    // Solana Anchoring - "Onchain is truth"
+    // ═══════════════════════════════════════════════════════════════════════
+
+    if (this._anchorConfig.enabled) {
+      // Queue judgment for anchoring
+      this._anchorQueue.enqueue(judgment.id, {
+        judgmentId: judgment.id,
+        itemHash: judgment.item_hash,
+        verdict: judgment.verdict,
+        qScore: judgment.q_score,
+        timestamp: judgment.timestamp,
+        operator: this.operator.id,
+        burnTx: context.burnTx,
+      });
+
+      judgment.anchorStatus = AnchorStatus.QUEUED;
+    }
+
+    return {
+      success: true,
+      judgment,
+      anchored: this._anchorConfig.enabled,
+      burnVerified: context.burnVerified || false,
+    };
   }
 
   /**
@@ -347,6 +502,22 @@ export class CYNICNode {
       judge: this._judge.getStats(),
       residual: this.residualDetector.getStats(),
       gossip: this.gossip.getStats(),
+      // Solana anchoring stats
+      anchor: {
+        enabled: this._anchorConfig.enabled,
+        cluster: this._anchorConfig.cluster,
+        stats: this._anchorer.getStats(),
+        queue: {
+          length: this._anchorQueue.getQueueLength(),
+          stats: this._anchorQueue.getStats(),
+        },
+      },
+      // Burns verification stats
+      burns: {
+        enabled: this._burnsConfig.enabled,
+        minAmount: this._burnsConfig.minAmount,
+        stats: this._burnVerifier.getStats(),
+      },
     };
   }
 
@@ -384,6 +555,12 @@ export class CYNICNode {
     return {
       operator: this.operator.export(),
       stateDir: this.state.dataDir,
+      // Anchor/Burns state for persistence
+      anchorConfig: this._anchorConfig,
+      anchorStats: this._anchorer.getStats(),
+      anchorQueueState: this._anchorQueue.export?.() || null,
+      burnsConfig: this._burnsConfig,
+      burnsState: this._burnVerifier.export(),
     };
   }
 
@@ -394,10 +571,23 @@ export class CYNICNode {
    * @returns {CYNICNode} Restored node
    */
   static async restore(savedState, options = {}) {
+    // Merge saved anchor/burns config with options (options take precedence)
+    const anchorOptions = {
+      ...(savedState.anchorConfig || {}),
+      ...(options.anchor || {}),
+    };
+
+    const burnsOptions = {
+      ...(savedState.burnsConfig || {}),
+      ...(options.burns || {}),
+    };
+
     const node = new CYNICNode({
       ...options,
       identity: savedState.operator?.identity,
       dataDir: savedState.stateDir || options.dataDir,
+      anchor: anchorOptions,
+      burns: burnsOptions,
     });
 
     // Restore operator state
@@ -405,7 +595,45 @@ export class CYNICNode {
       node.operator = Operator.import(savedState.operator);
     }
 
+    // Restore burn verifier cache (if available)
+    if (savedState.burnsState) {
+      node._burnVerifier.import(savedState.burnsState);
+    }
+
     return node;
+  }
+
+  /**
+   * Get anchor queue for external access
+   * @returns {Object} Anchor queue
+   */
+  get anchorQueue() {
+    return this._anchorQueue;
+  }
+
+  /**
+   * Get anchorer for external access
+   * @returns {Object} Anchorer
+   */
+  get anchorer() {
+    return this._anchorer;
+  }
+
+  /**
+   * Get burn verifier for external access
+   * @returns {Object} Burn verifier
+   */
+  get burnVerifier() {
+    return this._burnVerifier;
+  }
+
+  /**
+   * Check if a burn has been verified
+   * @param {string} burnTx - Burn transaction signature
+   * @returns {boolean} Whether burn is verified
+   */
+  isBurnVerified(burnTx) {
+    return this._burnVerifier.isVerified(burnTx);
   }
 }
 

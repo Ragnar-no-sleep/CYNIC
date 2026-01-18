@@ -21,6 +21,8 @@
     "start": "node bin/cynic.js start"
   },
   "dependencies": {
+    "@cynic/anchor": "*",
+    "@cynic/burns": "*",
     "@cynic/core": "*",
     "@cynic/protocol": "*",
     "chalk": "^5.6.2",

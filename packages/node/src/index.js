@@ -117,3 +117,39 @@ export {
   EventPriority,
   ConsensusVote,
 } from './agents/index.js';
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Solana Anchoring - "Onchain is truth"
+// ═══════════════════════════════════════════════════════════════════════════════
+export {
+  // Anchorer
+  createAnchorer,
+  SolanaAnchorer,
+  AnchorStatus,
+  // Queue
+  createAnchorQueue,
+  AnchorQueue,
+  // Wallet
+  CynicWallet,
+  WalletType,
+  loadWalletFromFile,
+  loadWalletFromEnv,
+  generateWallet,
+  saveWalletToFile,
+  getDefaultWalletPath,
+  // Solana utilities
+  SolanaCluster,
+  ANCHOR_CONSTANTS,
+  DEFAULT_CONFIG as ANCHOR_DEFAULT_CONFIG,
+} from '@cynic/anchor';
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Burns Verification - "Don't extract, burn"
+// ═══════════════════════════════════════════════════════════════════════════════
+export {
+  // Verifier
+  createBurnVerifier,
+  BurnVerifier,
+  BurnStatus,
+  DEFAULT_CONFIG as BURNS_DEFAULT_CONFIG,
+} from '@cynic/burns';
