@@ -203,6 +203,8 @@ export const CYNIC_ARCHITECTURE = {
       tracker: { renamed_to: 'cartographer', purpose: 'Long-term goal persistence', status: 'RENAMED' },
       sentinel: { renamed_to: 'guardian', purpose: 'Background monitoring', status: 'RENAMED' },
     },
+    // Missing/planned dogs (currently none - all implemented!)
+    missing: {},
   },
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -425,12 +427,15 @@ export class MetaDashboard {
    * Dogs (Agents) status
    */
   getDogsStatus() {
-    const dogs = this.architecture.dogs;
+    const dogs = this.architecture.dogs || {};
+    const v1 = dogs.v1 || {};
+    const v2_collective = dogs.v2_collective || {};
+    const missing = dogs.missing || {};
 
     return {
       v1: {
-        active: Object.keys(dogs.v1).length,
-        list: Object.entries(dogs.v1).map(([key, dog]) => ({
+        active: Object.keys(v1).length,
+        list: Object.entries(v1).map(([key, dog]) => ({
           id: key,
           name: dog.name,
           trigger: dog.trigger,
@@ -439,8 +444,8 @@ export class MetaDashboard {
         })),
       },
       v2: {
-        implemented: Object.keys(dogs.v2_collective).length,
-        list: Object.entries(dogs.v2_collective).map(([key, dog]) => ({
+        implemented: Object.keys(v2_collective).length,
+        list: Object.entries(v2_collective).map(([key, dog]) => ({
           id: key,
           name: dog.name,
           sephirah: dog.sephirah,
@@ -448,8 +453,8 @@ export class MetaDashboard {
         })),
       },
       missing: {
-        count: Object.keys(dogs.missing).length,
-        list: Object.entries(dogs.missing).map(([key, dog]) => ({
+        count: Object.keys(missing).length,
+        list: Object.entries(missing).map(([key, dog]) => ({
           id: key,
           name: dog.name,
           purpose: dog.purpose,
@@ -457,8 +462,8 @@ export class MetaDashboard {
         })),
       },
       total: {
-        implemented: Object.keys(dogs.v1).length + Object.keys(dogs.v2_collective).length,
-        planned: Object.keys(dogs.v1).length + Object.keys(dogs.v2_collective).length + Object.keys(dogs.missing).length,
+        implemented: Object.keys(v1).length + Object.keys(v2_collective).length,
+        planned: Object.keys(v1).length + Object.keys(v2_collective).length + Object.keys(missing).length,
       },
     };
   }
