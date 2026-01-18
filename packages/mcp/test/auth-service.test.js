@@ -595,7 +595,7 @@ describe('AuthService', () => {
       let responseBody = null;
       const req = { url: '/api/judge', headers: {}, socket: {} };
       const res = {
-        statusCode: 200,
+        _statusCode: 200,
         setHeader: () => {},
         end: (body) => {
           responseBody = body;
@@ -633,7 +633,7 @@ describe('AuthService', () => {
         socket: {},
       };
       const res = {
-        statusCode: 200,
+        _statusCode: 200,
         setHeader: (name, value) => {
           if (name === 'Retry-After') retryAfter = value;
         },

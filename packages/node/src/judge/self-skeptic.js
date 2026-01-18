@@ -537,7 +537,7 @@ export class SelfSkeptic extends EventEmitter {
   _applyMetaDoubt(confidenceResult, biases) {
     this._stats.metaDoubtsApplied++;
 
-    let confidence = confidenceResult.confidence;
+    const confidence = confidenceResult.confidence;
     let doubtLevel = 0;
 
     // Level 0: Base doubt (already applied via adversarial analysis)

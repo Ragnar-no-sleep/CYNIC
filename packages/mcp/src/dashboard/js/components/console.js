@@ -134,7 +134,7 @@ export class Console {
       }
 
       const [, cmd, argsStr] = match;
-      let args = argsStr ? this._parseArgs(argsStr) : null;
+      const args = argsStr ? this._parseArgs(argsStr) : null;
 
       // Execute command
       if (this.commands[cmd]) {
@@ -163,12 +163,12 @@ export class Console {
    */
   _tryMath(expr) {
     // Replace constants
-    let sanitized = expr
+    const sanitized = expr
       .replace(/PHI_INV/g, String(Formulas.PHI_INV))
       .replace(/PHI/g, String(Formulas.PHI));
 
     // Only allow safe characters
-    if (/^[\d\s\+\-\*\/\(\)\.\,]+$/.test(sanitized)) {
+    if (/^[\d\s+\-*/().,]+$/.test(sanitized)) {
       try {
         // Simple evaluation (safe because we validated characters)
         const result = Function(`"use strict"; return (${sanitized})`)();

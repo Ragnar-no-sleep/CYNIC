@@ -120,7 +120,7 @@ export class MetricsCards {
 
     // Update change if provided
     if (change !== undefined) {
-      let changeEl = cardEl.querySelector('.metric-change');
+      const changeEl = cardEl.querySelector('.metric-change');
 
       if (changeEl) {
         // Replace the existing change indicator

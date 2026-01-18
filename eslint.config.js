@@ -8,6 +8,8 @@ export default [
       sourceType: 'module',
       globals: {
         // Node.js globals
+        global: 'writable',
+        globalThis: 'writable',
         console: 'readonly',
         process: 'readonly',
         Buffer: 'readonly',
@@ -49,6 +51,39 @@ export default [
       'no-var': 'error',
     },
   },
+  // Browser-side JavaScript (dashboard)
+  {
+    files: ['**/dashboard/**/*.js', '**/sandbox/**/*.js'],
+    languageOptions: {
+      globals: {
+        // Browser globals
+        window: 'readonly',
+        document: 'readonly',
+        navigator: 'readonly',
+        localStorage: 'readonly',
+        sessionStorage: 'readonly',
+        EventSource: 'readonly',
+        WebSocket: 'readonly',
+        requestAnimationFrame: 'readonly',
+        cancelAnimationFrame: 'readonly',
+        HTMLElement: 'readonly',
+        HTMLCanvasElement: 'readonly',
+        MutationObserver: 'readonly',
+        ResizeObserver: 'readonly',
+        IntersectionObserver: 'readonly',
+        getComputedStyle: 'readonly',
+        // Three.js
+        THREE: 'readonly',
+        // Other browser APIs
+        Node: 'readonly',
+        katex: 'readonly',
+        CYNICFormulas: 'readonly',
+      },
+    },
+    rules: {
+      'no-case-declarations': 'off',
+    },
+  },
   // CommonJS files (.cjs) need different configuration
   {
     files: ['**/*.cjs'],
@@ -83,6 +118,7 @@ export default [
       'dist/**',
       'coverage/**',
       '*.min.js',
+      '**/sandbox/**',  // Deprecated, to be removed
     ],
   },
 ];

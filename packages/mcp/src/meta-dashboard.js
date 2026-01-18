@@ -735,7 +735,7 @@ export function createMetaTool() {
           return { content: [{ type: 'text', text: dashboard.toJSON() }] };
 
         case 'analyze':
-        default:
+        default: {
           // Return ASCII by default for readability
           const ascii = dashboard.toAscii();
           const analysis = dashboard.analyze();
@@ -749,6 +749,7 @@ export function createMetaTool() {
               },
             ],
           };
+        }
       }
     },
   };

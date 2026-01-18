@@ -370,7 +370,7 @@ export class LearningManager extends EventEmitter {
     const serviceStats = this.learningService.getStats();
 
     // Get persistence stats if available
-    let persistenceStats = {};
+    const persistenceStats = {};
     if (this.persistence) {
       if (this.persistence.escoreHistory) {
         persistenceStats.escoreHistory = await this.persistence.escoreHistory.getStats();
