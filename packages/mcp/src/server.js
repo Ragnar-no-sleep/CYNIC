@@ -491,12 +491,6 @@ export class MCPServer {
       return;
     }
 
-    // Sandbox static files
-    if (url.pathname === '/sandbox' || url.pathname.startsWith('/sandbox/')) {
-      await this._handleSandboxRequest(url, res);
-      return;
-    }
-
     // REST API for tools (browser-friendly)
     if (url.pathname.startsWith('/api/tools/')) {
       await this._handleApiToolRequest(req, res, url);
@@ -600,43 +594,6 @@ export class MCPServer {
       }
 
       const fullPath = join(__dirname, 'dashboard', filePath);
-      const ext = extname(fullPath);
-      const contentType = MIME_TYPES[ext] || 'application/octet-stream';
-
-      const content = await readFile(fullPath);
-      res.writeHead(200, { 'Content-Type': contentType });
-      res.end(content);
-    } catch (err) {
-      if (err.code === 'ENOENT') {
-        res.writeHead(404, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'File not found' }));
-      } else {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: err.message }));
-      }
-    }
-  }
-
-  /**
-   * Handle sandbox static file requests (legacy)
-   * @private
-   */
-  async _handleSandboxRequest(url, res) {
-    try {
-      // Default to index.html
-      let filePath = url.pathname.replace('/sandbox', '') || '/index.html';
-      if (filePath === '' || filePath === '/') {
-        filePath = '/index.html';
-      }
-
-      // Prevent directory traversal
-      if (filePath.includes('..')) {
-        res.writeHead(403, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Forbidden' }));
-        return;
-      }
-
-      const fullPath = join(__dirname, 'sandbox', filePath);
       const ext = extname(fullPath);
       const contentType = MIME_TYPES[ext] || 'application/octet-stream';
 
