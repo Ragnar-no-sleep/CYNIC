@@ -1,0 +1,420 @@
+/**
+ * CYNIC Dashboard - Architecture Mode Styles
+ * 3D codebase explorer, Sefirot tree
+ */
+
+/* ═══════════════════════════════════════════════════════════
+   ARCHITECTURE VIEW
+   ═══════════════════════════════════════════════════════════ */
+
+#view-arch {
+  display: none;
+  flex-direction: column;
+  gap: var(--space-md);
+  height: 100%;
+}
+
+#view-arch.active {
+  display: flex;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   3D CANVAS CONTAINER
+   ═══════════════════════════════════════════════════════════ */
+
+.arch-3d-container {
+  flex: 1;
+  min-height: 400px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  position: relative;
+  overflow: hidden;
+}
+
+#arch-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   BREADCRUMB NAVIGATION
+   ═══════════════════════════════════════════════════════════ */
+
+.arch-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+}
+
+.breadcrumb-item {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--border-radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.breadcrumb-item:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.breadcrumb-item.active {
+  color: var(--accent-cyan);
+  font-weight: 600;
+}
+
+.breadcrumb-separator {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   3D OVERLAY CONTROLS
+   ═══════════════════════════════════════════════════════════ */
+
+.arch-overlay {
+  position: absolute;
+  top: var(--space-md);
+  left: var(--space-md);
+  right: var(--space-md);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.arch-overlay > * {
+  pointer-events: auto;
+}
+
+/* Search */
+.arch-search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background: rgba(18, 18, 26, 0.9);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  backdrop-filter: blur(8px);
+}
+
+.arch-search-input {
+  background: transparent;
+  border: none;
+  width: 200px;
+  padding: 0;
+}
+
+.arch-search-input:focus {
+  outline: none;
+}
+
+.arch-search-icon {
+  color: var(--text-muted);
+}
+
+/* View Controls */
+.arch-controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  padding: var(--space-sm);
+  background: rgba(18, 18, 26, 0.9);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  backdrop-filter: blur(8px);
+}
+
+.arch-control-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--border-radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  transition: all var(--transition-fast);
+}
+
+.arch-control-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.arch-control-btn.active {
+  background: var(--accent-cyan);
+  color: var(--bg-primary);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SEFIROT TREE LEGEND
+   ═══════════════════════════════════════════════════════════ */
+
+.sefirot-legend {
+  position: absolute;
+  bottom: var(--space-md);
+  left: var(--space-md);
+  padding: var(--space-md);
+  background: rgba(18, 18, 26, 0.9);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  backdrop-filter: blur(8px);
+  font-size: var(--font-size-xs);
+  max-width: 200px;
+}
+
+.sefirot-legend-title {
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.sefirot-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-xs);
+}
+
+.sefirot-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.sefirot-dot.keter { background: var(--accent-gold); }
+.sefirot-dot.chochmah { background: var(--accent-cyan); }
+.sefirot-dot.binah { background: var(--accent-cyan); }
+.sefirot-dot.daat { background: var(--accent-blue); }
+.sefirot-dot.chesed { background: var(--accent-magenta); }
+.sefirot-dot.gevurah { background: var(--accent-red); }
+.sefirot-dot.tiferet { background: var(--accent-gold); }
+.sefirot-dot.netzach { background: var(--accent-lime); }
+.sefirot-dot.hod { background: var(--accent-orange); }
+.sefirot-dot.yesod { background: var(--accent-purple); }
+.sefirot-dot.malkhut { background: var(--text-secondary); }
+
+.sefirot-name {
+  color: var(--text-secondary);
+}
+
+.sefirot-dog {
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   DETAIL PANEL (Selected Item)
+   ═══════════════════════════════════════════════════════════ */
+
+.arch-detail {
+  position: absolute;
+  bottom: var(--space-md);
+  right: var(--space-md);
+  width: 280px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding: var(--space-md);
+  background: rgba(18, 18, 26, 0.95);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  backdrop-filter: blur(8px);
+  display: none;
+}
+
+.arch-detail.visible {
+  display: block;
+}
+
+.arch-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-sm);
+  padding-bottom: var(--space-sm);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.arch-detail-type {
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.arch-detail-name {
+  font-weight: 600;
+  color: var(--accent-cyan);
+  font-size: var(--font-size-md);
+}
+
+.arch-detail-close {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--border-radius-sm);
+  color: var(--text-muted);
+}
+
+.arch-detail-close:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.arch-detail-body {
+  font-size: var(--font-size-sm);
+}
+
+.arch-detail-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: var(--space-xs);
+}
+
+.arch-detail-label {
+  color: var(--text-muted);
+}
+
+.arch-detail-value {
+  color: var(--text-primary);
+}
+
+.arch-detail-description {
+  margin-top: var(--space-sm);
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+/* Children List */
+.arch-detail-children {
+  margin-top: var(--space-sm);
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--border-color);
+}
+
+.arch-detail-children-title {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-bottom: var(--space-xs);
+}
+
+.arch-detail-child {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs) 0;
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+
+.arch-detail-child:hover {
+  color: var(--accent-cyan);
+}
+
+.arch-detail-child-icon {
+  font-size: var(--font-size-xs);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   LOADING STATE
+   ═══════════════════════════════════════════════════════════ */
+
+.arch-loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-md);
+  color: var(--text-secondary);
+}
+
+.arch-loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--border-color);
+  border-top-color: var(--accent-cyan);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MINIMAP (Optional)
+   ═══════════════════════════════════════════════════════════ */
+
+.arch-minimap {
+  position: absolute;
+  bottom: var(--space-md);
+  right: var(--space-md);
+  width: 120px;
+  height: 80px;
+  background: rgba(18, 18, 26, 0.9);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  overflow: hidden;
+}
+
+.arch-minimap-canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.arch-minimap-viewport {
+  position: absolute;
+  border: 1px solid var(--accent-cyan);
+  background: rgba(0, 212, 170, 0.1);
+  pointer-events: none;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   KEYBOARD HINTS
+   ═══════════════════════════════════════════════════════════ */
+
+.arch-hints {
+  position: absolute;
+  bottom: var(--space-md);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  background: rgba(18, 18, 26, 0.9);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  backdrop-filter: blur(8px);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.arch-hint {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.arch-hint-key {
+  padding: 2px 6px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  font-family: var(--font-mono);
+}
