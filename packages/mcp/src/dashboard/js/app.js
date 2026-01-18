@@ -195,19 +195,8 @@ class App {
    * Handle mode change
    */
   _onModeChange(mode) {
-    // Activate the new view
-    if (this.views[mode]) {
-      this.views[mode].activate();
-    }
-
-    // Deactivate other views
-    for (const [key, view] of Object.entries(this.views)) {
-      if (key !== mode) {
-        view.deactivate();
-      }
-    }
-
-    // Update sidebar navigation
+    // Views are shown/hidden via CSS .view.active class (toggled by router)
+    // Just update sidebar navigation
     this.components.sidebar.setActiveNav(mode);
   }
 

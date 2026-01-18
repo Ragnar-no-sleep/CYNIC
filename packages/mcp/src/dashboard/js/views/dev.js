@@ -109,6 +109,10 @@ export class DevView {
 
       const dimList = Utils.createElement('div', { className: 'dimension-list' });
 
+      // Calculate per-dimension weight from axiom weight
+      const axiomWeight = Formulas.AXIOMS[axiom]?.weight || 0.25;
+      const dimWeight = axiomWeight / dimensions.length;
+
       for (const dim of dimensions) {
         dimIndex++;
         const dimEl = Utils.createElement('div', {
@@ -118,7 +122,7 @@ export class DevView {
         }, [
           Utils.createElement('span', { className: 'dimension-index' }, [String(dimIndex)]),
           Utils.createElement('span', { className: 'dimension-name' }, [dim.name]),
-          Utils.createElement('span', { className: 'dimension-weight' }, [dim.weight.toFixed(3)]),
+          Utils.createElement('span', { className: 'dimension-weight' }, [dimWeight.toFixed(3)]),
         ]);
         dimList.appendChild(dimEl);
       }
