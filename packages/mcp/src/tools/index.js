@@ -1661,12 +1661,6 @@ export function createCollectiveStatusTool(collective) {
       const summary = collective.getSummary();
       const collectiveState = collective.getCollectiveState();
 
-      // Debug: log analyst stats
-      console.error('[DEBUG] summary.agents.analyst:', JSON.stringify({
-        invocations: summary.agents.analyst?.invocations,
-        stats: summary.agents.analyst?.stats,
-      }));
-
       // Sefirot mapping for display
       const sefirotMap = {
         guardian: { sefira: 'Gevurah', meaning: 'Strength', role: 'Security & Protection' },
@@ -1701,17 +1695,13 @@ export function createCollectiveStatusTool(collective) {
       const dogs = {};
       for (const [name, info] of Object.entries(sefirotMap)) {
         const agentData = summary.agents[name];
-        const invCount = agentData?.invocations || agentData?.stats?.invocations || 0;
-        if (name === 'analyst') {
-          console.error(`[DEBUG] Building dogs.analyst: agentData.invocations=${agentData?.invocations}, calculated=${invCount}`);
-        }
         dogs[name] = {
           sefira: info.sefira,
           meaning: info.meaning,
           role: info.role,
           active: !!agentData,
           ...(agentData ? {
-            invocations: invCount,
+            invocations: agentData.invocations || agentData.stats?.invocations || 0,
           } : {}),
         };
       }
