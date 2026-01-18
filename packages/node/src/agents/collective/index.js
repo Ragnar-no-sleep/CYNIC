@@ -129,15 +129,15 @@ export {
 /**
  * φ-aligned constants for collective
  *
- * Dogs progress toward 10 (Sefirot):
- * - Current: 5 original + 1 CYNIC + 1 Janitor = 7
- * - Planned: +Scout, +Cartographer, +Oracle, +Deployer = 11 total
+ * The 11 Dogs (Sefirot):
+ * - Guardian (Gevurah), Analyst (Binah), Scholar (Daat), Architect (Chesed), Sage (Chochmah)
+ * - CYNIC (Keter), Janitor (Yesod), Scout (Netzach), Cartographer (Malkhut), Oracle (Tiferet), Deployer (Hod)
  */
 export const COLLECTIVE_CONSTANTS = {
-  /** Number of original dogs (Fib(5) = 5) */
-  DOG_COUNT: 5,
+  /** Number of Dogs in the Collective (11 Sefirot) */
+  DOG_COUNT: 11,
 
-  /** Total agents including CYNIC + Janitor + Scout + Cartographer + Oracle + Deployer (5 + 6 = 11) */
+  /** Alias for DOG_COUNT (legacy compatibility) */
   AGENT_COUNT: 11,
 
   /** Max collective confidence (φ⁻¹) */
