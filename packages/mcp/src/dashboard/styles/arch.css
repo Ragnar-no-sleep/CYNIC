@@ -19,6 +19,263 @@
 }
 
 /* ═══════════════════════════════════════════════════════════
+   ARCHITECTURE LAYOUT
+   ═══════════════════════════════════════════════════════════ */
+
+.arch-layout {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: var(--space-md);
+  flex: 1;
+  min-height: 0;
+}
+
+@media (max-width: 900px) {
+  .arch-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.arch-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  min-height: 0;
+}
+
+.arch-panel-left {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  padding: var(--space-md);
+  overflow: hidden;
+}
+
+.arch-panel-right {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   TREE VIEW
+   ═══════════════════════════════════════════════════════════ */
+
+.arch-tree {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: var(--space-sm);
+}
+
+.tree-item {
+  margin-left: calc(var(--depth, 0) * 16px);
+}
+
+.tree-item-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--border-radius-sm);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.tree-item-header:hover {
+  background: var(--bg-hover);
+}
+
+.tree-item.selected > .tree-item-header {
+  background: var(--accent-cyan);
+  background: rgba(0, 212, 170, 0.2);
+}
+
+.tree-icon {
+  font-size: var(--font-size-md);
+  width: 24px;
+  text-align: center;
+}
+
+.tree-name {
+  flex: 1;
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+}
+
+.tree-sefirot {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  padding: 2px 6px;
+  background: var(--bg-tertiary);
+  border-radius: var(--border-radius-sm);
+}
+
+.tree-count {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  padding: 2px 6px;
+  background: var(--bg-tertiary);
+  border-radius: var(--border-radius-sm);
+}
+
+.tree-children {
+  margin-top: var(--space-xs);
+}
+
+.tree-children.collapsed {
+  display: none;
+}
+
+.tree-item.shared {
+  opacity: 0.6;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   VIEW TOGGLE
+   ═══════════════════════════════════════════════════════════ */
+
+.arch-view-toggle {
+  display: flex;
+  gap: var(--space-xs);
+  padding: var(--space-xs);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  width: fit-content;
+}
+
+.arch-toggle-btn {
+  padding: var(--space-xs) var(--space-md);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  transition: all var(--transition-fast);
+}
+
+.arch-toggle-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.arch-toggle-btn.active {
+  background: var(--accent-cyan);
+  color: var(--bg-primary);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CANVAS CONTAINER
+   ═══════════════════════════════════════════════════════════ */
+
+#arch-canvas {
+  flex: 1;
+  min-height: 400px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  position: relative;
+  overflow: hidden;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   LEGEND
+   ═══════════════════════════════════════════════════════════ */
+
+.arch-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.legend-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.legend-label {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   DETAILS PANEL
+   ═══════════════════════════════════════════════════════════ */
+
+.arch-details {
+  padding: var(--space-md);
+  background: var(--bg-tertiary);
+  border-radius: var(--border-radius-sm);
+  min-height: 100px;
+}
+
+.details-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.details-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.details-icon {
+  font-size: var(--font-size-lg);
+}
+
+.details-header h3 {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.details-sefirot,
+.details-role,
+.details-status,
+.details-path {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--font-size-sm);
+}
+
+.details-sefirot .label,
+.details-role .label,
+.details-status .label {
+  color: var(--text-muted);
+}
+
+.details-sefirot .value,
+.details-role .value {
+  color: var(--text-primary);
+}
+
+.details-status .value.active {
+  color: var(--color-howl);
+}
+
+.details-status .value.inactive {
+  color: var(--text-muted);
+}
+
+.details-path {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+/* ═══════════════════════════════════════════════════════════
    3D CANVAS CONTAINER
    ═══════════════════════════════════════════════════════════ */
 
