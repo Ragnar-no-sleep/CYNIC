@@ -86,6 +86,11 @@ export class LiveView {
           <div class="live-status">
             <span class="status-indicator ${this.isConnected ? 'connected' : 'disconnected'}"></span>
             <span class="status-text">${this.isConnected ? 'Live' : 'Disconnected'}</span>
+            <span class="thinking-indicator ${this.pendingTools.size > 0 ? 'active' : ''}">
+              <span class="dot"></span>
+              <span class="dot"></span>
+              <span class="dot"></span>
+            </span>
           </div>
           <div class="live-stats">
             <span class="stat" title="Total received">📥 ${this.stats.totalReceived}</span>
@@ -297,6 +302,7 @@ export class LiveView {
       this._renderObservationsList();
       this._updateStats();
       this._updateToolTimeline();
+      this._updateThinkingIndicator();
 
     } catch (err) {
       console.error('🔴 Live: Failed to parse tool event', err);
@@ -550,6 +556,16 @@ export class LiveView {
     const timelineEl = this.container?.querySelector('.tool-timeline');
     if (timelineEl) {
       timelineEl.innerHTML = this._renderToolTimeline();
+    }
+  }
+
+  /**
+   * Update thinking indicator (Vibecraft pattern - animated dots)
+   */
+  _updateThinkingIndicator() {
+    const indicator = this.container?.querySelector('.thinking-indicator');
+    if (indicator) {
+      indicator.classList.toggle('active', this.pendingTools.size > 0);
     }
   }
 
