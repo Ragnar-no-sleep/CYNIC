@@ -87,6 +87,39 @@ export class API {
       const data = JSON.parse(event.data);
       this._emit('block', data);
     });
+
+    // Tool execution events (for Live View timeline)
+    this.sse.addEventListener('tool_pre', (event) => {
+      const data = JSON.parse(event.data);
+      this._emit('tool_pre', data);
+    });
+
+    this.sse.addEventListener('tool_post', (event) => {
+      const data = JSON.parse(event.data);
+      this._emit('tool_post', data);
+    });
+
+    // Dog events (Collective agent activity)
+    this.sse.addEventListener('dogStatus', (event) => {
+      const data = JSON.parse(event.data);
+      this._emit('dogStatus', data);
+    });
+
+    this.sse.addEventListener('dogDecision', (event) => {
+      const data = JSON.parse(event.data);
+      this._emit('dogDecision', data);
+    });
+
+    this.sse.addEventListener('dogWarning', (event) => {
+      const data = JSON.parse(event.data);
+      this._emit('dogWarning', data);
+    });
+
+    // Hook events
+    this.sse.addEventListener('hook', (event) => {
+      const data = JSON.parse(event.data);
+      this._emit('hook', data);
+    });
   }
 
   /**

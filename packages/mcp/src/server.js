@@ -32,7 +32,7 @@ const MIME_TYPES = {
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
 };
-import { CYNICJudge, AgentManager, createCollectivePack } from '@cynic/node';
+import { CYNICJudge, createCollectivePack } from '@cynic/node';
 import { createAllTools } from './tools/index.js';
 import { PersistenceManager } from './persistence.js';
 import { SessionManager } from './session-manager.js';
@@ -122,16 +122,9 @@ export class MCPServer {
     // Judgment-Graph integration (connects judge to graph)
     this.graphIntegration = options.graphIntegration || null;
 
-    // Agent manager - Legacy Four Dogs (Guardian, Observer, Digester, Mentor)
-    // Kept for backwards compatibility
-    this._legacyAgents = options.agents || new AgentManager();
-
-    // Collective Pack - The Five Dogs + CYNIC (Keter)
-    // This is the new harmonious collective consciousness
+    // Collective Pack - All 11 Dogs (Sefirot) working as one
+    // This is the unified collective consciousness system
     this.collective = options.collective || null;
-
-    // Alias for backwards compatibility
-    this.agents = this._legacyAgents;
 
     // Stdio streams (for stdio mode)
     this.input = options.input || process.stdin;
@@ -233,7 +226,7 @@ export class MCPServer {
         ecosystem: this.ecosystem,
         integrator: this.integrator,
         judge: this.judge,
-        agents: this.agents,
+        collective: this.collective,
       });
       console.error('   Metrics: ready');
     }
@@ -270,12 +263,19 @@ export class MCPServer {
       console.error('   GraphIntegration: ready');
     }
 
-    // Initialize Collective Pack - The Five Dogs + CYNIC (Keter)
+    // Initialize Collective Pack - The Eleven Dogs + CYNIC (Keter)
     // This is the new harmonious collective consciousness
     if (!this.collective) {
       this.collective = createCollectivePack({
         judge: this.judge,
         profileLevel: 3, // Default: Practitioner
+        persistence: this.persistence,
+        graphIntegration: this.graphIntegration, // Connect Dogs to JudgmentGraph
+        // SSE broadcast when dogs make decisions
+        onDogDecision: (decision) => {
+          const eventType = decision.blocked ? 'dogWarning' : 'dogDecision';
+          this._broadcastSSEEvent(eventType, decision);
+        },
       });
 
       // Awaken CYNIC for this session
@@ -291,9 +291,6 @@ export class MCPServer {
         console.error('   Collective: ready (CYNIC dormant)');
       }
 
-      // Update agents reference to use collective for new code
-      // Legacy code can still use this.agents (AgentManager)
-      // New code should use this.collective (CollectivePack)
     }
 
     // Register tools with current instances
@@ -301,8 +298,7 @@ export class MCPServer {
       judge: this.judge,
       node: this.node,
       persistence: this.persistence,
-      agents: this.agents,            // Legacy AgentManager
-      collective: this.collective,     // New CollectivePack with CYNIC
+      collective: this.collective,     // The 11 Dogs (Sefirot) Collective
       sessionManager: this.sessionManager,
       pojChainManager: this.pojChainManager,
       librarian: this.librarian,
@@ -697,23 +693,45 @@ export class MCPServer {
       }
 
       const args = body ? JSON.parse(body) : {};
+      const toolUseId = `api_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-      // Execute tool (same logic as tools/call)
+      // 🐕 COLLECTIVE: PreToolUse check (same as MCP tools/call)
+      if (this.collective) {
+        const preResult = await this.collective.receiveHookEvent({
+          hookType: 'PreToolUse',
+          payload: { tool: toolName, toolUseId, input: args },
+        });
+
+        if (preResult.blocked) {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            error: `[BLOCKED] ${preResult.blockMessage || 'Operation blocked by collective'}`,
+            blockedBy: preResult.blockedBy,
+          }));
+          return;
+        }
+      }
+
+      // Execute tool
       console.error(`🐕 [API] Tool ${toolName} called`);
       const startTime = Date.now();
       const result = await tool.handler(args);
       const duration = Date.now() - startTime;
 
-      // Trigger agents (non-blocking)
-      this.agents.process({
-        type: 'PostToolUse',
-        tool: toolName,
-        input: args,
-        output: result,
-        duration,
-        success: true,
-        timestamp: Date.now(),
-      }).catch(() => {});
+      // 🐕 COLLECTIVE: PostToolUse (non-blocking)
+      if (this.collective) {
+        this.collective.receiveHookEvent({
+          hookType: 'PostToolUse',
+          payload: {
+            tool: toolName,
+            toolUseId,
+            input: args,
+            output: typeof result === 'string' ? result.slice(0, 500) : JSON.stringify(result).slice(0, 500),
+            duration,
+            success: true,
+          },
+        }).catch(() => {});
+      }
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
@@ -947,20 +965,20 @@ export class MCPServer {
 
       return { jsonrpc: '2.0', id, result };
     } catch (err) {
-      // 🐕 MENTOR: Share wisdom when errors occur
-      this.agents.process({
-        type: 'ContextAware',
-        signal: 'error',
-        message: err.message,
-        method,
-        timestamp: Date.now(),
-      }).then(mentorResult => {
-        if (mentorResult.mentor?.action && mentorResult.mentor?.wisdom) {
-          console.error(`🐕 Mentor wisdom: ${mentorResult.mentor.wisdom.message || mentorResult.mentor.message}`);
-        }
-      }).catch(() => {
-        // Mentor is non-blocking - ignore errors
-      });
+      // 🐕 SAGE: Share wisdom when errors occur (via Collective)
+      if (this.collective) {
+        this.collective.getWisdom('error_recovery', {
+          errorMessage: err.message,
+          method,
+          context: 'mcp_request_error',
+        }).then(wisdom => {
+          if (wisdom?.message) {
+            console.error(`🐕 Sage wisdom: ${wisdom.message}`);
+          }
+        }).catch(() => {
+          // Sage is non-blocking - ignore errors
+        });
+      }
 
       return {
         jsonrpc: '2.0',
@@ -1160,31 +1178,11 @@ export class MCPServer {
       throw new Error(`Tool not found: ${name}`);
     }
 
-    // 🐕 Guardian: PreToolUse check (blocking)
-    // Guardian barks BEFORE the damage - one confirmation saves hours of recovery
-    const guardianResult = await this.agents.process({
-      type: 'PreToolUse',
-      tool: name,
-      input: args,
-      timestamp: Date.now(),
-    });
-
-    if (guardianResult._blocked) {
-      const blockedBy = guardianResult._blockedBy || 'guardian';
-      const message = guardianResult[blockedBy]?.message || 'Operation blocked by Guardian';
-      console.error(`🐕 [BLOCKED] Tool "${name}" blocked by ${blockedBy}: ${message}`);
-      throw new Error(`[BLOCKED] ${message}`);
-    }
-
-    // Log warning if Guardian raised one
-    if (guardianResult.guardian?.response === 'warn') {
-      console.error(`🐕 [WARNING] Tool "${name}": ${guardianResult.guardian.message}`);
-    }
-
     // Generate toolUseId for duration tracking (Vibecraft pattern)
     const toolUseId = `tool_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-    // 🐕 COLLECTIVE: PreToolUse hook → EventBus → 11 Dogs
+    // 🐕 COLLECTIVE: PreToolUse → Full pipeline (shouldTrigger → analyze → decide)
+    // All 11 Dogs process the event, Guardian can block
     if (this.collective) {
       const hookResult = await this.collective.receiveHookEvent({
         hookType: 'PreToolUse',
@@ -1194,12 +1192,29 @@ export class MCPServer {
           input: args,
         },
       });
+
+      // Check if any Dog blocked the operation
+      if (hookResult.blocked) {
+        const blockedBy = hookResult.blockedBy || 'guardian';
+        const message = hookResult.blockMessage || 'Operation blocked by collective';
+        console.error(`🐕 [BLOCKED] Tool "${name}" blocked by ${blockedBy}: ${message}`);
+        throw new Error(`[BLOCKED] ${message}`);
+      }
+
+      // Log warnings from agents
+      for (const result of hookResult.agentResults || []) {
+        if (result.response === 'warn' && result.message) {
+          console.error(`🐕 [WARNING] ${result.agent}: ${result.message}`);
+        }
+      }
+
       // Broadcast to SSE for Live View
       this._broadcastSSEEvent('tool_pre', {
         tool: name,
         toolUseId,
         input: args,
         dogsNotified: hookResult?.delivered || 0,
+        agentsTriggered: hookResult.agentResults?.length || 0,
         timestamp: Date.now(),
       });
     }
@@ -1209,26 +1224,8 @@ export class MCPServer {
     const result = await tool.handler(args);
     const duration = Date.now() - startTime;
 
-    // 🐕 Observer: PostToolUse - SYNCHRONOUS for debugging
-    const observerResult = await this.agents.process({
-      type: 'PostToolUse',
-      tool: name,
-      input: args,
-      output: result,
-      duration,
-      success: true,
-      timestamp: Date.now(),
-    });
-
-    // 🐕 DIGESTER: Trigger UNCONDITIONALLY for debugging
-    await this.agents.process({
-      type: 'PostConversation',
-      content: `Tool ${name} result: ${typeof result === 'string' ? result : JSON.stringify(result).slice(0, 200)}`,
-      tool: name,
-      timestamp: Date.now(),
-    });
-
-    // 🐕 COLLECTIVE: PostToolUse hook → EventBus → 11 Dogs
+    // 🐕 COLLECTIVE: PostToolUse → Full pipeline (all 11 Dogs analyze)
+    // Analyst tracks patterns, Scholar extracts knowledge, etc.
     if (this.collective) {
       const hookResult = await this.collective.receiveHookEvent({
         hookType: 'PostToolUse',
@@ -1241,6 +1238,7 @@ export class MCPServer {
           success: true,
         },
       });
+
       // Broadcast to SSE for Live View with duration tracking
       this._broadcastSSEEvent('tool_post', {
         tool: name,
@@ -1248,6 +1246,7 @@ export class MCPServer {
         duration,
         success: true,
         dogsNotified: hookResult?.delivered || 0,
+        agentsTriggered: hookResult.agentResults?.length || 0,
         timestamp: Date.now(),
       });
     }
@@ -1378,9 +1377,7 @@ export class MCPServer {
       persistenceBackend: this.persistence?._backend || 'none',
       persistenceCapabilities: this.persistence?.capabilities || {},
       judgeStats: this.judge.getStats(),
-      // 🐕 Legacy Four Dogs status (AgentManager)
-      legacyAgents: this.agents.getSummary(),
-      // 🐕 The Collective - Five Dogs + CYNIC (Keter)
+      // 🐕 The Collective - All 11 Dogs (Sefirot)
       collective: this.collective?.getSummary() || { initialized: false },
       // CYNIC meta-state
       cynicState: this.collective?.cynic?.metaState || 'not_initialized',

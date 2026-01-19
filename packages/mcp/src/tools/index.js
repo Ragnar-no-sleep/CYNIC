@@ -1848,82 +1848,66 @@ export function createDocsTool(librarian, persistence = null) {
 
 /**
  * Create agents status tool definition
- * @param {Object} agents - AgentManager instance (The Four Dogs)
+ * DEPRECATED: Use brain_collective_status instead
+ * @param {Object} collective - CollectivePack instance (The 11 Dogs)
  * @returns {Object} Tool definition
  */
-export function createAgentsStatusTool(agents) {
+export function createAgentsStatusTool(collective) {
   return {
     name: 'brain_agents_status',
-    description: 'Get status and statistics for The Four Dogs agents (Observer, Digester, Guardian, Mentor). Shows blocks, warnings, patterns detected, and wisdom shared.',
+    description: 'DEPRECATED: Use brain_collective_status instead. Returns collective status for backwards compatibility.',
     inputSchema: {
       type: 'object',
       properties: {
         verbose: { type: 'boolean', description: 'Include detailed per-agent statistics' },
-        agent: { type: 'string', enum: ['observer', 'digester', 'guardian', 'mentor'], description: 'Get status for specific agent only' },
+        agent: { type: 'string', enum: ['guardian', 'analyst', 'scholar', 'architect', 'sage', 'cynic', 'janitor', 'scout', 'cartographer', 'oracle', 'deployer'], description: 'Get status for specific agent only' },
       },
     },
     handler: async (params) => {
       const { verbose = false, agent = null } = params;
 
-      if (!agents) {
+      // Redirect to collective
+      if (!collective) {
         return {
           status: 'unavailable',
-          message: 'Agent system not initialized',
+          message: 'Collective not initialized. Use brain_collective_status.',
+          deprecated: true,
           timestamp: Date.now(),
         };
       }
 
-      const summary = agents.getSummary();
+      const summary = collective.getSummary();
 
       // If specific agent requested
       if (agent && summary.agents[agent]) {
         return {
           agent,
           ...summary.agents[agent],
-          managerStats: summary.stats,
-          enabled: summary.enabled,
+          deprecated: true,
+          useInstead: 'brain_collective_status',
           timestamp: Date.now(),
         };
       }
 
-      // Basic response - include debug info in stats
-      const statsWithDebug = {
-        ...summary.stats,
-        debugDigesterSelections: summary._debug?.digesterSelections || 0,
-      };
-
-      const response = {
-        enabled: summary.enabled,
-        stats: statsWithDebug,
-        dogs: {
-          guardian: {
-            description: 'The Watchdog - blocks dangerous operations',
-            blocks: summary.agents.guardian?.decisionsBlocked || 0,
-            warnings: summary.agents.guardian?.decisionsWarned || 0,
-          },
-          observer: {
-            description: 'The Silent Watcher - detects patterns',
-            patterns: summary.agents.observer?.patternsDetected || 0,
-            observations: summary.agents.observer?.totalObservations || 0,
-          },
-          digester: {
-            description: 'The Archivist - extracts knowledge',
-            digests: summary.agents.digester?.totalDigests || 0,
-          },
-          mentor: {
-            description: 'The Wise Elder - shares wisdom',
-            wisdomShared: summary.agents.mentor?.wisdomShared || 0,
-          },
-        },
+      // Return summary with deprecation notice
+      return {
+        deprecated: true,
+        useInstead: 'brain_collective_status',
+        dogCount: summary.dogCount,
+        profileLevel: summary.profileLevel,
+        dogs: Object.fromEntries(
+          Object.entries(summary.agents).map(([name, data]) => [
+            name,
+            {
+              invocations: data.invocations || 0,
+              actions: data.actions || 0,
+              blocks: data.blocks || 0,
+              warnings: data.warnings || 0,
+            },
+          ])
+        ),
         timestamp: Date.now(),
       };
-
-      // Add verbose details
-      if (verbose) {
-        response.agents = summary.agents;
-      }
-
-      return response;
     },
   };
 }
@@ -2910,7 +2894,7 @@ export function createCollectiveStatusTool(collective) {
  * @param {Object} agents - AgentManager instance
  * @returns {Object} Tool definition
  */
-export function createAgentDiagnosticTool(agents) {
+export function createAgentDiagnosticTool(collective) {
   return {
     name: 'brain_agent_diagnostic',
     description: 'INTERNAL: Test agent routing and shouldTrigger logic directly. For debugging only.',
@@ -2924,8 +2908,8 @@ export function createAgentDiagnosticTool(agents) {
     handler: async (params) => {
       const { eventType = 'PostConversation', testContent = 'Test content' } = params;
 
-      if (!agents) {
-        return { error: 'Agents not available', timestamp: Date.now() };
+      if (!collective) {
+        return { error: 'Collective not available', timestamp: Date.now() };
       }
 
       // Create test event
@@ -2936,33 +2920,29 @@ export function createAgentDiagnosticTool(agents) {
         timestamp: Date.now(),
       };
 
-      // Get the agents object directly
-      const digester = agents.agents?.digester;
-      const observer = agents.agents?.observer;
+      // Get all agents from collective and test shouldTrigger
+      const agentResults = {};
+      for (const agent of collective.agents) {
+        const shouldTrigger = agent.shouldTrigger(testEvent);
+        agentResults[agent.name] = {
+          exists: true,
+          sefirah: agent.sefirah,
+          trigger: agent.trigger,
+          shouldTriggerResult: shouldTrigger,
+          invocations: agent.stats?.invocations || 0,
+        };
+      }
 
-      // Test shouldTrigger directly
       const results = {
         testEvent,
-        digester: digester ? {
-          exists: true,
-          trigger: digester.trigger,
-          shouldTriggerResult: digester.shouldTrigger(testEvent),
-          invocations: digester.stats?.invocations,
-          _shouldTriggerCallCount: digester._shouldTriggerCallCount,
-        } : { exists: false },
-        observer: observer ? {
-          exists: true,
-          trigger: observer.trigger,
-          shouldTriggerResult: observer.shouldTrigger(testEvent),
-          invocations: observer.stats?.invocations,
-        } : { exists: false },
-        managerStats: agents.stats,
+        agents: agentResults,
+        collectiveStats: collective.getStats?.() || {},
         timestamp: Date.now(),
       };
 
-      // Also try directly calling agents.process to see what happens
+      // Test full pipeline via processEvent
       try {
-        const processResult = await agents.process(testEvent, {});
+        const processResult = await collective.processEvent(testEvent, {});
         results.processResult = processResult;
       } catch (e) {
         results.processError = e.message;
@@ -3135,7 +3115,7 @@ export function createCodebaseTool(options = {}) {
  * @param {Object} options.judge - CYNICJudge instance
  * @param {Object} [options.node] - CYNICNode instance
  * @param {Object} [options.persistence] - PersistenceManager instance (handles fallback)
- * @param {Object} [options.agents] - AgentManager instance (The Four Dogs)
+ * @param {Object} [options.agents] - DEPRECATED: Legacy AgentManager (use collective instead)
  * @param {Object} [options.sessionManager] - SessionManager instance for multi-user sessions
  * @param {Object} [options.pojChainManager] - PoJChainManager instance for blockchain
  * @param {Object} [options.librarian] - LibrarianService instance for documentation caching
@@ -3194,9 +3174,9 @@ export function createAllTools(options = {}) {
     createGetObservationsTool(persistence),
     createPatternsTool(judge, persistence),
     createFeedbackTool(persistence, sessionManager),
-    createAgentsStatusTool(agents),
-    createCollectiveStatusTool(collective), // NEW: The Five Dogs + CYNIC (Keter)
-    createAgentDiagnosticTool(agents),
+    createAgentsStatusTool(collective), // DEPRECATED: redirects to Collective
+    createCollectiveStatusTool(collective), // The Eleven Dogs + CYNIC (Keter)
+    createAgentDiagnosticTool(collective),
     createSessionStartTool(sessionManager),
     createSessionEndTool(sessionManager),
     createDocsTool(librarian, persistence),

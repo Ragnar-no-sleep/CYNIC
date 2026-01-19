@@ -161,10 +161,18 @@ export class CollectivePack {
    * @param {Object} [options.state] - State manager instance
    * @param {number} [options.profileLevel] - Initial profile level
    * @param {Object} [options.localStore] - Local store for privacy
+   * @param {Function} [options.onDogDecision] - Callback when dog makes decision (for SSE broadcast)
+   * @param {Object} [options.persistence] - Persistence manager for storing observations
+   * @param {Object} [options.graphIntegration] - JudgmentGraph integration for relationship tracking
    */
   constructor(options = {}) {
-    // Shared infrastructure
-    this.eventBus = new AgentEventBus();
+    // Callbacks for external integration
+    this.onDogDecision = options.onDogDecision || null;
+    this.persistence = options.persistence || null;
+    this.graphIntegration = options.graphIntegration || null;
+
+    // Shared infrastructure (pass persistence to EventBus for logging)
+    this.eventBus = new AgentEventBus({ persistence: this.persistence });
     this.profileCalculator = new ProfileCalculator();
     this.signalCollector = new OrganicSignals();
     this.localStore = options.localStore || null;
@@ -193,6 +201,7 @@ export class CollectivePack {
       profileLevel: this.profileLevel,
       judge: options.judge,
       state: options.state,
+      persistence: this.persistence,
     });
 
     this.analyst = new CollectiveAnalyst({
@@ -201,6 +210,7 @@ export class CollectivePack {
       signalCollector: this.signalCollector,
       judge: options.judge,
       state: options.state,
+      persistence: this.persistence,
     });
 
     this.scholar = new CollectiveScholar({
@@ -209,6 +219,7 @@ export class CollectivePack {
       profileLevel: this.profileLevel,
       judge: options.judge,
       state: options.state,
+      persistence: this.persistence,
     });
 
     this.architect = new CollectiveArchitect({
@@ -216,6 +227,7 @@ export class CollectivePack {
       profileLevel: this.profileLevel,
       judge: options.judge,
       state: options.state,
+      persistence: this.persistence,
     });
 
     this.sage = new CollectiveSage({
@@ -223,6 +235,7 @@ export class CollectivePack {
       profileLevel: this.profileLevel,
       judge: options.judge,
       state: options.state,
+      persistence: this.persistence,
     });
 
     // CYNIC - The Hidden Dog (Keter) - Meta-consciousness
@@ -231,30 +244,35 @@ export class CollectivePack {
       profileLevel: this.profileLevel,
       judge: options.judge,
       state: options.state,
+      persistence: this.persistence,
     });
 
     // Janitor - Foundation (Yesod) - Code quality & hygiene
     this.janitor = new CollectiveJanitor({
       eventBus: this.eventBus,
       profileLevel: this.profileLevel,
+      persistence: this.persistence,
     });
 
     // Scout - Victory (Netzach) - Discovery & exploration
     this.scout = new CollectiveScout({
       eventBus: this.eventBus,
       profileLevel: this.profileLevel,
+      persistence: this.persistence,
     });
 
     // Cartographer - Kingdom (Malkhut) - Reality mapping
     this.cartographer = new CollectiveCartographer({
       eventBus: this.eventBus,
       profileLevel: this.profileLevel,
+      persistence: this.persistence,
     });
 
     // Oracle - Beauty (Tiferet) - Visualization & monitoring
     this.oracle = new CollectiveOracle({
       eventBus: this.eventBus,
       profileLevel: this.profileLevel,
+      persistence: this.persistence,
     });
 
     // Deployer - Splendor (Hod) - Deployment & infrastructure
@@ -262,6 +280,7 @@ export class CollectivePack {
       eventBus: this.eventBus,
       guardian: this.guardian, // For deployment approval
       profileLevel: this.profileLevel,
+      persistence: this.persistence,
     });
 
     // Agent map for lookup (5 original Dogs + CYNIC + Janitor + Scout + Cartographer + Oracle + Deployer)
@@ -499,14 +518,16 @@ export class CollectivePack {
 
   /**
    * Receive hook event from Claude Code
-   * This bridges external hooks to the collective eventBus
+   * This bridges external hooks to the collective:
+   * 1. Runs full agent pipeline (shouldTrigger → analyze → decide)
+   * 2. Publishes to eventBus for inter-dog communication
    *
    * @param {Object} hookData - Hook event data
-   * @param {string} hookData.hookType - Type: SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop
+   * @param {string} hookData.hookType - Type: SessionStart, SessionEnd, UserPromptSubmit, PreToolUse, PostToolUse, Stop
    * @param {Object} hookData.payload - Hook payload
    * @param {string} [hookData.userId] - User ID
    * @param {string} [hookData.sessionId] - Session ID
-   * @returns {Promise<Object>} Result with delivered count
+   * @returns {Promise<Object>} Result with agent decisions and delivery count
    */
   async receiveHookEvent(hookData) {
     const { hookType, payload = {}, userId, sessionId } = hookData;
@@ -514,6 +535,7 @@ export class CollectivePack {
     // Map Claude Code hook types to AgentEvent types
     const hookEventMap = {
       SessionStart: AgentEvent.HOOK_SESSION_START,
+      SessionEnd: AgentEvent.HOOK_SESSION_STOP, // Both Stop and SessionEnd map to session stop
       UserPromptSubmit: AgentEvent.HOOK_PROMPT_SUBMIT,
       PreToolUse: AgentEvent.HOOK_PRE_TOOL,
       PostToolUse: AgentEvent.HOOK_POST_TOOL,
@@ -526,40 +548,171 @@ export class CollectivePack {
       return { success: false, error: `Unknown hook type: ${hookType}` };
     }
 
-    // Create event message
-    const event = new AgentEventMessage(
+    // Create event for full pipeline processing
+    const processEvent = {
+      type: hookType,
+      tool: payload.tool,
+      input: payload.input,
+      output: payload.output,
+      duration: payload.duration,
+      success: payload.success !== false,
+      userId,
+      sessionId,
+      timestamp: Date.now(),
+    };
+
+    // 🐕 RUN FULL AGENT PIPELINE (shouldTrigger → analyze → decide)
+    let agentResults = [];
+    let blocked = false;
+    let blockedBy = null;
+    let blockMessage = null;
+
+    try {
+      agentResults = await this.processEvent(processEvent, { hookType, userId, sessionId });
+
+      // Check if any agent blocked the operation
+      for (const result of agentResults) {
+        if (result.response === 'block') {
+          blocked = true;
+          blockedBy = result.agent;
+          blockMessage = result.message;
+          break;
+        }
+      }
+    } catch (err) {
+      console.error(`[Collective] processEvent error: ${err.message}`);
+    }
+
+    // 🐕 Broadcast dog decisions via callback (for SSE)
+    if (this.onDogDecision && agentResults.length > 0) {
+      for (const result of agentResults) {
+        try {
+          this.onDogDecision({
+            dog: result.agent,
+            response: result.response,
+            action: result.action,
+            message: result.message,
+            hookType,
+            tool: payload.tool,
+            blocked: result.response === 'block',
+            timestamp: Date.now(),
+          });
+        } catch (err) {
+          console.error(`[Collective] onDogDecision callback error: ${err.message}`);
+        }
+      }
+    }
+
+    // Create event message for inter-dog communication via eventBus
+    const busEvent = new AgentEventMessage(
       eventType,
-      'external:hook', // Source
+      'external:hook',
       {
         ...payload,
         hookType,
         userId,
         sessionId,
         receivedAt: Date.now(),
+        // Include agent decisions for other dogs to learn from
+        agentResults: agentResults.map(r => ({
+          agent: r.agent,
+          response: r.response,
+          action: r.action,
+        })),
+        blocked,
+        blockedBy,
       }
     );
 
-    // Publish to eventBus
+    // Publish to eventBus for inter-dog learning
+    let busResult = { delivered: 0, errors: [] };
     try {
-      const result = await this.eventBus.publish(event);
+      busResult = await this.eventBus.publish(busEvent);
+    } catch (error) {
+      console.error(`[Collective] eventBus publish error: ${error.message}`);
+    }
 
-      // Update CYNIC's observation count
-      if (this.cynic) {
-        this.cynic.stats.eventsObserved++;
+    // 🐕 Record dog decisions in graph (for relationship tracking)
+    if (this.graphIntegration && agentResults.length > 0) {
+      try {
+        for (const result of agentResults) {
+          if (result.response === 'block' || result.response === 'warn') {
+            // Record significant dog decisions as graph edges
+            await this.graphIntegration.graph?.addEdge?.(
+              `dog:${result.agent}`,
+              `tool:${payload.tool || 'unknown'}`,
+              result.response,
+              {
+                hookType,
+                action: result.action,
+                message: result.message,
+                timestamp: Date.now(),
+              }
+            );
+          }
+        }
+      } catch (err) {
+        console.error(`[Collective] graphIntegration error: ${err.message}`);
+      }
+    }
+
+    // Update CYNIC's observation count
+    if (this.cynic) {
+      this.cynic.stats.eventsObserved++;
+    }
+
+    return {
+      success: true,
+      eventId: busEvent.id,
+      eventType,
+      // Agent pipeline results
+      agentResults,
+      blocked,
+      blockedBy,
+      blockMessage,
+      // EventBus delivery stats
+      delivered: busResult.delivered,
+      errors: busResult.errors?.length || 0,
+    };
+  }
+
+  /**
+   * Persist collective stats to storage
+   * @returns {Promise<Object>} Result with success status
+   */
+  async persistStats() {
+    if (!this.persistence) {
+      return { success: false, error: 'No persistence available' };
+    }
+
+    try {
+      const summary = this.getSummary();
+      const stats = {
+        type: 'collective_stats',
+        timestamp: Date.now(),
+        agentCount: summary.agentCount,
+        collectiveStats: summary.collectiveStats,
+        cynicState: summary.cynic?.state,
+        // Individual dog stats
+        dogs: {},
+      };
+
+      // Collect stats from each dog
+      for (const agent of this.agents) {
+        stats.dogs[agent.name] = {
+          invocations: agent.stats?.invocations || 0,
+          actions: agent.stats?.actions || 0,
+          blocks: agent.stats?.blocks || 0,
+          warnings: agent.stats?.warnings || 0,
+          lastInvocation: agent.stats?.lastInvocation,
+        };
       }
 
-      return {
-        success: true,
-        eventId: event.id,
-        eventType,
-        delivered: result.delivered,
-        errors: result.errors.length,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error.message,
-      };
+      await this.persistence.storeObservation(stats);
+      return { success: true, timestamp: stats.timestamp };
+    } catch (err) {
+      console.error(`[Collective] persistStats error: ${err.message}`);
+      return { success: false, error: err.message };
     }
   }
 
@@ -585,6 +738,8 @@ export class CollectivePack {
    * Shutdown collective
    */
   async shutdown() {
+    // Persist stats before shutdown
+    await this.persistStats();
     await this.eventBus.shutdown();
     this.clear();
   }

@@ -50,7 +50,7 @@ export class MetricsService extends EventEmitter {
    * @param {Object} [options.ecosystem] - EcosystemService
    * @param {Object} [options.integrator] - IntegratorService
    * @param {Object} [options.judge] - CYNICJudge
-   * @param {Object} [options.agents] - AgentManager
+   * @param {Object} [options.collective] - CollectivePack (The Eleven Dogs)
    * @param {Object} [options.thresholds] - Alert thresholds
    */
   constructor(options = {}) {
@@ -63,7 +63,7 @@ export class MetricsService extends EventEmitter {
     this.ecosystem = options.ecosystem || null;
     this.integrator = options.integrator || null;
     this.judge = options.judge || null;
-    this.agents = options.agents || null;
+    this.collective = options.collective || null;
 
     this.thresholds = { ...DEFAULT_THRESHOLDS, ...options.thresholds };
 
@@ -206,25 +206,52 @@ export class MetricsService extends EventEmitter {
       };
     }
 
-    // Agents metrics
-    if (this.agents) {
-      const agentSummary = this.agents.getSummary();
+    // Collective Dogs metrics (The Eleven Dogs)
+    if (this.collective) {
+      const summary = this.collective.getSummary();
       metrics.agents = {
-        enabled: agentSummary.enabled,
-        totalDecisions: agentSummary.stats?.totalDecisions || 0,
+        enabled: true,
+        agentCount: summary.agentCount || 11,
+        totalDecisions: summary.collectiveStats?.totalProcessed || 0,
+        cynicState: summary.cynic?.state || 'unknown',
+        // Individual dog stats
         guardian: {
-          blocks: agentSummary.agents?.guardian?.decisionsBlocked || 0,
-          warnings: agentSummary.agents?.guardian?.decisionsWarned || 0,
+          invocations: summary.agents?.guardian?.invocations || 0,
+          blocks: summary.agents?.guardian?.blocks || 0,
+          warnings: summary.agents?.guardian?.warnings || 0,
         },
-        observer: {
-          patterns: agentSummary.agents?.observer?.patternsDetected || 0,
-          observations: agentSummary.agents?.observer?.totalObservations || 0,
+        analyst: {
+          invocations: summary.agents?.analyst?.invocations || 0,
+          patterns: summary.agents?.analyst?.patterns || 0,
         },
-        digester: {
-          digests: agentSummary.agents?.digester?.totalDigests || 0,
+        scholar: {
+          invocations: summary.agents?.scholar?.invocations || 0,
         },
-        mentor: {
-          wisdomShared: agentSummary.agents?.mentor?.wisdomShared || 0,
+        architect: {
+          invocations: summary.agents?.architect?.invocations || 0,
+        },
+        sage: {
+          invocations: summary.agents?.sage?.invocations || 0,
+          wisdomShared: summary.agents?.sage?.wisdom || 0,
+        },
+        janitor: {
+          invocations: summary.agents?.janitor?.invocations || 0,
+        },
+        scout: {
+          invocations: summary.agents?.scout?.invocations || 0,
+        },
+        cartographer: {
+          invocations: summary.agents?.cartographer?.invocations || 0,
+        },
+        oracle: {
+          invocations: summary.agents?.oracle?.invocations || 0,
+        },
+        deployer: {
+          invocations: summary.agents?.deployer?.invocations || 0,
+        },
+        cynic: {
+          invocations: summary.agents?.cynic?.invocations || 0,
+          eventsObserved: summary.cynic?.eventsObserved || 0,
         },
       };
     }
@@ -326,7 +353,14 @@ export class MetricsService extends EventEmitter {
     lines.push('# TYPE cynic_integrator_drifts_critical gauge');
     lines.push(`cynic_integrator_drifts_critical ${metrics.integrator.criticalDrifts || 0}`);
 
-    // Agents metrics
+    // Collective Dogs metrics (The Eleven Dogs)
+    lines.push('# HELP cynic_dog_invocations Total invocations per dog');
+    lines.push('# TYPE cynic_dog_invocations counter');
+    const dogs = ['guardian', 'analyst', 'scholar', 'architect', 'sage', 'janitor', 'scout', 'cartographer', 'oracle', 'deployer', 'cynic'];
+    for (const dog of dogs) {
+      lines.push(`cynic_dog_invocations{dog="${dog}"} ${metrics.agents[dog]?.invocations || 0}`);
+    }
+
     lines.push('# HELP cynic_guardian_blocks Total operations blocked by Guardian');
     lines.push('# TYPE cynic_guardian_blocks counter');
     lines.push(`cynic_guardian_blocks ${metrics.agents.guardian?.blocks || 0}`);
@@ -335,9 +369,17 @@ export class MetricsService extends EventEmitter {
     lines.push('# TYPE cynic_guardian_warnings counter');
     lines.push(`cynic_guardian_warnings ${metrics.agents.guardian?.warnings || 0}`);
 
-    lines.push('# HELP cynic_observer_patterns Patterns detected by Observer');
-    lines.push('# TYPE cynic_observer_patterns counter');
-    lines.push(`cynic_observer_patterns ${metrics.agents.observer?.patterns || 0}`);
+    lines.push('# HELP cynic_analyst_patterns Patterns detected by Analyst');
+    lines.push('# TYPE cynic_analyst_patterns counter');
+    lines.push(`cynic_analyst_patterns ${metrics.agents.analyst?.patterns || 0}`);
+
+    lines.push('# HELP cynic_sage_wisdom Wisdom shared by Sage');
+    lines.push('# TYPE cynic_sage_wisdom counter');
+    lines.push(`cynic_sage_wisdom ${metrics.agents.sage?.wisdomShared || 0}`);
+
+    lines.push('# HELP cynic_collective_decisions Total collective decisions');
+    lines.push('# TYPE cynic_collective_decisions counter');
+    lines.push(`cynic_collective_decisions ${metrics.agents.totalDecisions || 0}`);
 
     // System metrics
     lines.push('# HELP cynic_uptime_seconds Server uptime in seconds');
@@ -630,17 +672,62 @@ export class MetricsService extends EventEmitter {
     </div>
   </div>
 
-  <h2>Four Dogs</h2>
+  <h2>The Eleven Dogs (Collective)</h2>
   <div class="grid">
     <div class="card">
-      <div class="card-title">🛡️ Guardian</div>
+      <div class="card-title">🛡️ Guardian (Gevurah)</div>
       <div class="card-value">${metrics.agents.guardian?.blocks || 0}</div>
       <div class="card-subtitle">Blocked (${metrics.agents.guardian?.warnings || 0} warnings)</div>
     </div>
     <div class="card">
-      <div class="card-title">👁️ Observer</div>
-      <div class="card-value">${metrics.agents.observer?.patterns || 0}</div>
+      <div class="card-title">📊 Analyst (Chesed)</div>
+      <div class="card-value">${metrics.agents.analyst?.patterns || 0}</div>
       <div class="card-subtitle">Patterns detected</div>
+    </div>
+    <div class="card">
+      <div class="card-title">📚 Scholar (Binah)</div>
+      <div class="card-value">${metrics.agents.scholar?.invocations || 0}</div>
+      <div class="card-subtitle">Invocations</div>
+    </div>
+    <div class="card">
+      <div class="card-title">🏗️ Architect (Chokmah)</div>
+      <div class="card-value">${metrics.agents.architect?.invocations || 0}</div>
+      <div class="card-subtitle">Invocations</div>
+    </div>
+    <div class="card">
+      <div class="card-title">🧙 Sage (Da'at)</div>
+      <div class="card-value">${metrics.agents.sage?.wisdomShared || 0}</div>
+      <div class="card-subtitle">Wisdom shared</div>
+    </div>
+    <div class="card">
+      <div class="card-title">🧹 Janitor (Yesod)</div>
+      <div class="card-value">${metrics.agents.janitor?.invocations || 0}</div>
+      <div class="card-subtitle">Invocations</div>
+    </div>
+    <div class="card">
+      <div class="card-title">🔭 Scout (Netzach)</div>
+      <div class="card-value">${metrics.agents.scout?.invocations || 0}</div>
+      <div class="card-subtitle">Invocations</div>
+    </div>
+    <div class="card">
+      <div class="card-title">🗺️ Cartographer (Malkhut)</div>
+      <div class="card-value">${metrics.agents.cartographer?.invocations || 0}</div>
+      <div class="card-subtitle">Invocations</div>
+    </div>
+    <div class="card">
+      <div class="card-title">🔮 Oracle (Tiferet)</div>
+      <div class="card-value">${metrics.agents.oracle?.invocations || 0}</div>
+      <div class="card-subtitle">Invocations</div>
+    </div>
+    <div class="card">
+      <div class="card-title">🚀 Deployer (Hod)</div>
+      <div class="card-value">${metrics.agents.deployer?.invocations || 0}</div>
+      <div class="card-subtitle">Invocations</div>
+    </div>
+    <div class="card">
+      <div class="card-title">🐕 CYNIC (Keter)</div>
+      <div class="card-value">${metrics.agents.cynic?.eventsObserved || 0}</div>
+      <div class="card-subtitle">Events observed (${metrics.agents.cynicState || 'dormant'})</div>
     </div>
   </div>
 

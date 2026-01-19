@@ -84,15 +84,23 @@ function createMockServices() {
         verdicts: { WAG: 40, GROWL: 30, BARK: 20, HOWL: 10 },
       }),
     },
-    agents: {
+    collective: {
       getSummary: () => ({
-        enabled: true,
-        stats: { totalDecisions: 50 },
+        agentCount: 11,
+        collectiveStats: { totalProcessed: 50 },
+        cynic: { state: 'active', eventsObserved: 100 },
         agents: {
-          guardian: { decisionsBlocked: 5, decisionsWarned: 10 },
-          observer: { patternsDetected: 15, totalObservations: 100 },
-          digester: { totalDigests: 25 },
-          mentor: { wisdomShared: 8 },
+          guardian: { invocations: 20, blocks: 5, warnings: 10 },
+          analyst: { invocations: 15, patterns: 15 },
+          scholar: { invocations: 10 },
+          architect: { invocations: 8 },
+          sage: { invocations: 12, wisdom: 8 },
+          janitor: { invocations: 5 },
+          scout: { invocations: 7 },
+          cartographer: { invocations: 6 },
+          oracle: { invocations: 4 },
+          deployer: { invocations: 3 },
+          cynic: { invocations: 100 },
         },
       }),
     },
@@ -181,12 +189,12 @@ describe('MetricsService', () => {
       assert.equal(metrics.integrator.criticalDrifts, 1);
     });
 
-    it('collects agents metrics', async () => {
+    it('collects collective agents metrics', async () => {
       const metrics = await service.collect();
 
-      assert.ok(metrics.agents.enabled);
+      assert.equal(metrics.agents.agentCount, 11);
       assert.equal(metrics.agents.guardian.blocks, 5);
-      assert.equal(metrics.agents.observer.patterns, 15);
+      assert.equal(metrics.agents.analyst.patterns, 15);
     });
 
     it('collects system metrics', async () => {
@@ -246,11 +254,12 @@ describe('MetricsService', () => {
       assert.ok(prometheus.includes('cynic_integrator_drifts_critical'));
     });
 
-    it('includes agent metrics', async () => {
+    it('includes collective dog metrics', async () => {
       const prometheus = await service.toPrometheus();
 
       assert.ok(prometheus.includes('cynic_guardian_blocks'));
-      assert.ok(prometheus.includes('cynic_observer_patterns'));
+      assert.ok(prometheus.includes('cynic_analyst_patterns'));
+      assert.ok(prometheus.includes('cynic_dog_invocations'));
     });
   });
 

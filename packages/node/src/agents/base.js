@@ -64,6 +64,7 @@ export class BaseAgent {
    * @param {string} options.behavior - Behavior mode
    * @param {Object} [options.judge] - CYNIC judge instance
    * @param {Object} [options.state] - State manager instance
+   * @param {Object} [options.persistence] - Persistence manager for storing observations
    */
   constructor(options = {}) {
     if (this.constructor === BaseAgent) {
@@ -75,6 +76,7 @@ export class BaseAgent {
     this.behavior = options.behavior || AgentBehavior.NON_BLOCKING;
     this.judge = options.judge || null;
     this.state = options.state || null;
+    this.persistence = options.persistence || null;
 
     // Agent stats
     this.stats = {
@@ -133,6 +135,26 @@ export class BaseAgent {
       }
       if (decision.action) {
         this.stats.actions++;
+      }
+
+      // 🐕 Store observation to persistence
+      if (this.persistence) {
+        try {
+          await this.persistence.storeObservation({
+            type: 'dog_decision',
+            agent: this.name,
+            trigger: event.type,
+            tool: event.tool,
+            response: decision.response,
+            action: decision.action,
+            message: decision.message,
+            confidence: analysis.confidence || decision.confidence,
+            timestamp: Date.now(),
+          });
+        } catch (err) {
+          // Don't fail the decision if persistence fails
+          console.error(`[${this.name}] Persistence error: ${err.message}`);
+        }
       }
 
       return decision;

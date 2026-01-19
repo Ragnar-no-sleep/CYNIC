@@ -105,7 +105,11 @@ class Subscription {
  * Central hub for inter-agent communication in the collective.
  */
 export class AgentEventBus extends EventEmitter {
-  constructor() {
+  /**
+   * @param {Object} [options] - EventBus options
+   * @param {Object} [options.persistence] - Persistence manager for logging events
+   */
+  constructor(options = {}) {
     super();
 
     // Set max listeners (Fib(10) = 55)
@@ -122,6 +126,9 @@ export class AgentEventBus extends EventEmitter {
 
     /** @type {Set<string>} Registered agent IDs */
     this.registeredAgents = new Set();
+
+    // Persistence for logging inter-dog communication
+    this.persistence = options.persistence || null;
 
     // Statistics
     this.stats = {
@@ -336,6 +343,36 @@ export class AgentEventBus extends EventEmitter {
       delivered,
       errors: errors.length,
     });
+
+    // 🐕 Log significant events to persistence (inter-dog communication)
+    if (this.persistence && delivered > 0) {
+      // Only log significant events to avoid noise
+      const significantEvents = [
+        AgentEvent.THREAT_BLOCKED,
+        AgentEvent.CONSENSUS_REQUEST,
+        AgentEvent.CONSENSUS_RESPONSE,
+        AgentEvent.ANOMALY_DETECTED,
+        AgentEvent.PATTERN_DETECTED,
+        AgentEvent.CYNIC_GUIDANCE,
+      ];
+      if (significantEvents.includes(event.type)) {
+        try {
+          await this.persistence.storeObservation({
+            type: 'eventbus_communication',
+            eventType: event.type,
+            eventId: event.id,
+            source: event.source,
+            targets: event.targets,
+            delivered,
+            priority: event.priority,
+            timestamp: Date.now(),
+          });
+        } catch (err) {
+          // Don't fail event delivery if persistence fails
+          console.error(`[EventBus] Persistence error: ${err.message}`);
+        }
+      }
+    }
 
     return { delivered, errors };
   }
