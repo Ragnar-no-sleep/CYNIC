@@ -20,6 +20,7 @@
 // import { api } from '../api.js';
 import { formatTimestamp, truncate, debounce } from '../lib/utils.js';
 import { getStationInfo, getToolIcon, getToolColor } from '../lib/station-map.js';
+import { cynicAudio } from '../lib/audio.js';
 
 /**
  * Escape HTML to prevent XSS
@@ -111,6 +112,7 @@ export class LiveView {
                 </button>
               `).join('')}
             </div>
+            <button class="audio-btn" title="Toggle audio">🔇</button>
             <button class="clear-btn" title="Clear observations">🗑️</button>
           </div>
         </div>
@@ -200,9 +202,18 @@ export class LiveView {
       }
 
       this.stats.totalReceived++;
-      if (type === 'judgment') this.stats.judgments++;
-      if (type === 'pattern') this.stats.patterns++;
-      if (type === 'block') this.stats.blocks++;
+      if (type === 'judgment') {
+        this.stats.judgments++;
+        cynicAudio.playJudgment(data.verdict || 'WAG');
+      }
+      if (type === 'pattern') {
+        this.stats.patterns++;
+        cynicAudio.playPattern();
+      }
+      if (type === 'block') {
+        this.stats.blocks++;
+        cynicAudio.playBlock(data.slot || 0);
+      }
       if (type === 'event') this.stats.events++;
 
       this._renderObservationsList();
@@ -229,6 +240,10 @@ export class LiveView {
           startTime: data.timestamp || Date.now(),
           input: data.input,
         });
+
+        // Play tool start sound (Vibecraft audio pattern)
+        const stationInfo = getStationInfo(tool);
+        cynicAudio.playToolStart(stationInfo.category);
 
         // Add to tool timeline (Vibecraft icon strip)
         this.recentTools.unshift({
@@ -266,6 +281,10 @@ export class LiveView {
 
         // Remove pending
         this.pendingTools.delete(toolUseId);
+
+        // Play tool complete sound (Vibecraft audio pattern)
+        const stationInfo = getStationInfo(tool);
+        cynicAudio.playToolComplete(stationInfo.category, data.success !== false);
 
         // Update tool in timeline (mark as complete)
         const timelineTool = this.recentTools.find(t => t.toolUseId === toolUseId);
@@ -698,6 +717,19 @@ export class LiveView {
         this.observations = [];
         this.selectedId = null;
         this.render();
+      });
+    }
+
+    // Audio toggle button (Vibecraft pattern)
+    const audioBtn = this.container?.querySelector('.audio-btn');
+    if (audioBtn) {
+      audioBtn.addEventListener('click', () => {
+        const enabled = cynicAudio.toggle();
+        audioBtn.textContent = enabled ? '🔊' : '🔇';
+        audioBtn.classList.toggle('active', enabled);
+        if (enabled) {
+          cynicAudio.playConnect();
+        }
       });
     }
 

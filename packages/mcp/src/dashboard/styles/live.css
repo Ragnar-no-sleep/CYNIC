@@ -198,6 +198,28 @@
   color: var(--accent-red);
 }
 
+/* Audio toggle button */
+.audio-btn {
+  padding: var(--space-xs) var(--space-sm);
+  font-size: var(--font-size-sm);
+  border-radius: var(--border-radius-sm);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  transition: all var(--transition-fast);
+  cursor: pointer;
+}
+
+.audio-btn:hover {
+  border-color: var(--accent-gold);
+  color: var(--accent-gold);
+}
+
+.audio-btn.active {
+  border-color: var(--color-howl);
+  background: rgba(0, 212, 170, 0.1);
+  color: var(--color-howl);
+}
+
 /* ═══════════════════════════════════════════════════════════
    OBSERVATIONS LIST
    ═══════════════════════════════════════════════════════════ */
