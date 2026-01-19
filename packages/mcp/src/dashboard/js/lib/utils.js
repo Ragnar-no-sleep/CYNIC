@@ -294,5 +294,22 @@ export const Utils = {
   },
 };
 
+// Named exports for convenience
+export const debounce = Utils.debounce;
+export const throttle = Utils.throttle;
+export const formatTime = Utils.formatTime;
+export const formatTimestamp = Utils.formatTime; // Alias
+export const formatNumber = Utils.formatNumber;
+export const formatPercent = Utils.formatPercent;
+export const formatDuration = Utils.formatDuration;
+export const truncateHash = Utils.truncateHash;
+export const truncate = (str, maxLen) => {
+  if (!str || str.length <= maxLen) return str;
+  return str.slice(0, maxLen - 3) + '...';
+};
+export const createElement = Utils.createElement;
+export const clearElement = Utils.clearElement;
+export const generateId = Utils.generateId;
+
 // Export to window for non-module scripts
 window.CYNICUtils = Utils;
