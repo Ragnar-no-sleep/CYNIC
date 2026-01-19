@@ -58,6 +58,9 @@ export class LiveView {
     };
     // Vibecraft pattern: Track pending tools for duration calculation
     this.pendingTools = new Map();
+    // Vibecraft pattern: Tool timeline (recent tools as icon strip)
+    this.recentTools = [];
+    this.maxTimelineTools = 15;
   }
 
   /**
@@ -90,6 +93,9 @@ export class LiveView {
             <span class="stat" title="Judgments">⚖️ ${this.stats.judgments}</span>
             <span class="stat" title="Patterns">🔮 ${this.stats.patterns}</span>
             <span class="stat" title="Blocks">⛓️ ${this.stats.blocks}</span>
+          </div>
+          <div class="tool-timeline" title="Recent tool activity">
+            ${this._renderToolTimeline()}
           </div>
           <div class="live-controls">
             <input type="text" class="search-input" placeholder="Search..." value="${escapeHtml(this.filters.search)}">
@@ -219,6 +225,18 @@ export class LiveView {
           input: data.input,
         });
 
+        // Add to tool timeline (Vibecraft icon strip)
+        this.recentTools.unshift({
+          name: tool,
+          toolUseId,
+          status: 'running',
+          timestamp: Date.now(),
+        });
+        // Trim timeline
+        if (this.recentTools.length > this.maxTimelineTools) {
+          this.recentTools = this.recentTools.slice(0, this.maxTimelineTools);
+        }
+
         // Create observation for tool start
         const observation = {
           id: `obs_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -243,6 +261,13 @@ export class LiveView {
 
         // Remove pending
         this.pendingTools.delete(toolUseId);
+
+        // Update tool in timeline (mark as complete)
+        const timelineTool = this.recentTools.find(t => t.toolUseId === toolUseId);
+        if (timelineTool) {
+          timelineTool.status = 'complete';
+          timelineTool.duration = calculatedDuration;
+        }
 
         // Create observation for tool completion
         const observation = {
@@ -271,6 +296,7 @@ export class LiveView {
       this.stats.totalReceived++;
       this._renderObservationsList();
       this._updateStats();
+      this._updateToolTimeline();
 
     } catch (err) {
       console.error('🔴 Live: Failed to parse tool event', err);
@@ -491,6 +517,40 @@ export class LiveView {
         ` : ''}
       </div>
     `;
+  }
+
+  /**
+   * Render tool timeline (Vibecraft-inspired icon strip)
+   */
+  _renderToolTimeline() {
+    if (this.recentTools.length === 0) {
+      return '<div class="timeline-empty">No tools yet</div>';
+    }
+
+    return this.recentTools.map((tool, index) => {
+      const stationInfo = getStationInfo(tool.name);
+      const isRecent = index < 3;
+      const isRunning = tool.status === 'running';
+
+      return `
+        <div class="timeline-tool ${isRecent ? 'recent' : ''} ${isRunning ? 'running' : ''}"
+             style="--tool-color: ${stationInfo.color}"
+             title="${escapeHtml(tool.name)} ${tool.duration ? `(${tool.duration}ms)` : ''}">
+          <span class="timeline-icon">${stationInfo.icon}</span>
+          ${isRunning ? '<span class="timeline-spinner"></span>' : ''}
+        </div>
+      `;
+    }).join('');
+  }
+
+  /**
+   * Update tool timeline
+   */
+  _updateToolTimeline() {
+    const timelineEl = this.container?.querySelector('.tool-timeline');
+    if (timelineEl) {
+      timelineEl.innerHTML = this._renderToolTimeline();
+    }
   }
 
   /**

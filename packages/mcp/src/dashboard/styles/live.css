@@ -658,3 +658,113 @@
   font-size: var(--font-size-xs);
   color: var(--accent-cyan);
 }
+
+/* ═══════════════════════════════════════════════════════════
+   TOOL TIMELINE (Vibecraft-inspired icon strip)
+   ═══════════════════════════════════════════════════════════ */
+
+.tool-timeline {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--bg-tertiary);
+  border-radius: var(--border-radius-md);
+  min-width: 200px;
+  max-width: 400px;
+  overflow: hidden;
+}
+
+.timeline-empty {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.timeline-tool {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--border-radius-sm);
+  background: var(--bg-secondary);
+  border: 2px solid var(--tool-color, var(--border-color));
+  transition: all var(--transition-fast);
+  cursor: default;
+  flex-shrink: 0;
+  animation: timeline-appear 0.3s ease-out;
+}
+
+@keyframes timeline-appear {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.2);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.timeline-tool.recent {
+  background: color-mix(in srgb, var(--tool-color, var(--accent-cyan)) 15%, transparent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--tool-color, var(--accent-cyan)) 30%, transparent);
+}
+
+.timeline-tool.running {
+  animation: timeline-pulse 1.5s infinite, timeline-appear 0.3s ease-out;
+}
+
+@keyframes timeline-pulse {
+  0%, 100% {
+    box-shadow: 0 0 4px var(--tool-color, var(--accent-cyan));
+  }
+  50% {
+    box-shadow: 0 0 12px var(--tool-color, var(--accent-cyan));
+  }
+}
+
+.timeline-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.timeline-spinner {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--accent-gold);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: timeline-spin 1s linear infinite;
+}
+
+@keyframes timeline-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Fade older tools */
+.timeline-tool:nth-child(n+4) {
+  opacity: 0.7;
+}
+
+.timeline-tool:nth-child(n+8) {
+  opacity: 0.4;
+}
+
+.timeline-tool:nth-child(n+12) {
+  opacity: 0.2;
+}
+
+.timeline-tool:hover {
+  transform: scale(1.15);
+  z-index: 1;
+  opacity: 1 !important;
+}
