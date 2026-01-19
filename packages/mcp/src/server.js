@@ -772,13 +772,31 @@ export class MCPServer {
       // Log for debugging
       console.error(`🐕 [HOOK] ${hookData.hookType} → ${result.delivered || 0} dogs notified`);
 
-      // Broadcast to SSE clients
+      // Broadcast to SSE clients (generic message)
       this._broadcastToSSE({
         type: 'hook:received',
         hookType: hookData.hookType,
         delivered: result.delivered || 0,
         timestamp: Date.now(),
       });
+
+      // Also broadcast typed events for Live View (tool timeline + audio)
+      if (hookData.hookType === 'PreToolUse' && hookData.payload) {
+        this._broadcastSSEEvent('tool_pre', {
+          tool: hookData.payload.tool || 'unknown',
+          toolUseId: hookData.payload.toolUseId || `hook_${Date.now()}`,
+          input: hookData.payload.input,
+          timestamp: Date.now(),
+        });
+      } else if (hookData.hookType === 'PostToolUse' && hookData.payload) {
+        this._broadcastSSEEvent('tool_post', {
+          tool: hookData.payload.tool || 'unknown',
+          toolUseId: hookData.payload.toolUseId || `hook_${Date.now()}`,
+          duration: hookData.payload.duration,
+          success: hookData.payload.success !== false,
+          timestamp: Date.now(),
+        });
+      }
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(result));
