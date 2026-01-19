@@ -15,7 +15,7 @@
 
 'use strict';
 
-import { PHI_INV, PHI_INV_2, THRESHOLDS } from '../axioms/constants.js';
+import { PHI_INV, PHI_INV_2 } from '../axioms/constants.js';
 
 // =============================================================================
 // CONSTANTS
@@ -496,7 +496,7 @@ export class BiasDetector {
    * Check for verdict bias
    * @private
    */
-  _checkVerdictBias(feedbackBatch) {
+  _checkVerdictBias(_feedbackBatch) {
     const dist = this.tracking.verdictDistribution;
     const total = Object.values(dist).reduce((a, b) => a + b, 0);
     if (total < LEARNING_CONSTANTS.MIN_SAMPLES) return;

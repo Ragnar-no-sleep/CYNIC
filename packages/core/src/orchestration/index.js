@@ -15,7 +15,7 @@
 
 'use strict';
 
-import { PHI_INV, PHI_INV_2, THRESHOLDS } from '../axioms/constants.js';
+import { PHI_INV, PHI_INV_2 } from '../axioms/constants.js';
 
 // =============================================================================
 // CONSTANTS

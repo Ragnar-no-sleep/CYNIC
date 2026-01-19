@@ -385,11 +385,12 @@ Run tasks across multiple agents with different strategies:
         case 'status':
           return orchestrator.getStatus();
 
-        case 'task':
+        case 'task': {
           if (!taskId) throw new Error('taskId required for task action');
           const task = orchestrator.getTask(taskId);
           if (!task) throw new Error(`Task not found: ${taskId}`);
           return task.toJSON();
+        }
 
         case 'route': {
           if (!taskType) throw new Error('taskType required for route action');

@@ -432,6 +432,48 @@ function getPersonalizedGreeting(profile) {
 }
 
 // =============================================================================
+// PRIVACY TAGS - Filter sensitive content
+// =============================================================================
+
+const PRIVACY_TAG_REGEX = /<private>([\s\S]*?)<\/private>/gi;
+
+/**
+ * Strip private content from text
+ * @param {string} text - Text potentially containing <private> tags
+ * @returns {string} Text with private content removed
+ */
+function stripPrivateContent(text) {
+  if (!text || typeof text !== 'string') return text;
+  return text.replace(PRIVACY_TAG_REGEX, '[REDACTED]');
+}
+
+/**
+ * Check if content contains private tags
+ * @param {string} text - Text to check
+ * @returns {boolean} True if private content exists
+ */
+function hasPrivateContent(text) {
+  if (!text || typeof text !== 'string') return false;
+  return PRIVACY_TAG_REGEX.test(text);
+}
+
+/**
+ * Extract private content for local-only storage
+ * @param {string} text - Text containing private tags
+ * @returns {Array<string>} Array of private content pieces
+ */
+function extractPrivateContent(text) {
+  if (!text || typeof text !== 'string') return [];
+  const matches = [];
+  let match;
+  const regex = /<private>([\s\S]*?)<\/private>/gi;
+  while ((match = regex.exec(text)) !== null) {
+    matches.push(match[1]);
+  }
+  return matches;
+}
+
+// =============================================================================
 // MCP INTEGRATION - Connect to the Collective
 // =============================================================================
 
@@ -514,6 +556,102 @@ function sendHookToCollectiveSync(hookType, payload, options = {}) {
     });
 }
 
+/**
+ * Call a brain tool directly via HTTP API
+ * @param {string} toolName - Tool name (e.g., 'brain_session_start', 'brain_cynic_digest')
+ * @param {Object} args - Tool arguments
+ * @returns {Promise<Object>} Tool result
+ */
+async function callBrainTool(toolName, args = {}) {
+  const https = require('https');
+  const http = require('http');
+
+  // API expects arguments directly in body
+  const body = JSON.stringify(args);
+
+  // Use /api/tools/{toolName} endpoint
+  const url = new URL(`${MCP_SERVER_URL}/api/tools/${toolName}`);
+  const transport = url.protocol === 'https:' ? https : http;
+
+  return new Promise((resolve, reject) => {
+    const req = transport.request({
+      hostname: url.hostname,
+      port: url.port || (url.protocol === 'https:' ? 443 : 80),
+      path: url.pathname,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body),
+      },
+      timeout: 10000, // 10 second timeout for tool calls
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          resolve(JSON.parse(data));
+        } catch (e) {
+          resolve({ success: false, error: 'Invalid JSON response' });
+        }
+      });
+    });
+
+    req.on('error', (e) => {
+      resolve({ success: false, error: e.message });
+    });
+
+    req.on('timeout', () => {
+      req.destroy();
+      resolve({ success: false, error: 'Timeout' });
+    });
+
+    req.write(body);
+    req.end();
+  });
+}
+
+/**
+ * Start a CYNIC brain session
+ * @param {string} userId - User identifier
+ * @param {Object} options - Session options
+ * @returns {Promise<Object>} Session info
+ */
+async function startBrainSession(userId, options = {}) {
+  return callBrainTool('brain_session_start', {
+    userId,
+    project: options.project,
+    metadata: options.metadata,
+  });
+}
+
+/**
+ * End a CYNIC brain session
+ * @param {string} sessionId - Session to end
+ * @returns {Promise<Object>} Session summary
+ */
+async function endBrainSession(sessionId) {
+  return callBrainTool('brain_session_end', {
+    sessionId,
+  });
+}
+
+/**
+ * Digest content into brain memory
+ * @param {string} content - Content to digest
+ * @param {Object} options - Digest options
+ * @returns {Promise<Object>} Digest result
+ */
+async function digestToBrain(content, options = {}) {
+  // Strip private content before sending to brain
+  const safeContent = stripPrivateContent(content);
+
+  return callBrainTool('brain_cynic_digest', {
+    content: safeContent,
+    source: options.source || 'hook',
+    type: options.type || 'conversation',
+  });
+}
+
 // =============================================================================
 // EXPORTS
 // =============================================================================
@@ -552,8 +690,17 @@ module.exports = {
   formatEcosystemStatus,
   getPersonalizedGreeting,
 
+  // Privacy
+  stripPrivateContent,
+  hasPrivateContent,
+  extractPrivateContent,
+
   // MCP Integration
   MCP_SERVER_URL,
   sendHookToCollective,
   sendHookToCollectiveSync,
+  callBrainTool,
+  startBrainSession,
+  endBrainSession,
+  digestToBrain,
 };
