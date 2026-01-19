@@ -13,6 +13,8 @@
 import { PHI_INV, PHI_INV_2, IDENTITY, getVerdictFromScore } from '@cynic/core';
 import { createMetaTool } from '../meta-dashboard.js';
 import { createCodeAnalyzer } from '../code-analyzer.js';
+import { LSPService, createLSPTools } from '../lsp-service.js';
+import { JSONRenderService, createJSONRenderTool } from '../json-render.js';
 import {
   createSearchIndexTool,
   createTimelineTool,
@@ -3167,8 +3169,18 @@ export function createAllTools(options = {}) {
     metrics = null,
     graphIntegration = null, // JudgmentGraphIntegration for graph edges
     codebaseOptions = {},
+    lspOptions = {}, // LSP service options (rootPath, extensions, cacheTTL)
     onJudgment = null, // SSE broadcast callback
   } = options;
+
+  // Initialize LSP service for code intelligence
+  const lsp = new LSPService({
+    rootPath: lspOptions.rootPath || codebaseOptions.rootPath || process.cwd(),
+    ...lspOptions,
+  });
+
+  // Initialize JSON render service for streaming UI
+  const jsonRenderer = new JSONRenderService();
 
   if (!judge) throw new Error('judge is required');
 
@@ -3202,6 +3214,10 @@ export function createAllTools(options = {}) {
     createMetricsTool(metrics),
     createMetaTool(), // CYNIC self-analysis dashboard
     createCodebaseTool(codebaseOptions), // Code structure analyzer
+    // LSP Tools (code intelligence: symbols, references, call graphs, refactoring)
+    ...createLSPTools(lsp),
+    // JSON Render (streaming UI components)
+    createJSONRenderTool(jsonRenderer),
   ];
 
   for (const tool of toolDefs) {
@@ -3221,6 +3237,12 @@ export {
   createGetObservationsTool,
   createProgressiveSearchTools,
 } from './search-progressive.js';
+
+// Re-export LSP tools
+export { LSPService, createLSPTools } from '../lsp-service.js';
+
+// Re-export JSON render
+export { JSONRenderService, createJSONRenderTool } from '../json-render.js';
 
 export default {
   createJudgeTool,
@@ -3245,5 +3267,11 @@ export default {
   createMetricsTool,
   createMetaTool,
   createCodebaseTool,
+  // LSP Tools (code intelligence)
+  LSPService,
+  createLSPTools,
+  // JSON Render
+  JSONRenderService,
+  createJSONRenderTool,
   createAllTools,
 };

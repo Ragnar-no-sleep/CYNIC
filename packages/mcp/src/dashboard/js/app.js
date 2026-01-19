@@ -17,6 +17,7 @@ import { Console } from './components/console.js';
 import { OperatorView } from './views/operator.js';
 import { DevView } from './views/dev.js';
 import { ArchView } from './views/arch.js';
+import { LiveView } from './views/live.js';
 
 /**
  * Main Application State
@@ -125,6 +126,10 @@ class App {
     // Arch view
     this.views.arch = new ArchView({ api });
     this.views.arch.render(document.getElementById('view-arch'));
+
+    // Live view
+    this.views.live = new LiveView();
+    this.views.live.init(document.getElementById('view-live'));
   }
 
   /**
@@ -180,6 +185,9 @@ class App {
         break;
       case 'arch':
         // Arch view doesn't need periodic refresh
+        break;
+      case 'live':
+        // Live view handles its own real-time updates via SSE
         break;
     }
 

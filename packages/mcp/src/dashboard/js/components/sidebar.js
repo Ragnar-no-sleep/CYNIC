@@ -60,6 +60,7 @@ export class Sidebar {
       { id: 'operator', icon: '📊', label: 'Operator', mode: 'operator' },
       { id: 'dev', icon: '🔬', label: 'Dev', mode: 'dev' },
       { id: 'arch', icon: '🏗️', label: 'Architecture', mode: 'arch' },
+      { id: 'live', icon: '📡', label: 'Live', mode: 'live' },
     ];
 
     const nav = Utils.createElement('nav', { className: 'sidebar-nav' });
