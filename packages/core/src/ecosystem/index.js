@@ -584,26 +584,121 @@ export class EcosystemMonitor {
 
   /**
    * Discover new relevant sources based on existing ones
-   * (Placeholder for AI-powered discovery)
+   * Uses GitHub API to find related repos and analyzes patterns
    */
-  async discoverSources(context = {}) {
-    // This would use AI/search to find related repos, accounts, etc.
-    // For now, return suggestions based on tracked repos
+  async discoverSources(_context = {}) {
     const suggestions = [];
+    const seenOrgs = new Set();
+    const seenRepos = new Set();
 
+    // Track what we already have
     for (const source of this.sources.values()) {
       if (source.type === SourceType.GITHUB) {
-        // Suggest related repos from same org
-        suggestions.push({
-          type: 'github_org',
-          suggestion: `Track more repos from ${source.owner}`,
-          query: `org:${source.owner}`,
-        });
+        seenOrgs.add(source.owner);
+        seenRepos.add(`${source.owner}/${source.repo}`);
       }
     }
 
-    this.discoveredSources = suggestions;
-    return suggestions;
+    // Strategy 1: Find more repos from tracked orgs
+    for (const source of this.sources.values()) {
+      if (source.type !== SourceType.GITHUB) continue;
+
+      try {
+        const headers = {
+          'Accept': 'application/vnd.github.v3+json',
+          'User-Agent': 'CYNIC-Ecosystem-Monitor',
+        };
+        if (source.token) {
+          headers['Authorization'] = `token ${source.token}`;
+        }
+
+        // Get org repos
+        const response = await fetch(
+          `https://api.github.com/orgs/${source.owner}/repos?sort=updated&per_page=10`,
+          { headers }
+        );
+
+        if (response.ok) {
+          const repos = await response.json();
+          for (const repo of repos) {
+            const repoKey = `${source.owner}/${repo.name}`;
+            if (!seenRepos.has(repoKey) && !repo.archived) {
+              suggestions.push({
+                type: 'github_repo',
+                reason: `Same org as ${source.repo}`,
+                source: {
+                  owner: source.owner,
+                  repo: repo.name,
+                  description: repo.description,
+                  stars: repo.stargazers_count,
+                  updated: repo.updated_at,
+                },
+                confidence: Math.min(0.618, repo.stargazers_count / 1000),
+              });
+              seenRepos.add(repoKey);
+            }
+          }
+        }
+      } catch (_error) {
+        // Silently skip - rate limits etc.
+      }
+    }
+
+    // Strategy 2: Analyze recent updates for mentions
+    const repoMentionPattern = /github\.com\/([a-zA-Z0-9_-]+)\/([a-zA-Z0-9_-]+)/g;
+
+    for (const update of this.updateCache.slice(0, 50)) {
+      const content = `${update.title || ''} ${update.description || ''}`;
+
+      // Find GitHub repo mentions
+      let match;
+      while ((match = repoMentionPattern.exec(content)) !== null) {
+        const [, owner, repo] = match;
+        const repoKey = `${owner}/${repo}`;
+        if (!seenRepos.has(repoKey) && !seenOrgs.has(owner)) {
+          suggestions.push({
+            type: 'github_mention',
+            reason: `Mentioned in update: "${update.title?.slice(0, 50)}"`,
+            source: { owner, repo },
+            confidence: PHI_INV_2,
+          });
+          seenRepos.add(repoKey);
+        }
+      }
+    }
+
+    // Strategy 3: Known ecosystem relations (hardcoded for Solana)
+    const knownRelations = {
+      'solana-labs': ['solana-program-library', 'solana-pay', 'wallet-adapter'],
+      'helius-labs': ['das-api', 'xray'],
+      'coral-xyz': ['backpack', 'sealevel-tools'],
+      'metaplex-foundation': ['js', 'mpl-token-metadata', 'sugar'],
+      'jup-ag': ['jupiter-quote-api', 'jupiter-swap-api'],
+    };
+
+    for (const [org, repos] of Object.entries(knownRelations)) {
+      if (seenOrgs.has(org)) {
+        for (const repo of repos) {
+          const repoKey = `${org}/${repo}`;
+          if (!seenRepos.has(repoKey)) {
+            suggestions.push({
+              type: 'known_relation',
+              reason: `Related to tracked ${org} repos`,
+              source: { owner: org, repo },
+              confidence: PHI_INV,
+            });
+            seenRepos.add(repoKey);
+          }
+        }
+      }
+    }
+
+    // Sort by confidence
+    suggestions.sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
+
+    // Limit to reasonable number
+    this.discoveredSources = suggestions.slice(0, ECOSYSTEM_CONSTANTS.MAX_SOURCES);
+    return this.discoveredSources;
   }
 
   /**
@@ -703,3 +798,147 @@ export function summarizeUpdates(updates) {
 
   return summary;
 }
+
+// =============================================================================
+// E-SCORE INTEGRATION
+// =============================================================================
+
+/**
+ * Culture signals derived from ecosystem updates
+ * Maps update patterns to E-Score dimensions
+ */
+export const CultureSignals = {
+  DEVELOPMENT_VELOCITY: 'development_velocity',    // How fast they ship
+  COMMUNITY_ENGAGEMENT: 'community_engagement',    // Issues, PRs, discussions
+  TRANSPARENCY: 'transparency',                    // Release notes, docs
+  SECURITY_FOCUS: 'security_focus',               // Security-related updates
+  INNOVATION: 'innovation',                       // New features vs fixes
+  MAINTENANCE: 'maintenance',                     // Bug fixes, deps updates
+};
+
+/**
+ * Calculate E-Score signals from ecosystem updates
+ * @param {Array} updates - Updates from ecosystem monitor
+ * @param {Object} options - Calculation options
+ * @returns {Object} E-Score culture signals
+ */
+export function calculateEScoreSignals(updates, options = {}) {
+  const { timeWindowMs = 7 * 24 * 60 * 60 * 1000 } = options; // 7 days default
+  const now = Date.now();
+  const cutoff = now - timeWindowMs;
+
+  // Filter to time window
+  const recentUpdates = updates.filter(u => u.timestamp >= cutoff);
+
+  if (recentUpdates.length === 0) {
+    return {
+      signals: {},
+      confidence: 0,
+      message: 'No recent updates to analyze',
+    };
+  }
+
+  // Calculate signals
+  const signals = {};
+
+  // 1. Development Velocity (commits + releases per day)
+  const commits = recentUpdates.filter(u => u.type === UpdateType.COMMIT).length;
+  const releases = recentUpdates.filter(u => u.type === UpdateType.RELEASE).length;
+  const days = timeWindowMs / (24 * 60 * 60 * 1000);
+  const velocity = (commits + releases * 5) / days; // Releases weighted 5x
+  signals[CultureSignals.DEVELOPMENT_VELOCITY] = Math.min(1, velocity / 10); // Normalize to 0-1
+
+  // 2. Community Engagement (issues, PRs)
+  const issues = recentUpdates.filter(u => u.type === UpdateType.ISSUE).length;
+  const prs = recentUpdates.filter(u => u.type === UpdateType.PR).length;
+  signals[CultureSignals.COMMUNITY_ENGAGEMENT] = Math.min(1, (issues + prs) / 20);
+
+  // 3. Transparency (releases with descriptions)
+  const releasesWithDesc = recentUpdates.filter(
+    u => u.type === UpdateType.RELEASE && u.description && u.description.length > 50
+  ).length;
+  signals[CultureSignals.TRANSPARENCY] = releases > 0 ? releasesWithDesc / releases : 0;
+
+  // 4. Security Focus (security-related updates)
+  const securityUpdates = recentUpdates.filter(u => {
+    const text = `${u.title || ''} ${u.description || ''}`.toLowerCase();
+    return text.includes('security') || text.includes('vulnerability') ||
+           text.includes('cve') || u.priority === Priority.CRITICAL;
+  }).length;
+  signals[CultureSignals.SECURITY_FOCUS] = securityUpdates > 0 ? 1 : 0.5; // Bonus if found
+
+  // 5. Innovation vs Maintenance ratio
+  const features = recentUpdates.filter(u => {
+    const text = `${u.title || ''}`.toLowerCase();
+    return text.includes('feat') || text.includes('add') || text.includes('new');
+  }).length;
+  const fixes = recentUpdates.filter(u => {
+    const text = `${u.title || ''}`.toLowerCase();
+    return text.includes('fix') || text.includes('bug') || text.includes('patch');
+  }).length;
+  const total = features + fixes;
+  signals[CultureSignals.INNOVATION] = total > 0 ? features / total : 0.5;
+  signals[CultureSignals.MAINTENANCE] = total > 0 ? fixes / total : 0.5;
+
+  // Overall confidence based on sample size (max φ⁻¹)
+  const confidence = Math.min(PHI_INV, recentUpdates.length / 50);
+
+  // Composite E-Score contribution (weighted average)
+  const weights = {
+    [CultureSignals.DEVELOPMENT_VELOCITY]: 0.25,
+    [CultureSignals.COMMUNITY_ENGAGEMENT]: 0.20,
+    [CultureSignals.TRANSPARENCY]: 0.15,
+    [CultureSignals.SECURITY_FOCUS]: 0.15,
+    [CultureSignals.INNOVATION]: 0.15,
+    [CultureSignals.MAINTENANCE]: 0.10,
+  };
+
+  let composite = 0;
+  for (const [signal, weight] of Object.entries(weights)) {
+    composite += (signals[signal] || 0) * weight;
+  }
+
+  return {
+    signals,
+    composite,
+    confidence,
+    sampleSize: recentUpdates.length,
+    timeWindowDays: days,
+    breakdown: {
+      commits,
+      releases,
+      issues,
+      prs,
+      features,
+      fixes,
+      securityUpdates,
+    },
+  };
+}
+
+/**
+ * Add E-Score calculation method to EcosystemMonitor
+ */
+EcosystemMonitor.prototype.calculateEScore = function(options = {}) {
+  return calculateEScoreSignals(this.updateCache, options);
+};
+
+/**
+ * Get ecosystem health report combining updates and E-Score
+ */
+EcosystemMonitor.prototype.getHealthReport = function() {
+  const summary = summarizeUpdates(this.updateCache);
+  const eScore = this.calculateEScore();
+
+  return {
+    timestamp: Date.now(),
+    sources: this.listSources(),
+    updateSummary: summary,
+    eScore: eScore,
+    discoveredSources: this.discoveredSources.length,
+    health: eScore.composite >= 0.5 ? 'healthy' : 'needs_attention',
+    verdict: eScore.composite >= PHI_INV ? 'HOWL' :
+             eScore.composite >= 0.382 ? 'WAG' :
+             eScore.composite >= 0.236 ? 'BARK' : 'GROWL',
+  };
+};
