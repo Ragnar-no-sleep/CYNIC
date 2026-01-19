@@ -1148,6 +1148,29 @@ export class MCPServer {
       console.error(`🐕 [WARNING] Tool "${name}": ${guardianResult.guardian.message}`);
     }
 
+    // Generate toolUseId for duration tracking (Vibecraft pattern)
+    const toolUseId = `tool_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+    // 🐕 COLLECTIVE: PreToolUse hook → EventBus → 11 Dogs
+    if (this.collective) {
+      const hookResult = await this.collective.receiveHookEvent({
+        hookType: 'PreToolUse',
+        payload: {
+          tool: name,
+          toolUseId,
+          input: args,
+        },
+      });
+      // Broadcast to SSE for Live View
+      this._broadcastSSEEvent('tool_pre', {
+        tool: name,
+        toolUseId,
+        input: args,
+        dogsNotified: hookResult?.delivered || 0,
+        timestamp: Date.now(),
+      });
+    }
+
     // Execute tool handler
     const startTime = Date.now();
     const result = await tool.handler(args);
@@ -1171,6 +1194,30 @@ export class MCPServer {
       tool: name,
       timestamp: Date.now(),
     });
+
+    // 🐕 COLLECTIVE: PostToolUse hook → EventBus → 11 Dogs
+    if (this.collective) {
+      const hookResult = await this.collective.receiveHookEvent({
+        hookType: 'PostToolUse',
+        payload: {
+          tool: name,
+          toolUseId,
+          input: args,
+          output: typeof result === 'string' ? result.slice(0, 500) : JSON.stringify(result).slice(0, 500),
+          duration,
+          success: true,
+        },
+      });
+      // Broadcast to SSE for Live View with duration tracking
+      this._broadcastSSEEvent('tool_post', {
+        tool: name,
+        toolUseId,
+        duration,
+        success: true,
+        dogsNotified: hookResult?.delivered || 0,
+        timestamp: Date.now(),
+      });
+    }
 
     // Note: Judgment storage now handled inside createJudgeTool handler
     // for better access to full judgment data including dimensionScores

@@ -41,7 +41,7 @@ export class LiveView {
     this.observations = [];
     this.maxObservations = 100;
     this.filters = {
-      types: ['judgment', 'pattern', 'digest', 'event', 'block'],
+      types: ['judgment', 'pattern', 'digest', 'event', 'block', 'tool'],
       search: '',
     };
     this.selectedId = null;
@@ -53,7 +53,10 @@ export class LiveView {
       patterns: 0,
       blocks: 0,
       events: 0,
+      tools: 0,
     };
+    // Vibecraft pattern: Track pending tools for duration calculation
+    this.pendingTools = new Map();
   }
 
   /**
@@ -82,6 +85,7 @@ export class LiveView {
           </div>
           <div class="live-stats">
             <span class="stat" title="Total received">📥 ${this.stats.totalReceived}</span>
+            <span class="stat" title="Tools executed">🔧 ${this.stats.tools}</span>
             <span class="stat" title="Judgments">⚖️ ${this.stats.judgments}</span>
             <span class="stat" title="Patterns">🔮 ${this.stats.patterns}</span>
             <span class="stat" title="Blocks">⛓️ ${this.stats.blocks}</span>
@@ -141,6 +145,9 @@ export class LiveView {
       this.eventSource.addEventListener('block', (e) => this._handleEvent('block', e));
       this.eventSource.addEventListener('pattern', (e) => this._handleEvent('pattern', e));
       this.eventSource.addEventListener('message', (e) => this._handleEvent('event', e));
+      // Tool execution events (Vibecraft pattern - duration tracking)
+      this.eventSource.addEventListener('tool_pre', (e) => this._handleToolEvent('tool_pre', e));
+      this.eventSource.addEventListener('tool_post', (e) => this._handleToolEvent('tool_post', e));
 
     } catch (err) {
       console.error('🔴 Live: Failed to connect SSE', err);
@@ -191,6 +198,81 @@ export class LiveView {
 
     } catch (err) {
       console.error('🔴 Live: Failed to parse event', err);
+    }
+  }
+
+  /**
+   * Handle tool execution events (Vibecraft pattern)
+   * Tracks pre/post for duration calculation
+   */
+  _handleToolEvent(type, event) {
+    try {
+      const data = JSON.parse(event.data);
+      const { toolUseId, tool, duration, dogsNotified } = data;
+
+      if (type === 'tool_pre') {
+        // Store pending tool for duration matching
+        this.pendingTools.set(toolUseId, {
+          tool,
+          startTime: data.timestamp || Date.now(),
+          input: data.input,
+        });
+
+        // Create observation for tool start
+        const observation = {
+          id: `obs_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          type: 'tool',
+          subtype: 'start',
+          timestamp: Date.now(),
+          data: {
+            tool,
+            toolUseId,
+            dogsNotified,
+            status: 'running',
+          },
+        };
+        this.observations.unshift(observation);
+
+      } else if (type === 'tool_post') {
+        // Match with pending tool
+        const pending = this.pendingTools.get(toolUseId);
+        const calculatedDuration = pending
+          ? (data.timestamp || Date.now()) - pending.startTime
+          : duration;
+
+        // Remove pending
+        this.pendingTools.delete(toolUseId);
+
+        // Create observation for tool completion
+        const observation = {
+          id: `obs_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          type: 'tool',
+          subtype: 'complete',
+          timestamp: Date.now(),
+          data: {
+            tool,
+            toolUseId,
+            duration: calculatedDuration,
+            dogsNotified,
+            success: data.success,
+            status: 'complete',
+          },
+        };
+        this.observations.unshift(observation);
+        this.stats.tools++;
+      }
+
+      // Trim observations
+      if (this.observations.length > this.maxObservations) {
+        this.observations = this.observations.slice(0, this.maxObservations);
+      }
+
+      this.stats.totalReceived++;
+      this._renderObservationsList();
+      this._updateStats();
+
+    } catch (err) {
+      console.error('🔴 Live: Failed to parse tool event', err);
     }
   }
 
@@ -394,6 +476,12 @@ export class LiveView {
         return `Block #${obs.data.slot ?? '?'} with ${obs.data.judgments?.length || 0} judgments`;
       case 'pattern':
         return `${obs.data.category || 'Pattern'}: ${obs.data.total || 0} occurrences`;
+      case 'tool': {
+        const status = obs.data.status === 'running' ? '⏳' : '✓';
+        const duration = obs.data.duration ? ` (${obs.data.duration}ms)` : '';
+        const dogs = obs.data.dogsNotified ? ` → ${obs.data.dogsNotified} dogs` : '';
+        return `${status} ${obs.data.tool}${duration}${dogs}`;
+      }
       default:
         return JSON.stringify(obs.data).slice(0, 100);
     }
@@ -403,7 +491,14 @@ export class LiveView {
    * Get icon for type
    */
   _getTypeIcon(type) {
-    const icons = { judgment: '⚖️', pattern: '🔮', block: '⛓️', digest: '📖', event: '📡' };
+    const icons = {
+      judgment: '⚖️',
+      pattern: '🔮',
+      block: '⛓️',
+      digest: '📖',
+      event: '📡',
+      tool: '🔧',
+    };
     return icons[type] || '📋';
   }
 
@@ -429,10 +524,11 @@ export class LiveView {
     const statsEl = this.container?.querySelector('.live-stats');
     if (statsEl) {
       statsEl.innerHTML = `
-        <span class="stat">📥 ${this.stats.totalReceived}</span>
-        <span class="stat">⚖️ ${this.stats.judgments}</span>
-        <span class="stat">🔮 ${this.stats.patterns}</span>
-        <span class="stat">⛓️ ${this.stats.blocks}</span>
+        <span class="stat" title="Total received">📥 ${this.stats.totalReceived}</span>
+        <span class="stat" title="Tools executed">🔧 ${this.stats.tools}</span>
+        <span class="stat" title="Judgments">⚖️ ${this.stats.judgments}</span>
+        <span class="stat" title="Patterns">🔮 ${this.stats.patterns}</span>
+        <span class="stat" title="Blocks">⛓️ ${this.stats.blocks}</span>
       `;
     }
   }
