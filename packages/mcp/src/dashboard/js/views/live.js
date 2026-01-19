@@ -115,6 +115,14 @@ export class LiveView {
             <button class="audio-btn" title="Toggle audio">🔇</button>
             <button class="clear-btn" title="Clear observations">🗑️</button>
           </div>
+          <!-- Prompt Injection -->
+          <div class="prompt-inject">
+            <input type="text" class="prompt-input" placeholder="Enter prompt to judge or digest..." maxlength="500">
+            <div class="prompt-actions">
+              <button class="prompt-btn judge-btn" title="Judge this prompt">⚖️ Judge</button>
+              <button class="prompt-btn digest-btn" title="Digest this prompt">🧠 Digest</button>
+            </div>
+          </div>
         </div>
 
         <div class="live-body">
@@ -768,7 +776,86 @@ export class LiveView {
       console.warn('🔊 [Audio] Button NOT found!');
     }
 
+    // Prompt injection handlers
+    const promptInput = this.container?.querySelector('.prompt-input');
+    const judgeBtn = this.container?.querySelector('.judge-btn');
+    const digestBtn = this.container?.querySelector('.digest-btn');
+
+    if (judgeBtn && promptInput) {
+      judgeBtn.addEventListener('click', () => this._handlePromptAction('judge', promptInput));
+    }
+    if (digestBtn && promptInput) {
+      digestBtn.addEventListener('click', () => this._handlePromptAction('digest', promptInput));
+    }
+    // Enter key submits as judge
+    if (promptInput) {
+      promptInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          this._handlePromptAction('judge', promptInput);
+        }
+      });
+    }
+
     this._attachListEventListeners();
+  }
+
+  /**
+   * Handle prompt injection action
+   * @param {string} action - 'judge' or 'digest'
+   * @param {HTMLInputElement} input - Input element
+   */
+  async _handlePromptAction(action, input) {
+    const prompt = input.value.trim();
+    if (!prompt) {
+      console.warn('🔴 [Prompt] Empty prompt, ignoring');
+      return;
+    }
+
+    console.log(`🔴 [Prompt] ${action}: "${prompt.slice(0, 50)}..."`);
+
+    // Disable buttons while processing
+    const btns = this.container?.querySelectorAll('.prompt-btn');
+    btns?.forEach(btn => btn.disabled = true);
+    input.disabled = true;
+
+    try {
+      const endpoint = action === 'judge' ? '/api/tools/brain_cynic_judge' : '/api/tools/brain_cynic_digest';
+      const body = action === 'judge'
+        ? { item: { type: 'user_prompt', content: prompt } }
+        : { content: prompt, type: 'conversation' };
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log(`🔴 [Prompt] ${action} result:`, result);
+
+      // Clear input on success
+      input.value = '';
+
+      // Play audio feedback
+      if (action === 'judge' && result.verdict) {
+        cynicAudio.playJudgment(result.verdict);
+      } else {
+        cynicAudio.playToolComplete('analysis', true);
+      }
+
+    } catch (err) {
+      console.error(`🔴 [Prompt] ${action} error:`, err);
+      cynicAudio.playToolComplete('system', false);
+    } finally {
+      // Re-enable buttons
+      btns?.forEach(btn => btn.disabled = false);
+      input.disabled = false;
+      input.focus();
+    }
   }
 
   /**
