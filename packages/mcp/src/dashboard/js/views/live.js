@@ -19,6 +19,7 @@
 // Note: api could be used for REST calls in the future
 // import { api } from '../api.js';
 import { formatTimestamp, truncate, debounce } from '../lib/utils.js';
+import { getStationInfo, getToolIcon, getToolColor } from '../lib/station-map.js';
 
 /**
  * Escape HTML to prevent XSS
@@ -371,6 +372,8 @@ export class LiveView {
         return this._renderBlockDetail(obs.data);
       case 'pattern':
         return this._renderPatternDetail(obs.data);
+      case 'tool':
+        return this._renderToolDetail(obs.data);
       default:
         return `<pre class="json-view">${escapeHtml(JSON.stringify(obs.data, null, 2))}</pre>`;
     }
@@ -449,6 +452,48 @@ export class LiveView {
   }
 
   /**
+   * Render tool detail (Vibecraft-inspired)
+   */
+  _renderToolDetail(data) {
+    const stationInfo = getStationInfo(data.tool);
+    const toolName = escapeHtml(data.tool?.replace('brain_', '') || 'unknown');
+    const isRunning = data.status === 'running';
+
+    return `
+      <div class="tool-detail">
+        <div class="tool-header" style="border-color: ${stationInfo.color}">
+          <span class="tool-icon" style="font-size: 2rem">${stationInfo.icon}</span>
+          <div class="tool-info">
+            <div class="tool-name">${toolName}</div>
+            <div class="tool-station" style="color: ${stationInfo.color}">${escapeHtml(stationInfo.station)}</div>
+          </div>
+          <div class="tool-status ${isRunning ? 'running' : 'complete'}">
+            ${isRunning ? '⏳ Running' : '✓ Complete'}
+          </div>
+        </div>
+        ${data.duration ? `
+          <div class="tool-metric">
+            <span class="metric-label">Duration</span>
+            <span class="metric-value">${data.duration}ms</span>
+          </div>
+        ` : ''}
+        ${data.dogsNotified ? `
+          <div class="tool-metric">
+            <span class="metric-label">Dogs Notified</span>
+            <span class="metric-value">${data.dogsNotified} 🐕</span>
+          </div>
+        ` : ''}
+        ${data.toolUseId ? `
+          <div class="tool-metric">
+            <span class="metric-label">Tool Use ID</span>
+            <span class="metric-value mono">${escapeHtml(data.toolUseId)}</span>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }
+
+  /**
    * Filter observations
    */
   _filterObservations() {
@@ -477,10 +522,12 @@ export class LiveView {
       case 'pattern':
         return `${obs.data.category || 'Pattern'}: ${obs.data.total || 0} occurrences`;
       case 'tool': {
+        const toolIcon = getToolIcon(obs.data.tool);
         const status = obs.data.status === 'running' ? '⏳' : '✓';
         const duration = obs.data.duration ? ` (${obs.data.duration}ms)` : '';
-        const dogs = obs.data.dogsNotified ? ` → ${obs.data.dogsNotified} dogs` : '';
-        return `${status} ${obs.data.tool}${duration}${dogs}`;
+        const dogs = obs.data.dogsNotified ? ` → ${obs.data.dogsNotified} 🐕` : '';
+        const toolName = obs.data.tool?.replace('brain_', '') || 'unknown';
+        return `${status} ${toolIcon} ${toolName}${duration}${dogs}`;
       }
       default:
         return JSON.stringify(obs.data).slice(0, 100);

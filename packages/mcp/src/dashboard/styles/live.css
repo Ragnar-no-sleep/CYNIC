@@ -549,3 +549,112 @@
   word-break: break-word;
   color: var(--text-primary);
 }
+
+/* ═══════════════════════════════════════════════════════════
+   TOOL DETAIL (Vibecraft-inspired)
+   ═══════════════════════════════════════════════════════════ */
+
+.observation-item.tool {
+  border-left: 3px solid var(--accent-cyan);
+}
+
+.observation-item.tool .obs-summary {
+  font-family: var(--font-mono);
+}
+
+.type-badge.tool {
+  background: rgba(0, 212, 170, 0.2);
+  color: var(--accent-cyan);
+}
+
+.tool-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.tool-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-md);
+  background: var(--bg-tertiary);
+  border-radius: var(--border-radius-md);
+  border-left: 4px solid var(--accent-cyan);
+}
+
+.tool-icon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-secondary);
+  border-radius: var(--border-radius-md);
+}
+
+.tool-info {
+  flex: 1;
+}
+
+.tool-name {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+.tool-station {
+  font-size: var(--font-size-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.8;
+}
+
+.tool-status {
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.tool-status.running {
+  background: rgba(255, 215, 0, 0.2);
+  color: var(--accent-gold);
+  animation: pulse-status 1.5s infinite;
+}
+
+.tool-status.complete {
+  background: rgba(0, 212, 170, 0.2);
+  color: var(--color-howl);
+}
+
+@keyframes pulse-status {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.tool-metric {
+  display: flex;
+  justify-content: space-between;
+  padding: var(--space-sm) var(--space-md);
+  background: var(--bg-tertiary);
+  border-radius: var(--border-radius-sm);
+}
+
+.tool-metric .metric-label {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.tool-metric .metric-value {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.tool-metric .metric-value.mono {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--accent-cyan);
+}
