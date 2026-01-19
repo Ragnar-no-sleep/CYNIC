@@ -552,3 +552,155 @@ describe('PersistenceManager edge cases', () => {
     assert.deepEqual(judgments, []);
   });
 });
+
+describe('PersistenceManager Triggers State', () => {
+  let manager;
+
+  beforeEach(async () => {
+    manager = new PersistenceManager();
+    await manager.initialize();
+  });
+
+  afterEach(async () => {
+    await manager.close();
+  });
+
+  describe('getTriggersState', () => {
+    it('returns null when no state stored', async () => {
+      const state = await manager.getTriggersState();
+      assert.equal(state, null);
+    });
+  });
+
+  describe('saveTriggersState', () => {
+    it('stores and retrieves trigger state', async () => {
+      const triggerState = {
+        triggers: [
+          {
+            id: 'trig_test1',
+            name: 'Test Trigger',
+            type: 'event',
+            action: 'log',
+            condition: { eventType: 'PostJudgment' },
+            enabled: true,
+          },
+        ],
+        metadata: {
+          savedAt: new Date().toISOString(),
+          version: '1.0.0',
+        },
+      };
+
+      const saved = await manager.saveTriggersState(triggerState);
+
+      assert.ok(saved);
+      assert.equal(saved.triggers.length, 1);
+      assert.equal(saved.triggers[0].name, 'Test Trigger');
+
+      // Verify retrieval
+      const retrieved = await manager.getTriggersState();
+      assert.deepEqual(retrieved, triggerState);
+    });
+
+    it('overwrites previous state', async () => {
+      await manager.saveTriggersState({
+        triggers: [{ id: 'old', name: 'Old Trigger' }],
+      });
+
+      await manager.saveTriggersState({
+        triggers: [
+          { id: 'new1', name: 'New Trigger 1' },
+          { id: 'new2', name: 'New Trigger 2' },
+        ],
+      });
+
+      const state = await manager.getTriggersState();
+      assert.equal(state.triggers.length, 2);
+      assert.equal(state.triggers[0].id, 'new1');
+    });
+  });
+
+  describe('capabilities', () => {
+    it('reports triggers capability', async () => {
+      const caps = manager.capabilities;
+      assert.equal(caps.triggers, true);
+    });
+  });
+});
+
+describe('PersistenceManager Triggers State (File)', () => {
+  let manager;
+  let tempDir;
+
+  beforeEach(async () => {
+    tempDir = path.join(os.tmpdir(), `cynic-triggers-test-${Date.now()}`);
+    manager = new PersistenceManager({ dataDir: tempDir });
+    await manager.initialize();
+  });
+
+  afterEach(async () => {
+    if (manager._initialized) {
+      await manager.close();
+    }
+    try {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    } catch (e) {
+      // Ignore cleanup errors
+    }
+  });
+
+  it('persists triggers state to file', async () => {
+    const triggerState = {
+      triggers: [
+        {
+          id: 'trig_file1',
+          name: 'File Test Trigger',
+          type: 'periodic',
+          action: 'judge',
+        },
+      ],
+    };
+
+    await manager.saveTriggersState(triggerState);
+
+    // Force save
+    await manager._fallback.save();
+
+    const filePath = path.join(tempDir, 'cynic-state.json');
+    const content = await fs.readFile(filePath, 'utf-8');
+    const data = JSON.parse(content);
+
+    assert.ok(data.triggersState);
+    assert.equal(data.triggersState.triggers[0].name, 'File Test Trigger');
+  });
+
+  it('loads trigger state on initialize', async () => {
+    // Create initial data with trigger state
+    await fs.mkdir(tempDir, { recursive: true });
+    const filePath = path.join(tempDir, 'cynic-state.json');
+    await fs.writeFile(
+      filePath,
+      JSON.stringify({
+        judgments: [],
+        patterns: [],
+        feedback: [],
+        knowledge: [],
+        pojBlocks: [],
+        triggersState: {
+          triggers: [
+            { id: 'loaded_trig', name: 'Loaded Trigger', type: 'threshold' },
+          ],
+        },
+      })
+    );
+
+    // Re-initialize to load existing data
+    await manager.close();
+    manager = new PersistenceManager({ dataDir: tempDir });
+    await manager.initialize();
+
+    const state = await manager.getTriggersState();
+    assert.ok(state);
+    assert.equal(state.triggers[0].id, 'loaded_trig');
+  });
+});

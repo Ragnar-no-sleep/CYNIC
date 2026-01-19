@@ -38,6 +38,7 @@ class MemoryStore {
     this.feedback = [];
     this.knowledge = [];
     this.pojBlocks = [];
+    this.triggersState = null;
   }
 
   async storeJudgment(judgment) {
@@ -133,6 +134,7 @@ class MemoryStore {
       feedback: this.feedback,
       knowledge: this.knowledge,
       pojBlocks: this.pojBlocks,
+      triggersState: this.triggersState,
     };
   }
 
@@ -142,6 +144,7 @@ class MemoryStore {
     if (data.feedback) this.feedback = data.feedback;
     if (data.knowledge) this.knowledge = data.knowledge;
     if (data.pojBlocks) this.pojBlocks = data.pojBlocks;
+    if (data.triggersState) this.triggersState = data.triggersState;
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -236,6 +239,20 @@ class MemoryStore {
       errors,
     };
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // TRIGGERS STATE FALLBACK METHODS
+  // "φ distrusts φ" - watchdogs must persist their rules
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  async getTriggersState() {
+    return this.triggersState;
+  }
+
+  async saveTriggersState(state) {
+    this.triggersState = state;
+    return state;
+  }
 }
 
 /**
@@ -294,6 +311,12 @@ class FileStore extends MemoryStore {
     this._dirty = true;
     // Force immediate save for PoJ chain integrity
     await this.save();
+    return result;
+  }
+
+  async saveTriggersState(state) {
+    const result = await super.saveTriggersState(state);
+    this._dirty = true;
     return result;
   }
 
@@ -709,6 +732,39 @@ export class PersistenceManager {
   }
 
   // ===========================================================================
+  // TRIGGER STATE METHODS
+  // "φ distrusts φ" - watchdogs must persist their rules
+  // Fallback chain: PostgreSQL → File → Memory
+  // ===========================================================================
+
+  /**
+   * Get triggers state (File/Memory only - no PostgreSQL support yet)
+   * @returns {Promise<Object|null>} Triggers state or null
+   */
+  async getTriggersState() {
+    // TODO: Add PostgreSQL support for triggers state
+    // For now, triggers state is only persisted in file/memory fallback
+    if (this._fallback) {
+      return await this._fallback.getTriggersState();
+    }
+    return null;
+  }
+
+  /**
+   * Save triggers state (File/Memory only - no PostgreSQL support yet)
+   * @param {Object} state - Triggers state to save
+   * @returns {Promise<Object|null>} Saved state or null
+   */
+  async saveTriggersState(state) {
+    // TODO: Add PostgreSQL support for triggers state
+    // For now, triggers state is only persisted in file/memory fallback
+    if (this._fallback) {
+      return await this._fallback.saveTriggersState(state);
+    }
+    return null;
+  }
+
+  // ===========================================================================
   // LIBRARY CACHE METHODS
   // ===========================================================================
 
@@ -908,6 +964,7 @@ export class PersistenceManager {
       feedback: !!this.feedback || hasFallback,
       knowledge: !!this.knowledge || hasFallback,
       pojChain: !!this.pojBlocks || hasFallback, // Now has fallback - CYNIC must verify itself
+      triggers: hasFallback, // Triggers state - file/memory fallback only for now
       libraryCache: !!this.libraryCache, // No fallback - requires PostgreSQL
       sessions: !!this.sessionStore,
       cache: !!this.redis,
