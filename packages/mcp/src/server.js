@@ -531,19 +531,24 @@ export class MCPServer {
    * @private
    */
   _handleSseConnection(req, res) {
+    console.error(`🔴 [SSE] Connection request from ${req.socket.remoteAddress}`);
+    console.error(`🔴 [SSE] Headers:`, JSON.stringify(req.headers, null, 2));
+
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       Connection: 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
     });
 
     // Send endpoint info event
     const endpoint = `/message`;
     res.write(`event: endpoint\ndata: ${endpoint}\n\n`);
+    console.error(`🔴 [SSE] Sent endpoint event to client`);
 
     // Track client
     this._sseClients.add(res);
-    console.error(`   SSE client connected (${this._sseClients.size} total)`);
+    console.error(`🔴 [SSE] ✅ Client connected (${this._sseClients.size} total)`);
 
     // Handle client disconnect
     req.on('close', () => {
@@ -587,16 +592,26 @@ export class MCPServer {
    * @private
    */
   _broadcastSSEEvent(eventType, data) {
+    const clientCount = this._sseClients.size;
+    if (clientCount > 0) {
+      console.error(`🔴 [SSE] Broadcasting "${eventType}" to ${clientCount} client(s)`);
+    }
     const message = `event: ${eventType}\ndata: ${JSON.stringify(data)}\n\n`;
+    let sent = 0;
     for (const client of this._sseClients) {
       if (!client.writableEnded) {
         try {
           client.write(message);
+          sent++;
         } catch (e) {
           // Client disconnected, remove from set
           this._sseClients.delete(client);
+          console.error(`🔴 [SSE] Client removed (write failed)`);
         }
       }
+    }
+    if (sent > 0) {
+      console.error(`🔴 [SSE] ✅ Sent "${eventType}" to ${sent} client(s)`);
     }
   }
 

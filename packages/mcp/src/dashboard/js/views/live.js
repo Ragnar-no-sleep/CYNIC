@@ -139,29 +139,58 @@ export class LiveView {
       this.eventSource.close();
     }
 
+    // Debug: Log connection attempt with full URL
+    const sseUrl = new URL('/sse', window.location.origin).href;
+    console.log('🔴 [SSE] Attempting connection to:', sseUrl);
+    console.log('🔴 [SSE] Current location:', window.location.href);
+
     try {
       this.eventSource = new EventSource('/sse');
+      console.log('🔴 [SSE] EventSource created, readyState:', this.eventSource.readyState);
 
       this.eventSource.onopen = () => {
         this.isConnected = true;
         this._updateStatus();
-        console.log('🔴 Live: SSE connected');
+        console.log('🔴 [SSE] ✅ CONNECTED - readyState:', this.eventSource.readyState);
       };
 
-      this.eventSource.onerror = () => {
+      this.eventSource.onerror = (err) => {
         this.isConnected = false;
         this._updateStatus();
-        console.error('🔴 Live: SSE disconnected');
+        console.error('🔴 [SSE] ❌ ERROR - readyState:', this.eventSource?.readyState);
+        console.error('🔴 [SSE] Error details:', err);
       };
 
       // Listen for different event types
-      this.eventSource.addEventListener('judgment', (e) => this._handleEvent('judgment', e));
-      this.eventSource.addEventListener('block', (e) => this._handleEvent('block', e));
-      this.eventSource.addEventListener('pattern', (e) => this._handleEvent('pattern', e));
-      this.eventSource.addEventListener('message', (e) => this._handleEvent('event', e));
+      this.eventSource.addEventListener('judgment', (e) => {
+        console.log('🔴 [SSE] Event: judgment', e.data?.slice(0, 100));
+        this._handleEvent('judgment', e);
+      });
+      this.eventSource.addEventListener('block', (e) => {
+        console.log('🔴 [SSE] Event: block', e.data?.slice(0, 100));
+        this._handleEvent('block', e);
+      });
+      this.eventSource.addEventListener('pattern', (e) => {
+        console.log('🔴 [SSE] Event: pattern', e.data?.slice(0, 100));
+        this._handleEvent('pattern', e);
+      });
+      this.eventSource.addEventListener('message', (e) => {
+        console.log('🔴 [SSE] Event: message', e.data?.slice(0, 100));
+        this._handleEvent('event', e);
+      });
       // Tool execution events (Vibecraft pattern - duration tracking)
-      this.eventSource.addEventListener('tool_pre', (e) => this._handleToolEvent('tool_pre', e));
-      this.eventSource.addEventListener('tool_post', (e) => this._handleToolEvent('tool_post', e));
+      this.eventSource.addEventListener('tool_pre', (e) => {
+        console.log('🔴 [SSE] Event: tool_pre', e.data?.slice(0, 100));
+        this._handleToolEvent('tool_pre', e);
+      });
+      this.eventSource.addEventListener('tool_post', (e) => {
+        console.log('🔴 [SSE] Event: tool_post', e.data?.slice(0, 100));
+        this._handleToolEvent('tool_post', e);
+      });
+      // Also listen for endpoint event (sent on connect)
+      this.eventSource.addEventListener('endpoint', (e) => {
+        console.log('🔴 [SSE] Event: endpoint (connect confirmation)', e.data);
+      });
 
     } catch (err) {
       console.error('🔴 Live: Failed to connect SSE', err);
