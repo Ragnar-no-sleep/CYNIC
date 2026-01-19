@@ -62,6 +62,9 @@ export class LiveView {
     // Vibecraft pattern: Tool timeline (recent tools as icon strip)
     this.recentTools = [];
     this.maxTimelineTools = 15;
+    // Session management
+    this.session = null;
+    this.sessionLoading = false;
   }
 
   /**
@@ -122,6 +125,10 @@ export class LiveView {
               <button class="prompt-btn judge-btn" title="Judge this prompt">⚖️ Judge</button>
               <button class="prompt-btn digest-btn" title="Digest this prompt">🧠 Digest</button>
             </div>
+          </div>
+          <!-- Session Management -->
+          <div class="session-zone">
+            ${this._renderSessionUI()}
           </div>
         </div>
 
@@ -796,6 +803,9 @@ export class LiveView {
       });
     }
 
+    // Session management listeners
+    this._attachSessionEventListeners();
+
     this._attachListEventListeners();
   }
 
@@ -855,6 +865,166 @@ export class LiveView {
       btns?.forEach(btn => btn.disabled = false);
       input.disabled = false;
       input.focus();
+    }
+  }
+
+  /**
+   * Render session management UI
+   */
+  _renderSessionUI() {
+    if (this.sessionLoading) {
+      return `
+        <div class="session-loading">
+          <span class="session-spinner"></span>
+          <span>Loading session...</span>
+        </div>
+      `;
+    }
+
+    if (this.session) {
+      return `
+        <div class="session-active">
+          <div class="session-info">
+            <span class="session-indicator"></span>
+            <div class="session-details">
+              <span class="session-user">🐕 ${escapeHtml(this.session.userId)}</span>
+              ${this.session.project ? `<span class="session-project">📁 ${escapeHtml(this.session.project)}</span>` : ''}
+              <span class="session-id">ID: ${escapeHtml(this.session.sessionId?.slice(0, 12) || '...')}...</span>
+            </div>
+          </div>
+          <button class="session-btn end-btn" title="End session">🛑 End</button>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="session-start">
+        <input type="text" class="session-user-input" placeholder="User ID (wallet, email...)" maxlength="100">
+        <input type="text" class="session-project-input" placeholder="Project (optional)" maxlength="50">
+        <button class="session-btn start-btn" title="Start new session">🚀 Start Session</button>
+      </div>
+    `;
+  }
+
+  /**
+   * Handle session start
+   */
+  async _handleSessionStart() {
+    const userInput = this.container?.querySelector('.session-user-input');
+    const projectInput = this.container?.querySelector('.session-project-input');
+
+    const userId = userInput?.value.trim();
+    if (!userId) {
+      console.warn('🔴 [Session] No userId provided');
+      userInput?.focus();
+      return;
+    }
+
+    const project = projectInput?.value.trim() || undefined;
+
+    console.log(`🔴 [Session] Starting for user: ${userId}, project: ${project || 'none'}`);
+    this.sessionLoading = true;
+    this._updateSessionUI();
+
+    try {
+      const response = await fetch('/api/tools/brain_session_start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, project }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('🔴 [Session] Started:', result);
+
+      this.session = {
+        sessionId: result.sessionId,
+        userId,
+        project,
+        startTime: Date.now(),
+      };
+
+      cynicAudio.playConnect();
+
+    } catch (err) {
+      console.error('🔴 [Session] Start error:', err);
+      cynicAudio.playToolComplete('system', false);
+    } finally {
+      this.sessionLoading = false;
+      this._updateSessionUI();
+    }
+  }
+
+  /**
+   * Handle session end
+   */
+  async _handleSessionEnd() {
+    if (!this.session) return;
+
+    console.log(`🔴 [Session] Ending: ${this.session.sessionId}`);
+    this.sessionLoading = true;
+    this._updateSessionUI();
+
+    try {
+      const response = await fetch('/api/tools/brain_session_end', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: this.session.sessionId }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('🔴 [Session] Ended:', result);
+
+      this.session = null;
+      cynicAudio.playDisconnect();
+
+    } catch (err) {
+      console.error('🔴 [Session] End error:', err);
+      cynicAudio.playToolComplete('system', false);
+    } finally {
+      this.sessionLoading = false;
+      this._updateSessionUI();
+    }
+  }
+
+  /**
+   * Update session UI without full re-render
+   */
+  _updateSessionUI() {
+    const sessionZone = this.container?.querySelector('.session-zone');
+    if (sessionZone) {
+      sessionZone.innerHTML = this._renderSessionUI();
+      this._attachSessionEventListeners();
+    }
+  }
+
+  /**
+   * Attach session event listeners
+   */
+  _attachSessionEventListeners() {
+    const startBtn = this.container?.querySelector('.session-btn.start-btn');
+    const endBtn = this.container?.querySelector('.session-btn.end-btn');
+    const userInput = this.container?.querySelector('.session-user-input');
+
+    if (startBtn) {
+      startBtn.addEventListener('click', () => this._handleSessionStart());
+    }
+    if (endBtn) {
+      endBtn.addEventListener('click', () => this._handleSessionEnd());
+    }
+    if (userInput) {
+      userInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          this._handleSessionStart();
+        }
+      });
     }
   }
 

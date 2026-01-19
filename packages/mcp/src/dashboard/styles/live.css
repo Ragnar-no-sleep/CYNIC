@@ -910,3 +910,161 @@
   z-index: 1;
   opacity: 1 !important;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   SESSION MANAGEMENT ZONE
+   ═══════════════════════════════════════════════════════════ */
+
+.session-zone {
+  margin-top: var(--space-sm);
+  padding: var(--space-sm);
+  background: var(--bg-tertiary);
+  border-radius: var(--border-radius-md);
+  border: 1px solid var(--border-color);
+}
+
+/* Session start form */
+.session-start {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: center;
+}
+
+.session-user-input,
+.session-project-input {
+  flex: 1;
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+}
+
+.session-user-input {
+  flex: 2;
+}
+
+.session-project-input {
+  flex: 1;
+}
+
+.session-user-input:focus,
+.session-project-input:focus {
+  outline: none;
+  border-color: var(--color-howl);
+}
+
+.session-user-input:disabled,
+.session-project-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.session-btn {
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.session-btn:hover:not(:disabled) {
+  border-color: var(--color-howl);
+  color: var(--color-howl);
+}
+
+.session-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.session-btn.start-btn:hover:not(:disabled) {
+  border-color: var(--color-howl);
+  color: var(--color-howl);
+  background: rgba(0, 212, 170, 0.1);
+}
+
+.session-btn.end-btn:hover:not(:disabled) {
+  border-color: var(--accent-red);
+  color: var(--accent-red);
+  background: rgba(255, 68, 68, 0.1);
+}
+
+/* Session active state */
+.session-active {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.session-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.session-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-howl);
+  box-shadow: 0 0 8px var(--color-howl);
+  animation: session-pulse 2s infinite;
+}
+
+@keyframes session-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 8px var(--color-howl); }
+  50% { opacity: 0.7; box-shadow: 0 0 4px var(--color-howl); }
+}
+
+.session-details {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.session-user {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.session-project {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.session-id {
+  font-size: var(--font-size-xs);
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+
+/* Session loading state */
+.session-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm);
+  color: var(--text-secondary);
+}
+
+.session-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border-color);
+  border-top-color: var(--color-howl);
+  border-radius: 50%;
+  animation: session-spin 1s linear infinite;
+}
+
+@keyframes session-spin {
+  to { transform: rotate(360deg); }
+}
