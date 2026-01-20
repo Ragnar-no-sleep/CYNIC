@@ -13,6 +13,7 @@
 import { PHI_INV, PHI_INV_2, IDENTITY, getVerdictFromScore, EcosystemMonitor, summarizeUpdates } from '@cynic/core';
 import { createMetaTool } from '../meta-dashboard.js';
 import { createCodeAnalyzer } from '../code-analyzer.js';
+import { enrichItem } from '../item-enricher.js';
 import { LSPService, createLSPTools } from '../lsp-service.js';
 import { JSONRenderService, createJSONRenderTool } from '../json-render.js';
 import {
@@ -54,10 +55,14 @@ export function createJudgeTool(judge, persistence = null, sessionManager = null
       const { item, context = {} } = params;
       if (!item) throw new Error('Missing required parameter: item');
 
+      // Enrich item with metadata for richer judgment
+      // This extracts sources, analyzes code/text, generates hashes, etc.
+      const enrichedItem = enrichItem(item, context);
+
       // Use graph integration if available, otherwise direct judge
       const judgment = graphIntegration
-        ? await graphIntegration.judgeWithGraph(item, context)
-        : judge.judge(item, context);
+        ? await graphIntegration.judgeWithGraph(enrichedItem, context)
+        : judge.judge(enrichedItem, context);
 
       // Generate fallback ID (used if persistence unavailable)
       let judgmentId = `jdg_${Date.now().toString(36)}`;
@@ -69,9 +74,9 @@ export function createJudgeTool(judge, persistence = null, sessionManager = null
       if (persistence) {
         try {
           const stored = await persistence.storeJudgment({
-            item,
-            itemType: item.type || 'unknown',
-            itemContent: typeof item.content === 'string' ? item.content : JSON.stringify(item),
+            item: enrichedItem,
+            itemType: enrichedItem.type || 'unknown',
+            itemContent: typeof enrichedItem.content === 'string' ? enrichedItem.content : JSON.stringify(enrichedItem),
             qScore: judgment.qScore,
             globalScore: judgment.global_score,
             confidence: Math.round(judgment.confidence * 1000) / 1000,

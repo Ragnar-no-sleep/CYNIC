@@ -900,10 +900,29 @@ export function scoreDimension(name, item, context = {}) {
     return item.scores[name];
   }
 
+  // Check for derived scores from enrichment (boost or starting point)
+  const hintKey = `${name.toLowerCase()}Hint`;
+  const derivedHint = item?.derivedScores?.[hintKey];
+
   const scorer = Scorers[name];
   if (scorer) {
-    return scorer(item, context);
+    const baseScore = scorer(item, context);
+
+    // If we have a derived hint, blend it with the scored value
+    // This helps when enrichment detected something the scorer might miss
+    if (typeof derivedHint === 'number') {
+      // Weighted average: 70% scorer, 30% hint
+      return normalize(baseScore * 0.7 + derivedHint * 0.3);
+    }
+
+    return baseScore;
   }
+
+  // Fallback: use derived hint if available
+  if (typeof derivedHint === 'number') {
+    return derivedHint;
+  }
+
   // Fallback for unknown dimensions
   return 50;
 }
