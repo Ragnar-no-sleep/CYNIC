@@ -239,24 +239,26 @@ GARDER? /
           - Pattern chart with category breakdown
 ```
 
-#### 2.5 - Singularity Index
+#### 2.5 - Singularity Index ✅ DONE (2026-01-20)
 
 ```
-□ 2.5.1 - Composite metric φ-weighted
-          - Codebase depth (20%)
-          - Collective health (25%)
-          - Wisdom growth (25%)
-          - Autonomy level (30%)
+✅ 2.5.1 - Composite metric φ-weighted
+          - 4 dimensions: Codebase (20%), Collective (25%), Wisdom (25%), Autonomy (30%)
+          - SVG circular gauge with gradient and glow effects
+          - 5 threshold levels: Dormant → Awakening → Emerging → Conscious → Transcendent
+          - φ-adjustment for non-linear scoring
 
-□ 2.5.2 - Historical tracking
-          - Graph d'évolution
-          - Milestones atteints
-          - Projections
+✅ 2.5.2 - Historical tracking
+          - 10 predefined milestones (First Awakening → Transcendence)
+          - 30-day history sparkline chart
+          - Projection to next milestone and transcendence
+          - Trend analysis (accelerating/steady/stagnant/declining)
 
-□ 2.5.3 - Comparison view
-          - Avant/après
-          - Différentes versions
-          - Branches alternatives
+✅ 2.5.3 - Comparison view
+          - Snapshot save/load with localStorage
+          - Side-by-side dimension comparison
+          - Difference analysis with φ-factor insight
+          - Demo snapshots for initial display
 ```
 
 #### 2.6 - Technical Stack

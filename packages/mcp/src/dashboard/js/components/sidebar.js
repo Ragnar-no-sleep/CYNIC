@@ -63,6 +63,7 @@ export class Sidebar {
       { id: 'live', icon: '📡', label: 'Live', mode: 'live' },
       { id: 'knowledge', icon: '🧠', label: 'Knowledge', mode: 'knowledge' },
       { id: 'autonomy', icon: '🤖', label: 'Autonomy', mode: 'autonomy' },
+      { id: 'singularity', icon: '✨', label: 'Singularity', mode: 'singularity' },
     ];
 
     const nav = Utils.createElement('nav', { className: 'sidebar-nav' });

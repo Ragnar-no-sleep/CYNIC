@@ -20,6 +20,7 @@ import { ArchView } from './views/arch.js';
 import { LiveView } from './views/live.js';
 import { KnowledgeView } from './views/knowledge.js';
 import { AutonomyView } from './views/autonomy.js';
+import { SingularityView } from './views/singularity.js';
 
 /**
  * Main Application State
@@ -140,6 +141,10 @@ class App {
     // Autonomy view (decisions, self-modification, emergence)
     this.views.autonomy = new AutonomyView({ api });
     this.views.autonomy.render(document.getElementById('view-autonomy'));
+
+    // Singularity view (index, milestones, comparison)
+    this.views.singularity = new SingularityView({ api });
+    this.views.singularity.render(document.getElementById('view-singularity'));
   }
 
   /**
@@ -204,6 +209,9 @@ class App {
         break;
       case 'autonomy':
         await this.views.autonomy.refresh();
+        break;
+      case 'singularity':
+        await this.views.singularity.refresh();
         break;
     }
 
