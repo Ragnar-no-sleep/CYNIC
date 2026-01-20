@@ -517,7 +517,9 @@ export function scoreIntegrity(item, context = {}) {
 export function scoreAuthenticity(item, context = {}) {
   let score = 50;
   const text = extractText(item);
+  const words = wordCount(text);
 
+  // ═══ POSITIVE INDICATORS ═══
   // Marked as original
   if (item.original === true) score += 15;
   if (item.authentic === true) score += 15;
@@ -534,6 +536,32 @@ export function scoreAuthenticity(item, context = {}) {
   // Has personal voice (I, we statements)
   if (/\b(I|we|my|our)\s+(?!==)/i.test(text)) score += 5;
 
+  // ═══ NEGATIVE INDICATORS ═══
+  // Very short content lacks authenticity
+  if (words < 5) score -= 20;
+  else if (words < 10) score -= 10;
+
+  // Generic template phrases
+  const genericPatterns = [
+    /lorem ipsum/i,
+    /click here/i,
+    /buy now/i,
+    /limited time/i,
+    /act now/i,
+    /\[insert\s+\w+\]/i,
+    /TODO|FIXME|XXX/,
+  ];
+  const genericCount = genericPatterns.filter(p => p.test(text)).length;
+  score -= genericCount * 8;
+
+  // No author AND no personal voice = anonymous/impersonal
+  if (!item.author && !item.creator && !/\b(I|we|my|our)\s+/i.test(text)) {
+    score -= 10;
+  }
+
+  // Is a copy/fork
+  if (item.forkedFrom || item.copiedFrom) score -= 15;
+
   return normalize(score);
 }
 
@@ -543,7 +571,9 @@ export function scoreAuthenticity(item, context = {}) {
 export function scoreRelevance(item, context = {}) {
   let score = 50;
   const text = extractText(item);
+  const words = wordCount(text);
 
+  // ═══ POSITIVE INDICATORS ═══
   // Has explicit relevance
   if (item.relevance) score += typeof item.relevance === 'number' ? item.relevance / 2 : 20;
 
@@ -565,6 +595,29 @@ export function scoreRelevance(item, context = {}) {
     else if (dayAge < 7) score += 5;
   }
 
+  // ═══ NEGATIVE INDICATORS ═══
+  // Empty or minimal content = not relevant
+  if (words < 3) score -= 25;
+  else if (words < 10) score -= 10;
+
+  // No context clues at all
+  if (!item.tags && !item.relevance && !context.topic) {
+    score -= 10;
+  }
+
+  // Old content loses relevance (> 90 days)
+  if (item.createdAt) {
+    const age = Date.now() - item.createdAt;
+    const dayAge = age / (1000 * 60 * 60 * 24);
+    if (dayAge > 365) score -= 15;
+    else if (dayAge > 90) score -= 8;
+  }
+
+  // Generic filler content
+  if (/^(test|example|sample|placeholder|untitled)/i.test(text.trim())) {
+    score -= 15;
+  }
+
   return normalize(score);
 }
 
@@ -573,7 +626,10 @@ export function scoreRelevance(item, context = {}) {
  */
 export function scoreNovelty(item, context = {}) {
   let score = 40;
+  const text = extractText(item);
+  const words = wordCount(text);
 
+  // ═══ POSITIVE INDICATORS ═══
   // New item
   if (item.createdAt && Date.now() - item.createdAt < 86400000) {
     score += 20;
@@ -590,6 +646,34 @@ export function scoreNovelty(item, context = {}) {
   // First of its kind
   if (item.first === true || item.pioneer === true) score += 15;
 
+  // ═══ NEGATIVE INDICATORS ═══
+  // Old content is not novel (> 30 days)
+  if (item.createdAt) {
+    const age = Date.now() - item.createdAt;
+    const dayAge = age / (1000 * 60 * 60 * 24);
+    if (dayAge > 180) score -= 20;
+    else if (dayAge > 30) score -= 10;
+  }
+
+  // Copy/fork = not novel
+  if (item.forkedFrom || item.copiedFrom || item.duplicate) {
+    score -= 25;
+  }
+
+  // Template/boilerplate patterns
+  const boilerplatePatterns = [
+    /^(hello world|foo bar|test)/i,
+    /lorem ipsum/i,
+    /\{\{.*\}\}/,  // Mustache templates
+    /<%-?.*%>/,    // EJS templates
+  ];
+  if (boilerplatePatterns.some(p => p.test(text))) {
+    score -= 15;
+  }
+
+  // Very short = likely not novel
+  if (words < 5) score -= 15;
+
   return normalize(score);
 }
 
@@ -599,7 +683,9 @@ export function scoreNovelty(item, context = {}) {
 export function scoreAlignment(item, context = {}) {
   let score = 50;
   const text = extractText(item);
+  const words = wordCount(text);
 
+  // ═══ POSITIVE INDICATORS ═══
   // φ-aligned values
   if (/φ|phi|golden\s*ratio/i.test(text)) score += 10;
   if (/verify|trust.*verify/i.test(text)) score += 10;
@@ -614,6 +700,33 @@ export function scoreAlignment(item, context = {}) {
   // Ethical considerations
   if (item.ethical || /ethic|fair|equit/i.test(text)) score += 5;
 
+  // ═══ NEGATIVE INDICATORS ═══
+  // Anti-pattern indicators (extractive, exploitative)
+  const antiPatterns = [
+    /get rich quick/i,
+    /guaranteed.*return/i,
+    /\d+x\s*(return|profit|gain)/i,
+    /pump|moon|lambo/i,
+    /shill|fomo|fud/i,
+    /free money/i,
+    /act fast|limited offer/i,
+  ];
+  const antiCount = antiPatterns.filter(p => p.test(text)).length;
+  score -= antiCount * 12;
+
+  // Spam/scam patterns
+  if (/\$\$\$|!!!|👉|🚀{3,}/u.test(text)) {
+    score -= 15;
+  }
+
+  // No substance
+  if (words < 5) score -= 15;
+
+  // Rejected/flagged
+  if (item.rejected === true || item.flagged === true) {
+    score -= 25;
+  }
+
   return normalize(score);
 }
 
@@ -622,7 +735,10 @@ export function scoreAlignment(item, context = {}) {
  */
 export function scoreImpact(item, context = {}) {
   let score = 45;
+  const text = extractText(item);
+  const words = wordCount(text);
 
+  // ═══ POSITIVE INDICATORS ═══
   // Has explicit impact
   if (item.impact) {
     score += typeof item.impact === 'number' ? item.impact / 2 : 15;
@@ -641,6 +757,31 @@ export function scoreImpact(item, context = {}) {
   // Has downstream effects
   if (item.derivatives && item.derivatives > 0) score += 10;
 
+  // ═══ NEGATIVE INDICATORS ═══
+  // No metrics at all = no measurable impact
+  if (!item.usageCount && !item.citations && !item.derivatives && !item.impact) {
+    score -= 15;
+  }
+
+  // Zero engagement explicitly
+  if (item.views === 0 || item.downloads === 0 || item.usageCount === 0) {
+    score -= 10;
+  }
+
+  // No clear purpose
+  if (!item.purpose && !item.goal && words < 10) {
+    score -= 10;
+  }
+
+  // Low-effort content markers
+  if (words < 5) score -= 20;
+  else if (words < 10) score -= 10;
+
+  // Deprecated/archived = diminished impact
+  if (item.deprecated === true || item.archived === true) {
+    score -= 15;
+  }
+
   return normalize(score);
 }
 
@@ -650,7 +791,9 @@ export function scoreImpact(item, context = {}) {
 export function scoreResonance(item, context = {}) {
   let score = 45;
   const text = extractText(item);
+  const words = wordCount(text);
 
+  // ═══ POSITIVE INDICATORS ═══
   // Has emotional language
   const emotionalWords = (text.match(/\b(love|hate|fear|joy|hope|trust|believe|feel|passion|inspire)\b/gi) || []).length;
   score += Math.min(emotionalWords * 5, 20);
@@ -668,6 +811,35 @@ export function scoreResonance(item, context = {}) {
 
   // Personal/relatable
   if (/\b(you|your|we|our|us)\b/i.test(text)) score += 5;
+
+  // ═══ NEGATIVE INDICATORS ═══
+  // No emotional content at all
+  if (emotionalWords === 0 && words > 20) {
+    score -= 10;
+  }
+
+  // Corporate/robotic language
+  const corporatePatterns = [
+    /\b(leverage|synergy|stakeholder|deliverable|bandwidth)\b/i,
+    /\b(circle back|move the needle|low-hanging fruit)\b/i,
+    /\b(pursuant to|in accordance with|hereby)\b/i,
+  ];
+  const corporateCount = corporatePatterns.filter(p => p.test(text)).length;
+  score -= corporateCount * 8;
+
+  // Zero engagement
+  if (item.likes === 0 && item.comments === 0 && item.reactions === 0) {
+    score -= 10;
+  }
+
+  // No substance to resonate with
+  if (words < 5) score -= 20;
+  else if (words < 10) score -= 10;
+
+  // Generic filler
+  if (/^(ok|okay|yes|no|thanks|thank you|good|nice|cool)$/i.test(text.trim())) {
+    score -= 25;
+  }
 
   return normalize(score);
 }
