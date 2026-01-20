@@ -284,6 +284,37 @@ DATA SOURCES:
 └── Redis             - Cache temps-réel
 ```
 
+#### 2.7 - Data Connection Audit (2026-01-20)
+
+> **Issue découvert**: Les composants Phase 2 utilisaient des données DEMO alors que les vraies APIs existaient.
+
+```
+AUDIT CONNEXIONS:
+├── ✅ api.learning() - MANQUAIT dans api.js, ajouté
+├── ✅ api.patterns() - Signature corrigée (supporte object et positional args)
+├── ✅ brain_milestone_history - NOUVEAU tool créé
+├── ✅ brain_self_mod - NOUVEAU tool créé (git history via execFileSync)
+├── ✅ brain_emergence - NOUVEAU tool créé (consciousness indicators)
+└── ✅ Demo indicators - Badges "DEMO" vs "LIVE" ajoutés dans UI
+
+COMPOSANTS CORRIGÉS:
+├── ✅ singularity-gauge.js → utilise api.learning() maintenant
+├── ✅ milestone-tracker.js → utilise api.milestoneHistory(), fallback demo + badge
+├── ✅ self-mod-tracker.js → utilise api.selfMod(), fallback demo + badge
+└── ✅ emergence-detector.js → utilise api.emergence(), fallback demo + badge
+
+UI AMÉLIORÉE:
+└── ✅ Badges "LIVE" / "DEMO" sur chaque composant (CSS animé pour LIVE)
+
+FICHIERS MODIFIÉS:
+├── packages/mcp/src/tools/index.js (+470 lignes - 3 nouveaux tools)
+├── packages/mcp/src/dashboard/js/api.js (+25 lignes - 4 nouvelles méthodes)
+├── packages/mcp/src/dashboard/js/components/milestone-tracker.js (API + badge)
+├── packages/mcp/src/dashboard/js/components/self-mod-tracker.js (API + badge)
+├── packages/mcp/src/dashboard/js/components/emergence-detector.js (API + badge)
+└── packages/mcp/src/dashboard/styles/main.css (+32 lignes - badge styles)
+```
+
 ### Phase 3: Integrations
 
 ```

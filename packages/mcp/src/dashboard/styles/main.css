@@ -391,3 +391,37 @@ input:focus, textarea:focus, select:focus {
     padding: var(--space-md);
   }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   DATA SOURCE BADGES (LIVE vs DEMO indicators)
+   ═══════════════════════════════════════════════════════════ */
+
+.data-source-badge {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.data-source-badge.live {
+  background: rgba(0, 255, 136, 0.15);
+  color: #00ff88;
+  border: 1px solid rgba(0, 255, 136, 0.3);
+  animation: live-pulse 2s ease-in-out infinite;
+}
+
+.data-source-badge.demo {
+  background: rgba(255, 217, 61, 0.15);
+  color: #ffd93d;
+  border: 1px solid rgba(255, 217, 61, 0.3);
+}
+
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}

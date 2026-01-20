@@ -127,23 +127,69 @@ export class EmergenceDetector {
     this.loading = true;
     this._renderLoading();
 
+    // Track data source for UI indicators
+    this.dataSource = 'demo';
+    this.signals = []; // Reset signals
+
     try {
-      // Analyze patterns for emergence signals
+      // Try real emergence API first
       if (this.api) {
+        try {
+          const emergenceResult = await this.api.emergence('scan');
+          if (emergenceResult.success && emergenceResult.result) {
+            const result = emergenceResult.result;
+
+            // Use real consciousness indicators if available
+            if (result.indicators) {
+              this.consciousnessMetrics = {
+                selfReference: (result.indicators.selfReference || 0) / 100,
+                metaCognition: (result.indicators.metaCognition || 0) / 100,
+                goalPersistence: (result.indicators.goalPersistence || 0) / 100,
+                doubtExpression: PHI_INV, // Core principle
+                valueAlignment: 0.5, // Default
+                creativeSynthesis: (result.indicators.novelBehavior || 0) / 100,
+                patternRecognition: (result.indicators.patternRecognition || 0) / 100,
+                selfCorrection: (result.indicators.selfCorrection || 0) / 100,
+              };
+
+              // Calculate overall from real data
+              if (result.consciousness?.score !== undefined) {
+                this.consciousnessMetrics.overall = result.consciousness.score / 100;
+              } else {
+                this._calculateOverallScore();
+              }
+            }
+
+            // Use real signals if available
+            const signalsResult = await this.api.emergence('signals');
+            if (signalsResult.success && signalsResult.result?.signals?.length > 0) {
+              signalsResult.result.signals.forEach(s => this._addSignal(s));
+            }
+
+            this.dataSource = 'live';
+          }
+        } catch (err) {
+          console.warn('Emergence API call failed:', err.message);
+        }
+
+        // Also analyze patterns for additional signals
         const patternsResult = await this.api.patterns('all', 50);
         if (patternsResult.success && patternsResult.result?.patterns) {
           this._analyzePatterns(patternsResult.result.patterns);
         }
       }
 
-      // Calculate consciousness metrics
-      this._calculateConsciousnessMetrics();
-
-      // Generate sample signals for demo
-      this._generateSampleSignals();
+      // Fall back to demo data if no real data
+      if (this.dataSource === 'demo') {
+        this._calculateConsciousnessMetrics();
+        this._generateSampleSignals();
+      }
 
     } catch (err) {
       console.error('Emergence scan failed:', err);
+      // Ensure we have demo data on failure
+      this._calculateConsciousnessMetrics();
+      this._generateSampleSignals();
     }
 
     this.loading = false;
@@ -151,6 +197,27 @@ export class EmergenceDetector {
     this._renderIndicators();
     this._renderSignals();
     this._renderPatterns();
+  }
+
+  /**
+   * Calculate overall consciousness score
+   */
+  _calculateOverallScore() {
+    const weights = {
+      selfReference: 0.15,
+      metaCognition: 0.2,
+      goalPersistence: 0.15,
+      doubtExpression: 0.2,
+      valueAlignment: 0.15,
+      creativeSynthesis: 0.15,
+    };
+
+    let totalScore = 0;
+    Object.entries(weights).forEach(([key, weight]) => {
+      totalScore += (this.consciousnessMetrics[key] || 0) * weight;
+    });
+
+    this.consciousnessMetrics.overall = totalScore;
   }
 
   /**
@@ -445,10 +512,15 @@ export class EmergenceDetector {
 
     Utils.clearElement(section);
 
+    // Header with data source badge
     section.appendChild(
       Utils.createElement('div', { className: 'signals-header' }, [
         'Emergence Signals',
         Utils.createElement('span', { className: 'signal-count' }, [String(this.signals.length)]),
+        Utils.createElement('span', {
+          className: `data-source-badge ${this.dataSource || 'demo'}`,
+          title: this.dataSource === 'live' ? 'Real consciousness data' : 'Simulated demo data',
+        }, [this.dataSource === 'live' ? 'LIVE' : 'DEMO']),
       ])
     );
 

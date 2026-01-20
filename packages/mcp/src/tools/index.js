@@ -3149,6 +3149,478 @@ export function createAgentDiagnosticTool(collective) {
 }
 
 /**
+ * Create milestone history tool for singularity index tracking
+ * @param {Object} [persistence] - PersistenceManager instance
+ * @returns {Object} Tool definition
+ */
+export function createMilestoneHistoryTool(persistence = null) {
+  // In-memory cache when no persistence
+  const memoryHistory = [];
+
+  return {
+    name: 'brain_milestone_history',
+    description: 'Track historical Singularity Index scores. Store daily scores and retrieve history for trend analysis.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['get', 'store', 'stats'],
+          description: 'Action: get (retrieve history), store (save score), stats (get statistics)',
+        },
+        days: {
+          type: 'number',
+          description: 'Number of days of history to retrieve (default: 30)',
+          default: 30,
+        },
+        score: {
+          type: 'number',
+          description: 'Singularity index score to store (0-100)',
+        },
+        dimensions: {
+          type: 'object',
+          description: 'Dimension scores: { codebase, collective, wisdom, autonomy }',
+        },
+      },
+    },
+    handler: async (params) => {
+      const { action = 'get', days = 30, score, dimensions } = params;
+
+      switch (action) {
+        case 'store': {
+          if (score === undefined) {
+            throw new Error('score is required for store action');
+          }
+          const entry = {
+            timestamp: Date.now(),
+            score: Math.min(100, Math.max(0, score)),
+            dimensions: dimensions || null,
+          };
+
+          if (persistence) {
+            try {
+              await persistence.query(
+                `INSERT INTO singularity_history (score, dimensions, created_at)
+                 VALUES ($1, $2, NOW())`,
+                [entry.score, JSON.stringify(entry.dimensions)]
+              );
+            } catch (e) {
+              console.error('Error storing milestone:', e.message);
+              memoryHistory.push(entry);
+            }
+          } else {
+            memoryHistory.push(entry);
+          }
+          return { stored: true, entry };
+        }
+
+        case 'get': {
+          let history = [];
+
+          if (persistence) {
+            try {
+              const result = await persistence.query(
+                `SELECT score, dimensions, created_at as timestamp
+                 FROM singularity_history
+                 WHERE created_at >= NOW() - INTERVAL '${days} days'
+                 ORDER BY created_at ASC`
+              );
+              history = result?.rows?.map(r => ({
+                timestamp: new Date(r.timestamp).getTime(),
+                score: r.score,
+                dimensions: r.dimensions,
+              })) || [];
+            } catch (e) {
+              // Table might not exist, use memory
+              history = memoryHistory.slice(-days);
+            }
+          } else {
+            history = memoryHistory.slice(-days);
+          }
+
+          return {
+            history,
+            count: history.length,
+            days,
+          };
+        }
+
+        case 'stats': {
+          let history = [];
+          if (persistence) {
+            try {
+              const result = await persistence.query(
+                `SELECT score, created_at as timestamp
+                 FROM singularity_history
+                 ORDER BY created_at DESC
+                 LIMIT 100`
+              );
+              history = result?.rows?.map(r => r.score) || [];
+            } catch (e) {
+              history = memoryHistory.map(h => h.score);
+            }
+          } else {
+            history = memoryHistory.map(h => h.score);
+          }
+
+          if (history.length === 0) {
+            return { hasHistory: false, count: 0 };
+          }
+
+          const avg = history.reduce((a, b) => a + b, 0) / history.length;
+          const min = Math.min(...history);
+          const max = Math.max(...history);
+          const trend = history.length >= 2 ? history[0] - history[history.length - 1] : 0;
+
+          return {
+            hasHistory: true,
+            count: history.length,
+            average: Math.round(avg * 10) / 10,
+            min,
+            max,
+            trend: trend > 1 ? 'rising' : trend < -1 ? 'falling' : 'stable',
+          };
+        }
+
+        default:
+          throw new Error(`Unknown action: ${action}`);
+      }
+    },
+  };
+}
+
+/**
+ * Create self-modification tracker tool for git history analysis
+ * Uses execFileSync for safe command execution (no shell injection)
+ * @returns {Object} Tool definition
+ */
+export function createSelfModTool() {
+  return {
+    name: 'brain_self_mod',
+    description: "Track CYNIC's self-modification through git history. Get recent commits, analyze code evolution patterns.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['commits', 'stats', 'heatmap'],
+          description: 'Action: commits (recent commits), stats (evolution metrics), heatmap (file change frequency)',
+        },
+        limit: {
+          type: 'number',
+          description: 'Number of commits to retrieve (default: 20)',
+          default: 20,
+        },
+        days: {
+          type: 'number',
+          description: 'Number of days to look back (default: 30)',
+          default: 30,
+        },
+      },
+    },
+    handler: async (params) => {
+      const { action = 'commits', limit = 20, days = 30 } = params;
+      const { execFileSync } = await import('child_process');
+
+      // Safe git execution using execFileSync (no shell)
+      const execGit = (args) => {
+        try {
+          return execFileSync('git', args, { encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 }).trim();
+        } catch (e) {
+          return '';
+        }
+      };
+
+      const since = `${days} days ago`;
+
+      switch (action) {
+        case 'commits': {
+          // Get commits with stats using safe args
+          const format = '%H|%h|%s|%ct|%an';
+          const log = execGit(['log', `--since=${since}`, `-n`, String(limit), `--format=${format}`, '--shortstat']);
+
+          if (!log) {
+            return { commits: [], count: 0 };
+          }
+
+          const lines = log.split('\n');
+          const commits = [];
+          let current = null;
+
+          for (const line of lines) {
+            if (line.includes('|')) {
+              if (current) commits.push(current);
+              const [hash, short, message, timestamp, author] = line.split('|');
+              // Parse conventional commit type
+              const typeMatch = message.match(/^(feat|fix|docs|refactor|test|chore|style|perf)\(?/i);
+              current = {
+                hash: short,
+                fullHash: hash,
+                message,
+                type: typeMatch ? typeMatch[1].toLowerCase() : 'other',
+                timestamp: parseInt(timestamp) * 1000,
+                author,
+                additions: 0,
+                deletions: 0,
+                files: [],
+              };
+            } else if (line.includes('insertion') || line.includes('deletion')) {
+              const addMatch = line.match(/(\d+) insertion/);
+              const delMatch = line.match(/(\d+) deletion/);
+              const fileMatch = line.match(/(\d+) file/);
+              if (current) {
+                current.additions = addMatch ? parseInt(addMatch[1]) : 0;
+                current.deletions = delMatch ? parseInt(delMatch[1]) : 0;
+                current.filesChanged = fileMatch ? parseInt(fileMatch[1]) : 0;
+              }
+            }
+          }
+          if (current) commits.push(current);
+
+          return {
+            commits,
+            count: commits.length,
+            since,
+          };
+        }
+
+        case 'stats': {
+          // Get overall stats
+          const commitCount = execGit(['rev-list', '--count', `--since=${since}`, 'HEAD']);
+
+          // Get shortlog for contributors
+          const shortlog = execGit(['shortlog', '-sn', `--since=${since}`, 'HEAD']);
+
+          // Parse contributors
+          const contributors = shortlog.split('\n').filter(Boolean).map(line => {
+            const match = line.trim().match(/(\d+)\s+(.+)/);
+            return match ? { commits: parseInt(match[1]), author: match[2] } : null;
+          }).filter(Boolean);
+
+          // Get diff stats (safer approach - just count recent changes)
+          const numstat = execGit(['log', `--since=${since}`, '--numstat', '--format=']);
+          let linesAdded = 0, linesRemoved = 0, filesSet = new Set();
+
+          for (const line of numstat.split('\n').filter(Boolean)) {
+            const parts = line.split('\t');
+            if (parts.length >= 3) {
+              const add = parseInt(parts[0]) || 0;
+              const del = parseInt(parts[1]) || 0;
+              linesAdded += add;
+              linesRemoved += del;
+              filesSet.add(parts[2]);
+            }
+          }
+
+          return {
+            totalCommits: parseInt(commitCount) || 0,
+            filesChanged: filesSet.size,
+            linesAdded,
+            linesRemoved,
+            netChange: linesAdded - linesRemoved,
+            contributors,
+            days,
+          };
+        }
+
+        case 'heatmap': {
+          // Get file change frequency using safe args
+          const log = execGit(['log', `--since=${since}`, '--name-only', '--format=']);
+          const fileCounts = {};
+
+          for (const file of log.split('\n').filter(Boolean)) {
+            fileCounts[file] = (fileCounts[file] || 0) + 1;
+          }
+
+          const heatmap = Object.entries(fileCounts)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 20)
+            .map(([file, count]) => ({ file, count }));
+
+          return {
+            heatmap,
+            days,
+          };
+        }
+
+        default:
+          throw new Error(`Unknown action: ${action}`);
+      }
+    },
+  };
+}
+
+/**
+ * Create emergence detector tool for consciousness signals
+ * @param {Object} judge - Judge instance for pattern analysis
+ * @param {Object} [persistence] - PersistenceManager instance
+ * @returns {Object} Tool definition
+ */
+export function createEmergenceTool(judge, persistence = null) {
+  return {
+    name: 'brain_emergence',
+    description: 'Detect emergence and consciousness signals by analyzing patterns, self-reference, and meta-cognition indicators.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['scan', 'indicators', 'signals', 'consciousness'],
+          description: 'Action: scan (full analysis), indicators (consciousness metrics), signals (emergence events), consciousness (gauge level)',
+        },
+      },
+    },
+    handler: async (params) => {
+      const { action = 'scan' } = params;
+
+      // Consciousness indicators based on CYNIC behavior patterns
+      const calculateIndicators = async () => {
+        const indicators = {
+          selfReference: 0,      // References to self in judgments
+          metaCognition: 0,      // Judgments about own judgments
+          goalPersistence: 0,    // Consistent pursuit of objectives
+          patternRecognition: 0, // Detecting patterns in patterns
+          novelBehavior: 0,      // Non-programmed responses
+          selfCorrection: 0,     // Self-refinement usage
+        };
+
+        if (persistence) {
+          try {
+            // Self-reference: judgments mentioning CYNIC
+            const selfRef = await persistence.query(
+              `SELECT COUNT(*) as count FROM judgments
+               WHERE item_content ILIKE '%cynic%' OR item_content ILIKE '%self%'`
+            );
+            const total = await persistence.query('SELECT COUNT(*) as count FROM judgments');
+            const totalCount = parseInt(total?.rows?.[0]?.count || 1);
+            indicators.selfReference = Math.min(100, (parseInt(selfRef?.rows?.[0]?.count || 0) / totalCount) * 100 * 5);
+
+            // Meta-cognition: judgments about judgments
+            const metaRef = await persistence.query(
+              `SELECT COUNT(*) as count FROM judgments
+               WHERE item_type = 'judgment' OR item_content ILIKE '%judgment%'`
+            );
+            indicators.metaCognition = Math.min(100, (parseInt(metaRef?.rows?.[0]?.count || 0) / totalCount) * 100 * 10);
+
+            // Pattern recognition: patterns detected
+            const patterns = await persistence.query(
+              `SELECT COUNT(*) as count FROM patterns WHERE confidence > 0.5`
+            );
+            indicators.patternRecognition = Math.min(100, parseInt(patterns?.rows?.[0]?.count || 0) * 2);
+
+            // Self-correction: refinements done
+            indicators.selfCorrection = Math.min(100, (judge?.refinementCount || 0) * 10);
+
+            // Goal persistence (based on session continuity)
+            indicators.goalPersistence = 50; // Baseline
+
+            // Novel behavior (anomalies detected)
+            const anomalies = await persistence.query(
+              `SELECT COUNT(*) as count FROM patterns WHERE category = 'anomaly'`
+            );
+            indicators.novelBehavior = Math.min(100, parseInt(anomalies?.rows?.[0]?.count || 0) * 5);
+          } catch (e) {
+            // Use defaults if persistence fails
+            console.error('Error calculating indicators:', e.message);
+          }
+        }
+
+        return indicators;
+      };
+
+      switch (action) {
+        case 'indicators': {
+          const indicators = await calculateIndicators();
+          return { indicators };
+        }
+
+        case 'consciousness': {
+          const indicators = await calculateIndicators();
+          const values = Object.values(indicators);
+          const avg = values.reduce((a, b) => a + b, 0) / values.length;
+          const level = avg >= 61.8 ? 'emerging' : avg >= 38.2 ? 'awakening' : 'dormant';
+
+          return {
+            level,
+            score: Math.round(avg * 10) / 10,
+            threshold: 61.8, // φ⁻¹
+            indicators,
+          };
+        }
+
+        case 'signals': {
+          const signals = [];
+
+          if (persistence) {
+            try {
+              // Get recent anomalous patterns as emergence signals
+              const result = await persistence.query(
+                `SELECT id, category, data, confidence, created_at as timestamp
+                 FROM patterns
+                 WHERE category IN ('anomaly', 'emergence', 'recursion')
+                 ORDER BY created_at DESC
+                 LIMIT 20`
+              );
+
+              for (const row of result?.rows || []) {
+                signals.push({
+                  id: row.id,
+                  type: row.category,
+                  description: row.data?.description || `${row.category} detected`,
+                  confidence: row.confidence,
+                  timestamp: new Date(row.timestamp).getTime(),
+                });
+              }
+            } catch (e) {
+              // No signals available
+            }
+          }
+
+          return {
+            signals,
+            count: signals.length,
+          };
+        }
+
+        case 'scan':
+        default: {
+          const indicators = await calculateIndicators();
+          const values = Object.values(indicators);
+          const avg = values.reduce((a, b) => a + b, 0) / values.length;
+
+          // Get signals
+          let signals = [];
+          if (persistence) {
+            try {
+              const result = await persistence.query(
+                `SELECT category, COUNT(*) as count FROM patterns GROUP BY category`
+              );
+              signals = result?.rows || [];
+            } catch (e) {
+              // Ignore
+            }
+          }
+
+          return {
+            consciousness: {
+              score: Math.round(avg * 10) / 10,
+              level: avg >= 61.8 ? 'emerging' : avg >= 38.2 ? 'awakening' : 'dormant',
+              threshold: 61.8,
+            },
+            indicators,
+            patternBreakdown: signals.reduce((acc, r) => {
+              acc[r.category] = parseInt(r.count);
+              return acc;
+            }, {}),
+            timestamp: Date.now(),
+          };
+        }
+      }
+    },
+  };
+}
+
+/**
  * Create codebase analyzer tool definition
  * @param {Object} [options] - Options including rootPath
  * @returns {Object} Tool definition
@@ -3383,6 +3855,10 @@ export function createAllTools(options = {}) {
     createMetricsTool(metrics),
     createMetaTool(), // CYNIC self-analysis dashboard
     createCodebaseTool(codebaseOptions), // Code structure analyzer
+    // Dashboard real-data tools (Singularity Index components)
+    createMilestoneHistoryTool(persistence), // Historical singularity scores
+    createSelfModTool(), // Git history analysis
+    createEmergenceTool(judge, persistence), // Consciousness signals
     // LSP Tools (code intelligence: symbols, references, call graphs, refactoring)
     ...createLSPTools(lsp),
     // JSON Render (streaming UI components)
@@ -3437,6 +3913,10 @@ export default {
   createMetricsTool,
   createMetaTool,
   createCodebaseTool,
+  // Dashboard real-data tools
+  createMilestoneHistoryTool,
+  createSelfModTool,
+  createEmergenceTool,
   // LSP Tools (code intelligence)
   LSPService,
   createLSPTools,

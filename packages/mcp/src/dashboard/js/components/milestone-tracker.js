@@ -113,11 +113,31 @@ export class MilestoneTracker {
   }
 
   /**
-   * Fetch historical data
+   * Fetch historical data from API or generate sample
    */
   async _fetchHistory() {
-    // In production, this would fetch from API
-    // For now, generate sample history based on current score
+    // Track data source for UI indicators
+    this.dataSource = 'demo';
+
+    // Try to fetch from real API first
+    if (this.api) {
+      try {
+        const result = await this.api.milestoneHistory('get', { days: 30 });
+        if (result.success && result.result?.history?.length > 0) {
+          this.history = result.result.history.map(h => ({
+            timestamp: h.timestamp,
+            score: h.score,
+            milestonesReached: MILESTONES.filter(m => m.score <= h.score).length,
+          }));
+          this.dataSource = 'live';
+          return;
+        }
+      } catch (err) {
+        console.warn('Failed to fetch milestone history from API:', err.message);
+      }
+    }
+
+    // Fall back to generated sample history
     const now = Date.now();
     const dayMs = 24 * 60 * 60 * 1000;
 
@@ -272,9 +292,15 @@ export class MilestoneTracker {
 
     Utils.clearElement(container);
 
-    container.appendChild(
-      Utils.createElement('div', { className: 'history-header' }, ['30-Day History'])
-    );
+    // Header with data source badge
+    const headerEl = Utils.createElement('div', { className: 'history-header' }, [
+      '30-Day History',
+      Utils.createElement('span', {
+        className: `data-source-badge ${this.dataSource || 'demo'}`,
+        title: this.dataSource === 'live' ? 'Real data from API' : 'Simulated demo data',
+      }, [this.dataSource === 'live' ? 'LIVE' : 'DEMO']),
+    ]);
+    container.appendChild(headerEl);
 
     if (this.history.length === 0) {
       container.appendChild(

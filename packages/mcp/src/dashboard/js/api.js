@@ -377,6 +377,31 @@ export class API {
   async trace(judgmentId, includeRaw = false) {
     return this.callTool('brain_trace', { judgmentId, includeRaw });
   }
+
+  // ─────────────────────────────────────────────────────────────────
+  // Dashboard Real-Data APIs (Singularity Index components)
+  // ─────────────────────────────────────────────────────────────────
+
+  /**
+   * Milestone history for singularity index tracking
+   */
+  async milestoneHistory(action = 'get', options = {}) {
+    return this.callTool('brain_milestone_history', { action, ...options });
+  }
+
+  /**
+   * Self-modification tracking via git history
+   */
+  async selfMod(action = 'commits', options = {}) {
+    return this.callTool('brain_self_mod', { action, ...options });
+  }
+
+  /**
+   * Emergence and consciousness detection
+   */
+  async emergence(action = 'scan') {
+    return this.callTool('brain_emergence', { action });
+  }
 }
 
 // Create singleton instance

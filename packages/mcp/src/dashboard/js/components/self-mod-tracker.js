@@ -127,11 +127,61 @@ export class SelfModTracker {
   }
 
   /**
-   * Fetch git data (simulated - in real impl would call API)
+   * Fetch git data from API or generate sample
    */
   async _fetchGitData() {
-    // For demo purposes, generate sample commit data
-    // In production, this would fetch from git log or a tracking API
+    // Track data source for UI indicators
+    this.dataSource = 'demo';
+
+    // Try to fetch from real API first
+    if (this.api) {
+      try {
+        // Get commits
+        const commitsResult = await this.api.selfMod('commits', { limit: 20 });
+        if (commitsResult.success && commitsResult.result?.commits?.length > 0) {
+          this.commits = commitsResult.result.commits.map(c => ({
+            hash: c.hash,
+            type: c.type || 'other',
+            message: c.message,
+            timestamp: c.timestamp,
+            files: c.files || [],
+            filesChanged: c.filesChanged || 0,
+            additions: c.additions || 0,
+            deletions: c.deletions || 0,
+            author: c.author || 'CYNIC',
+          }));
+
+          // Get stats
+          const statsResult = await this.api.selfMod('stats', { days: 30 });
+          if (statsResult.success && statsResult.result) {
+            const stats = statsResult.result;
+            this.evolutionMetrics = {
+              totalCommits: stats.totalCommits || this.commits.length,
+              filesChanged: stats.filesChanged || new Set(this.commits.flatMap(c => c.files)).size,
+              linesAdded: stats.linesAdded || this.commits.reduce((sum, c) => sum + c.additions, 0),
+              linesRemoved: stats.linesRemoved || this.commits.reduce((sum, c) => sum + c.deletions, 0),
+              avgChangesPerDay: stats.totalCommits / (stats.days || 30),
+            };
+          } else {
+            // Calculate from commits
+            this.evolutionMetrics = {
+              totalCommits: this.commits.length,
+              filesChanged: new Set(this.commits.flatMap(c => c.files)).size,
+              linesAdded: this.commits.reduce((sum, c) => sum + c.additions, 0),
+              linesRemoved: this.commits.reduce((sum, c) => sum + c.deletions, 0),
+              avgChangesPerDay: this.commits.length / 7,
+            };
+          }
+
+          this.dataSource = 'live';
+          return;
+        }
+      } catch (err) {
+        console.warn('Failed to fetch git data from API:', err.message);
+      }
+    }
+
+    // Fall back to sample commit data
     const sampleCommits = [
       {
         hash: 'abc1234',
@@ -193,7 +243,7 @@ export class SelfModTracker {
       filesChanged: new Set(sampleCommits.flatMap(c => c.files)).size,
       linesAdded: sampleCommits.reduce((sum, c) => sum + c.additions, 0),
       linesRemoved: sampleCommits.reduce((sum, c) => sum + c.deletions, 0),
-      avgChangesPerDay: sampleCommits.length / 7,  // Assuming 7 days
+      avgChangesPerDay: sampleCommits.length / 7,
     };
   }
 
@@ -329,8 +379,15 @@ export class SelfModTracker {
 
     Utils.clearElement(section);
 
+    // Header with data source badge
     section.appendChild(
-      Utils.createElement('div', { className: 'commits-header' }, ['Recent Self-Modifications'])
+      Utils.createElement('div', { className: 'commits-header' }, [
+        'Recent Self-Modifications',
+        Utils.createElement('span', {
+          className: `data-source-badge ${this.dataSource || 'demo'}`,
+          title: this.dataSource === 'live' ? 'Real git data' : 'Simulated demo data',
+        }, [this.dataSource === 'live' ? 'LIVE' : 'DEMO']),
+      ])
     );
 
     if (this.commits.length === 0) {
