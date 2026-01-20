@@ -104,6 +104,67 @@ export function createJudgeTool(judge, persistence = null, sessionManager = null
           if (sessionManager) {
             await sessionManager.incrementCounter('judgmentCount');
           }
+
+          // Extract and persist patterns from judgment (for emergence detection)
+          try {
+            const itemType = item.type || 'unknown';
+            const verdict = judgment.qVerdict?.verdict || judgment.verdict;
+            const score = judgment.qScore;
+
+            // 1. Verdict distribution pattern
+            await persistence.upsertPattern({
+              category: 'verdict',
+              name: `verdict_${verdict.toLowerCase()}`,
+              description: `Items receiving ${verdict} verdict`,
+              confidence: judgment.confidence,
+              sourceJudgments: [judgmentId],
+              tags: ['verdict', verdict.toLowerCase()],
+              data: { verdict, avgScore: score },
+            });
+
+            // 2. Item type pattern
+            await persistence.upsertPattern({
+              category: 'item_type',
+              name: `type_${itemType}`,
+              description: `Patterns for ${itemType} items`,
+              confidence: judgment.confidence,
+              sourceJudgments: [judgmentId],
+              tags: ['item_type', itemType],
+              data: { itemType, avgScore: score, verdict },
+            });
+
+            // 3. Weakness patterns (for learning)
+            if (judgment.weaknesses?.length > 0) {
+              for (const weakness of judgment.weaknesses.slice(0, 3)) {
+                await persistence.upsertPattern({
+                  category: 'weakness',
+                  name: `weakness_${weakness.axiom?.toLowerCase() || 'unknown'}`,
+                  description: weakness.reason,
+                  confidence: 0.5,
+                  sourceJudgments: [judgmentId],
+                  tags: ['weakness', weakness.axiom?.toLowerCase()].filter(Boolean),
+                  data: { axiom: weakness.axiom, reason: weakness.reason },
+                });
+              }
+            }
+
+            // 4. Anomaly detection (scores outside normal range)
+            const isAnomaly = score < 30 || score > 80;
+            if (isAnomaly) {
+              await persistence.upsertPattern({
+                category: 'anomaly',
+                name: `anomaly_${score < 30 ? 'low' : 'high'}_score`,
+                description: `Unusual ${score < 30 ? 'low' : 'high'} score detected`,
+                confidence: 0.6,
+                sourceJudgments: [judgmentId],
+                tags: ['anomaly', score < 30 ? 'low_score' : 'high_score'],
+                data: { score, verdict, itemType, threshold: score < 30 ? 30 : 80 },
+              });
+            }
+          } catch (patternErr) {
+            // Non-blocking - pattern extraction is best-effort
+            console.error('Pattern extraction error:', patternErr.message);
+          }
         } catch (e) {
           // Log but don't fail the judgment - persistence is best-effort
           console.error('Error persisting judgment:', e.message);
@@ -243,18 +304,42 @@ export function createRefineTool(judge, persistence = null) {
       // Extract learnings
       const learnings = refinement.extractLearning(result);
 
+      // Track refinement for selfCorrection emergence indicator
+      if (judge) {
+        judge.refinementCount = (judge.refinementCount || 0) + 1;
+      }
+
       // Store learnings if improved
       if (persistence && learnings.improved) {
         try {
-          // Store as a pattern for future reference
+          // Store as pattern for future reference (using upsertPattern)
           for (const learning of learnings.learnings) {
-            await persistence.storePattern({
-              type: 'refinement_learning',
-              signature: `${learning.type}:${learning.axiom || learning.pattern}`,
+            await persistence.upsertPattern({
+              category: 'refinement',
+              name: `refinement_${learning.type || 'general'}`,
               description: learning.pattern || learning.correction,
-              count: 1,
+              confidence: 0.6,
+              sourceJudgments: [judgmentId || 'direct'],
+              tags: ['refinement', learning.type, learning.axiom].filter(Boolean),
+              data: { learning, improved: result.improved, improvement: result.totalImprovement },
             });
           }
+
+          // Track self-correction pattern for emergence
+          await persistence.upsertPattern({
+            category: 'self_correction',
+            name: 'self_correction_event',
+            description: `CYNIC self-corrected judgment with ${result.totalImprovement}% improvement`,
+            confidence: 0.7,
+            sourceJudgments: [judgmentId || 'direct'],
+            tags: ['self_correction', 'emergence', 'meta_cognition'],
+            data: {
+              improvement: result.totalImprovement,
+              iterations: result.iterationCount,
+              originalScore: result.original?.Q,
+              refinedScore: result.final?.Q,
+            },
+          });
         } catch (e) {
           // Non-blocking
           console.error('Error storing refinement learnings:', e.message);
@@ -3568,11 +3653,24 @@ export function createEmergenceTool(judge, persistence = null) {
             );
             indicators.patternRecognition = Math.min(100, parseInt(patterns?.rows?.[0]?.count || 0) * 2);
 
-            // Self-correction: refinements done
-            indicators.selfCorrection = Math.min(100, (judge?.refinementCount || 0) * 10);
+            // Self-correction: refinements done (memory + persisted patterns)
+            const selfCorrectionPatterns = await persistence.query(
+              `SELECT COUNT(*) as count FROM patterns WHERE category = 'self_correction'`
+            );
+            const refinementPatterns = await persistence.query(
+              `SELECT COUNT(*) as count FROM patterns WHERE category = 'refinement'`
+            );
+            const persistedRefinements = parseInt(selfCorrectionPatterns?.rows?.[0]?.count || 0) +
+                                         parseInt(refinementPatterns?.rows?.[0]?.count || 0);
+            const memoryRefinements = judge?.refinementCount || 0;
+            indicators.selfCorrection = Math.min(100, (persistedRefinements + memoryRefinements) * 10);
 
-            // Goal persistence (based on session continuity)
-            indicators.goalPersistence = 50; // Baseline
+            // Goal persistence (based on session continuity + pattern frequency)
+            const highFreqPatterns = await persistence.query(
+              `SELECT COUNT(*) as count FROM patterns WHERE frequency >= 3`
+            );
+            const persistenceBonus = Math.min(30, parseInt(highFreqPatterns?.rows?.[0]?.count || 0) * 3);
+            indicators.goalPersistence = 50 + persistenceBonus; // Baseline + bonus for repeated patterns
 
             // Novel behavior (anomalies detected)
             const anomalies = await persistence.query(
