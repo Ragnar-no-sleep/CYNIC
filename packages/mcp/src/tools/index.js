@@ -55,14 +55,31 @@ export function createJudgeTool(judge, persistence = null, sessionManager = null
       const { item, context = {} } = params;
       if (!item) throw new Error('Missing required parameter: item');
 
+      // DEBUG: Log original item
+      console.log('[JUDGE DEBUG] Original item:', JSON.stringify(item).slice(0, 500));
+
       // Enrich item with metadata for richer judgment
       // This extracts sources, analyzes code/text, generates hashes, etc.
       const enrichedItem = enrichItem(item, context);
+
+      // DEBUG: Log enriched item (especially derivedScores)
+      console.log('[JUDGE DEBUG] Enriched derivedScores:', JSON.stringify(enrichedItem.derivedScores));
 
       // Use graph integration if available, otherwise direct judge
       const judgment = graphIntegration
         ? await graphIntegration.judgeWithGraph(enrichedItem, context)
         : judge.judge(enrichedItem, context);
+
+      // DEBUG: Log judgment result CULTURE scores
+      console.log('[JUDGE DEBUG] axiomScores.CULTURE:', judgment.axiomScores?.CULTURE);
+      console.log('[JUDGE DEBUG] dimensionScores CULTURE:', JSON.stringify({
+        AUTHENTICITY: judgment.dimensionScores?.AUTHENTICITY,
+        RELEVANCE: judgment.dimensionScores?.RELEVANCE,
+        NOVELTY: judgment.dimensionScores?.NOVELTY,
+        ALIGNMENT: judgment.dimensionScores?.ALIGNMENT,
+        IMPACT: judgment.dimensionScores?.IMPACT,
+        RESONANCE: judgment.dimensionScores?.RESONANCE,
+      }));
 
       // Generate fallback ID (used if persistence unavailable)
       let judgmentId = `jdg_${Date.now().toString(36)}`;
