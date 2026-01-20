@@ -24,3 +24,6 @@ export { UserLearningProfilesRepository } from './user-learning-profiles.js';
 
 // Phase 12: Triggers System
 export { TriggerRepository } from './triggers.js';
+
+// Phase 13: Discovery System
+export { DiscoveryRepository } from './discovery.js';

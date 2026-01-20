@@ -1229,9 +1229,14 @@ Actions:
 /**
  * Create ecosystem monitor tool definition
  * Tracks external sources: GitHub, Twitter (TODO), Web
+ * @param {Object} [options] - Options
+ * @param {Object} [options.judge] - CYNICJudge instance for commit analysis
+ * @param {Object} [options.persistence] - PersistenceManager for storing digests
  * @returns {Object} Tool definition
  */
-export function createEcosystemMonitorTool() {
+export function createEcosystemMonitorTool(options = {}) {
+  const { judge = null, persistence = null } = options;
+
   // Singleton monitor instance (created on first use)
   let monitorInstance;
 
@@ -1240,6 +1245,76 @@ export function createEcosystemMonitorTool() {
       monitorInstance = new EcosystemMonitor();
     }
     return monitorInstance;
+  };
+
+  /**
+   * Digest a single commit/update for learning
+   * @param {Object} update - Update from ecosystem monitor
+   * @returns {Promise<Object>} Digest result
+   */
+  const digestUpdate = async (update) => {
+    const content = `${update.title || ''}\n\n${update.description || ''}`;
+    const source = update.url || `${update.source}:${update.id}`;
+
+    // Extract patterns from commit message
+    const patterns = [];
+    const commitType = update.title?.match(/^(feat|fix|docs|chore|refactor|test|style|perf|ci|build)(\(.*?\))?:/i);
+    if (commitType) {
+      patterns.push({ type: 'commit_convention', value: commitType[1].toLowerCase() });
+    }
+
+    // Extract insights
+    const insights = [];
+    if (update.priority === 'CRITICAL' || update.priority === 'HIGH') {
+      insights.push({ importance: 'high', reason: `Priority: ${update.priority}` });
+    }
+    if (update.type === 'RELEASE') {
+      insights.push({ type: 'release', version: update.id });
+    }
+
+    const digest = {
+      id: `dig_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+      source,
+      sourceType: 'commit',
+      content: content.slice(0, 500),
+      patterns,
+      insights,
+      metadata: {
+        updateType: update.type,
+        priority: update.priority,
+        author: update.author,
+        repo: update.meta?.repo,
+        sha: update.meta?.sha,
+        timestamp: update.timestamp,
+      },
+      digestedAt: Date.now(),
+    };
+
+    // Store if persistence available
+    if (persistence?.storeDigest) {
+      try {
+        await persistence.storeDigest(digest);
+      } catch (e) {
+        // Non-blocking
+      }
+    }
+
+    // If judge available, create a quick judgment for pattern extraction
+    if (judge) {
+      try {
+        const judgment = await judge.judge({
+          type: 'commit',
+          content: content.slice(0, 200),
+          sources: [source],
+        });
+        digest.qScore = judgment.Q;
+        digest.verdict = judgment.verdict;
+      } catch (e) {
+        // Non-blocking
+      }
+    }
+
+    return digest;
   };
 
   return {
@@ -1253,13 +1328,15 @@ Actions:
 - updates: Get recent updates from cache
 - defaults: Register default Solana ecosystem sources
 - discover: Discover new relevant sources
-- status: Get monitor status`,
+- status: Get monitor status
+- analyze: Analyze a specific update (updateIndex required)
+- analyze_all: Analyze all unanalyzed updates (batch learning)`,
     inputSchema: {
       type: 'object',
       properties: {
         action: {
           type: 'string',
-          enum: ['track', 'untrack', 'sources', 'fetch', 'updates', 'defaults', 'discover', 'status'],
+          enum: ['track', 'untrack', 'sources', 'fetch', 'updates', 'defaults', 'discover', 'status', 'analyze', 'analyze_all'],
           description: 'Action to perform',
         },
         owner: {
@@ -1291,6 +1368,14 @@ Actions:
           enum: ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'INFO'],
           description: 'Minimum priority filter (for updates action)',
         },
+        updateIndex: {
+          type: 'number',
+          description: 'Index of update to analyze (for analyze action)',
+        },
+        autoAnalyze: {
+          type: 'boolean',
+          description: 'Automatically analyze updates after fetch (default false)',
+        },
       },
       required: ['action'],
     },
@@ -1304,6 +1389,8 @@ Actions:
         trackCommits = true,
         limit = 20,
         minPriority,
+        updateIndex,
+        autoAnalyze = false,
       } = params;
 
       const monitor = getMonitor();
@@ -1357,10 +1444,25 @@ Actions:
           if (sourceId) {
             // Fetch single source
             const result = await monitor.fetchSource(sourceId);
+
+            // Auto-analyze if enabled
+            let analyzed = 0;
+            if (autoAnalyze && result.success && result.updates?.length > 0) {
+              for (const update of result.updates.slice(0, 10)) {
+                try {
+                  await digestUpdate(update);
+                  analyzed++;
+                } catch (e) {
+                  // Non-blocking
+                }
+              }
+            }
+
             return {
               ...result,
+              analyzed: autoAnalyze ? analyzed : undefined,
               message: result.success
-                ? `*tail wag* Fetched ${result.updates?.length || 0} updates`
+                ? `*tail wag* Fetched ${result.updates?.length || 0} updates${autoAnalyze ? `, analyzed ${analyzed}` : ''}`
                 : `*head tilt* ${result.reason || result.error}`,
               timestamp: Date.now(),
             };
@@ -1369,13 +1471,27 @@ Actions:
             const results = await monitor.fetchAll();
             const summary = summarizeUpdates(results.updates);
 
+            // Auto-analyze if enabled
+            let analyzed = 0;
+            if (autoAnalyze && results.updates.length > 0) {
+              for (const update of results.updates.slice(0, 20)) {
+                try {
+                  await digestUpdate(update);
+                  analyzed++;
+                } catch (e) {
+                  // Non-blocking
+                }
+              }
+            }
+
             return {
               fetched: results.fetched,
               skipped: results.skipped,
               errors: results.errors,
               totalUpdates: results.updates.length,
+              analyzed: autoAnalyze ? analyzed : undefined,
               summary,
-              message: `*sniff* Fetched ${results.updates.length} updates from ${results.fetched} sources`,
+              message: `*sniff* Fetched ${results.updates.length} updates from ${results.fetched} sources${autoAnalyze ? `, analyzed ${analyzed}` : ''}`,
               timestamp: Date.now(),
             };
           }
@@ -1433,6 +1549,73 @@ Actions:
           return {
             ...status,
             message: `*nod* Monitoring ${status.sources.length} sources`,
+            timestamp: Date.now(),
+          };
+        }
+
+        case 'analyze': {
+          if (updateIndex === undefined) {
+            throw new Error('updateIndex required for analyze action');
+          }
+
+          const updates = monitor.getRecentUpdates({ limit: 100 });
+          if (updateIndex < 0 || updateIndex >= updates.length) {
+            throw new Error(`Invalid updateIndex: ${updateIndex} (have ${updates.length} updates)`);
+          }
+
+          const update = updates[updateIndex];
+          const digest = await digestUpdate(update);
+
+          return {
+            digest,
+            update: {
+              type: update.type,
+              title: update.title,
+              url: update.url,
+            },
+            message: `*sniff* Analyzed commit: ${digest.verdict || 'digested'}`,
+            timestamp: Date.now(),
+          };
+        }
+
+        case 'analyze_all': {
+          const updates = monitor.getRecentUpdates({ limit: limit || 50 });
+          const results = {
+            analyzed: 0,
+            skipped: 0,
+            digests: [],
+            byVerdict: {},
+            byType: {},
+          };
+
+          for (const update of updates) {
+            try {
+              const digest = await digestUpdate(update);
+              results.analyzed++;
+              results.digests.push({
+                id: digest.id,
+                source: digest.source,
+                qScore: digest.qScore,
+                verdict: digest.verdict,
+              });
+
+              // Track verdicts
+              if (digest.verdict) {
+                results.byVerdict[digest.verdict] = (results.byVerdict[digest.verdict] || 0) + 1;
+              }
+
+              // Track types
+              const commitType = digest.patterns?.find(p => p.type === 'commit_convention')?.value || 'other';
+              results.byType[commitType] = (results.byType[commitType] || 0) + 1;
+            } catch (e) {
+              results.skipped++;
+            }
+          }
+
+          return {
+            ...results,
+            total: updates.length,
+            message: `*tail wag* Analyzed ${results.analyzed} commits, learned ${Object.keys(results.byType).length} patterns`,
             timestamp: Date.now(),
           };
         }
@@ -3935,6 +4118,165 @@ export function createCodebaseTool(options = {}) {
 }
 
 /**
+ * Create discovery tool definition
+ * Discovers MCP servers, Claude Code plugins, and CYNIC nodes
+ * @param {Object} discovery - DiscoveryService instance
+ * @returns {Object} Tool definition
+ */
+export function createDiscoveryTool(discovery) {
+  return {
+    name: 'brain_discovery',
+    description: `Discover MCP servers, Claude Code plugins, and CYNIC nodes from repositories or endpoints.
+Actions:
+- scan_repo: Scan a GitHub repo for .mcp.json and plugin.json
+- mcp_servers: List discovered MCP servers
+- plugins: List discovered plugins
+- nodes: List discovered CYNIC nodes
+- register_node: Register a new CYNIC node
+- discover_node: Probe an endpoint to discover a node
+- health_check: Run health checks on all nodes
+- stats: Get discovery statistics`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['scan_repo', 'mcp_servers', 'plugins', 'nodes', 'register_node', 'discover_node', 'health_check', 'stats'],
+          description: 'Action to perform',
+        },
+        owner: { type: 'string', description: 'GitHub repo owner (for scan_repo)' },
+        repo: { type: 'string', description: 'GitHub repo name (for scan_repo)' },
+        endpoint: { type: 'string', description: 'Node endpoint URL (for register_node, discover_node)' },
+        nodeName: { type: 'string', description: 'Node name (for register_node)' },
+        status: { type: 'string', description: 'Filter by status' },
+        limit: { type: 'number', description: 'Max results (default 50)' },
+      },
+      required: ['action'],
+    },
+    handler: async (params) => {
+      const { action, owner, repo, endpoint, nodeName, status, limit = 50 } = params;
+
+      if (!discovery) {
+        return {
+          error: 'Discovery service not available',
+          hint: 'Ensure DiscoveryService is initialized',
+          timestamp: Date.now(),
+        };
+      }
+
+      switch (action) {
+        case 'scan_repo': {
+          if (!owner || !repo) {
+            return { error: 'owner and repo required for scan_repo' };
+          }
+          const results = await discovery.scanRepo(owner, repo);
+          return {
+            action: 'scan_repo',
+            ...results,
+            message: `*sniff* Scanned ${owner}/${repo}: ${results.mcpServers.length} MCP servers, ${results.plugin ? 1 : 0} plugin.`,
+            timestamp: Date.now(),
+          };
+        }
+
+        case 'mcp_servers': {
+          const servers = await discovery.getMcpServers({ status, limit });
+          return {
+            action: 'mcp_servers',
+            servers,
+            total: servers.length,
+            message: `*ears perk* Found ${servers.length} MCP servers.`,
+            timestamp: Date.now(),
+          };
+        }
+
+        case 'plugins': {
+          const plugins = await discovery.getPlugins({ status, limit });
+          return {
+            action: 'plugins',
+            plugins,
+            total: plugins.length,
+            message: `*tail wag* Found ${plugins.length} plugins.`,
+            timestamp: Date.now(),
+          };
+        }
+
+        case 'nodes': {
+          const nodes = await discovery.getNodes({ status, limit });
+          return {
+            action: 'nodes',
+            nodes,
+            total: nodes.length,
+            message: `*nod* Found ${nodes.length} CYNIC nodes.`,
+            timestamp: Date.now(),
+          };
+        }
+
+        case 'register_node': {
+          if (!endpoint) {
+            return { error: 'endpoint required for register_node' };
+          }
+          const node = await discovery.registerNode({ endpoint, nodeName });
+          return {
+            action: 'register_node',
+            node,
+            message: `*tail wag* Registered node at ${endpoint}.`,
+            timestamp: Date.now(),
+          };
+        }
+
+        case 'discover_node': {
+          if (!endpoint) {
+            return { error: 'endpoint required for discover_node' };
+          }
+          const node = await discovery.discoverNode(endpoint);
+          if (node) {
+            return {
+              action: 'discover_node',
+              node,
+              message: `*ears perk* Discovered node at ${endpoint}.`,
+              timestamp: Date.now(),
+            };
+          }
+          return {
+            action: 'discover_node',
+            error: 'Node not reachable or not a CYNIC node',
+            endpoint,
+            timestamp: Date.now(),
+          };
+        }
+
+        case 'health_check': {
+          const results = await discovery.runNodeHealthChecks();
+          return {
+            action: 'health_check',
+            ...results,
+            message: `*sniff* Health check: ${results.healthy}/${results.checked} healthy.`,
+            timestamp: Date.now(),
+          };
+        }
+
+        case 'stats': {
+          const stats = await discovery.getStats();
+          return {
+            action: 'stats',
+            stats,
+            message: `*nod* ${stats.mcp_servers || 0} MCP servers, ${stats.plugins || 0} plugins, ${stats.nodes || 0} nodes.`,
+            timestamp: Date.now(),
+          };
+        }
+
+        default:
+          return {
+            error: `Unknown action: ${action}`,
+            validActions: ['scan_repo', 'mcp_servers', 'plugins', 'nodes', 'register_node', 'discover_node', 'health_check', 'stats'],
+            timestamp: Date.now(),
+          };
+      }
+    },
+  };
+}
+
+/**
  * Create all tools
  * @param {Object} options - Tool options
  * @param {Object} options.judge - CYNICJudge instance
@@ -3949,6 +4291,7 @@ export function createCodebaseTool(options = {}) {
  * @param {Object} [options.metrics] - MetricsService instance for monitoring
  * @param {Object} [options.graphIntegration] - JudgmentGraphIntegration instance for graph edges
  * @param {Object} [options.codebaseOptions] - Options for code analyzer (rootPath, etc)
+ * @param {Object} [options.discovery] - DiscoveryService instance for MCP/plugin/node discovery
  * @param {Function} [options.onJudgment] - Callback when judgment is completed (for SSE broadcast)
  * @returns {Object} All tools keyed by name
  */
@@ -3968,6 +4311,7 @@ export function createAllTools(options = {}) {
     graphIntegration = null, // JudgmentGraphIntegration for graph edges
     codebaseOptions = {},
     lspOptions = {}, // LSP service options (rootPath, extensions, cacheTTL)
+    discovery = null, // DiscoveryService for MCP/plugin/node discovery
     onJudgment = null, // SSE broadcast callback
   } = options;
 
@@ -4006,7 +4350,8 @@ export function createAllTools(options = {}) {
     createSessionEndTool(sessionManager),
     createDocsTool(librarian, persistence),
     createEcosystemTool(ecosystem),
-    createEcosystemMonitorTool(), // External sources: GitHub, Twitter, Web
+    createEcosystemMonitorTool({ judge, persistence }), // External sources: GitHub, Twitter, Web + auto-analysis
+    createDiscoveryTool(discovery), // MCP servers, plugins, CYNIC nodes
     createPoJChainTool(pojChainManager, persistence),
     createTraceTool(persistence, pojChainManager),
     createIntegratorTool(integrator),
@@ -4065,6 +4410,7 @@ export default {
   createSessionEndTool,
   createDocsTool,
   createEcosystemTool,
+  createDiscoveryTool,
   createPoJChainTool,
   createTraceTool,
   createIntegratorTool,

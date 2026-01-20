@@ -39,6 +39,7 @@ import { SessionManager } from './session-manager.js';
 import { PoJChainManager } from './poj-chain-manager.js';
 import { LibrarianService } from './librarian-service.js';
 import { AuthService } from './auth-service.js';
+import { DiscoveryService } from './discovery-service.js';
 
 /**
  * MCP Server for CYNIC
@@ -125,6 +126,9 @@ export class MCPServer {
     // Collective Pack - All 11 Dogs (Sefirot) working as one
     // This is the unified collective consciousness system
     this.collective = options.collective || null;
+
+    // Discovery service for MCP servers, plugins, and CYNIC nodes
+    this.discovery = options.discovery || null;
 
     // Stdio streams (for stdio mode)
     this.input = options.input || process.stdin;
@@ -213,6 +217,16 @@ export class MCPServer {
       });
       await this.integrator.init();
       console.error('   Integrator: ready');
+    }
+
+    // Initialize Discovery service for MCP servers, plugins, and CYNIC nodes
+    if (!this.discovery) {
+      this.discovery = new DiscoveryService(this.persistence, {
+        autoHealthCheck: true, // Enable periodic health checks
+        githubToken: process.env.GITHUB_TOKEN,
+      });
+      await this.discovery.init();
+      console.error('   Discovery: ready');
     }
 
     // Initialize Metrics service for monitoring
@@ -306,6 +320,7 @@ export class MCPServer {
       integrator: this.integrator,
       metrics: this.metrics,
       graphIntegration: this.graphIntegration, // Graph-Judgment connection
+      discovery: this.discovery,       // MCP/Plugin/Node discovery
       // SSE broadcast callback for real-time dashboard updates
       onJudgment: (judgment) => this._broadcastSSEEvent('judgment', judgment),
     });
@@ -1042,6 +1057,15 @@ export class MCPServer {
         await this.pojChainManager.close();
       } catch (e) {
         console.error('Error closing PoJ chain:', e.message);
+      }
+    }
+
+    // Stop discovery health checks
+    if (this.discovery) {
+      try {
+        await this.discovery.shutdown();
+      } catch (e) {
+        console.error('Error shutting down discovery:', e.message);
       }
     }
 
