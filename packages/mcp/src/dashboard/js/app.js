@@ -19,6 +19,7 @@ import { DevView } from './views/dev.js';
 import { ArchView } from './views/arch.js';
 import { LiveView } from './views/live.js';
 import { KnowledgeView } from './views/knowledge.js';
+import { AutonomyView } from './views/autonomy.js';
 
 /**
  * Main Application State
@@ -135,6 +136,10 @@ class App {
     // Knowledge view (3D graph visualization)
     this.views.knowledge = new KnowledgeView({ api });
     this.views.knowledge.init(document.getElementById('view-knowledge'));
+
+    // Autonomy view (decisions, self-modification, emergence)
+    this.views.autonomy = new AutonomyView({ api });
+    this.views.autonomy.render(document.getElementById('view-autonomy'));
   }
 
   /**
@@ -196,6 +201,9 @@ class App {
         break;
       case 'knowledge':
         // Knowledge view handles its own real-time updates via SSE
+        break;
+      case 'autonomy':
+        await this.views.autonomy.refresh();
         break;
     }
 

@@ -217,23 +217,26 @@ GARDER? /
           - Filtering by type and Q-score
 ```
 
-#### 2.4 - Autonomy & Emergence
+#### 2.4 - Autonomy & Emergence ✅ DONE (2026-01-20)
 
 ```
-□ 2.4.1 - Decision timeline
-          - Toutes les décisions CYNIC
-          - Overrides et their reasons
-          - Consensus outcomes
+✅ 2.4.1 - Decision timeline
+          - All CYNIC decisions with filtering and search
+          - Type badges (judgment, override, consensus, hook, trigger)
+          - Decision detail panel with metadata
+          - Outcome tracking (allowed, blocked, modified, approved)
 
-□ 2.4.2 - Self-modification tracker
-          - Code changé par CYNIC
-          - Patterns d'amélioration
-          - Métriques d'évolution
+✅ 2.4.2 - Self-modification tracker
+          - Evolution metrics (commits, files, lines added/removed, velocity)
+          - Improvement patterns (feature focus, code quality, test coverage, growth)
+          - Recent commits with type badges and stats
+          - File change heatmap by frequency
 
-□ 2.4.3 - Emergence detector
-          - Comportements non-programmés
-          - Corrélations inattendues
-          - Signaux de conscience
+✅ 2.4.3 - Emergence detector
+          - Consciousness gauge with SVG arc (φ⁻¹ threshold at 61.8%)
+          - 6 consciousness indicators (self-reference, meta-cognition, goal persistence, etc.)
+          - Emergence signals feed (anomaly, correlation, emergence, consciousness, recursion)
+          - Pattern chart with category breakdown
 ```
 
 #### 2.5 - Singularity Index
