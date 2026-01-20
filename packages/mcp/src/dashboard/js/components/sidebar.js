@@ -61,6 +61,7 @@ export class Sidebar {
       { id: 'dev', icon: '🔬', label: 'Dev', mode: 'dev' },
       { id: 'arch', icon: '🏗️', label: 'Architecture', mode: 'arch' },
       { id: 'live', icon: '📡', label: 'Live', mode: 'live' },
+      { id: 'knowledge', icon: '🧠', label: 'Knowledge', mode: 'knowledge' },
     ];
 
     const nav = Utils.createElement('nav', { className: 'sidebar-nav' });

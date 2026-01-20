@@ -18,6 +18,7 @@ import { OperatorView } from './views/operator.js';
 import { DevView } from './views/dev.js';
 import { ArchView } from './views/arch.js';
 import { LiveView } from './views/live.js';
+import { KnowledgeView } from './views/knowledge.js';
 
 /**
  * Main Application State
@@ -130,6 +131,10 @@ class App {
     // Live view
     this.views.live = new LiveView();
     this.views.live.init(document.getElementById('view-live'));
+
+    // Knowledge view (3D graph visualization)
+    this.views.knowledge = new KnowledgeView({ api });
+    this.views.knowledge.init(document.getElementById('view-knowledge'));
   }
 
   /**
@@ -188,6 +193,9 @@ class App {
         break;
       case 'live':
         // Live view handles its own real-time updates via SSE
+        break;
+      case 'knowledge':
+        // Knowledge view handles its own real-time updates via SSE
         break;
     }
 
