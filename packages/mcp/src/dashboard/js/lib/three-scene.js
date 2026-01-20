@@ -3,6 +3,9 @@
  * 3D visualization for Architecture mode
  */
 
+// PHI for proportions
+const PHI = 1.618033988749895;
+
 export class ThreeScene {
   constructor(containerId) {
     this.containerId = containerId;
@@ -17,6 +20,12 @@ export class ThreeScene {
     // State
     this.isInitialized = false;
     this.selectedObject = null;
+
+    // Event flow particles
+    this.eventParticles = [];
+    this.nodePositions = {};  // sefirot name -> position
+    this.nodeMeshes = {};     // sefirot name -> mesh
+    this.nodeStats = {};      // sefirot name -> { events, patterns, warnings }
 
     // Event callbacks
     this.onObjectClick = null;
@@ -215,7 +224,155 @@ export class ThreeScene {
       }
     });
 
+    // Animate event particles
+    this._updateEventParticles();
+
     this.renderer.render(this.scene, this.camera);
+  }
+
+  /**
+   * Update event flow particles
+   */
+  _updateEventParticles() {
+    const toRemove = [];
+
+    for (let i = 0; i < this.eventParticles.length; i++) {
+      const particle = this.eventParticles[i];
+      particle.progress += particle.speed;
+
+      if (particle.progress >= 1) {
+        // Particle reached destination - trigger arrival effect
+        this._onParticleArrived(particle);
+        toRemove.push(i);
+        this.scene.remove(particle.mesh);
+        particle.mesh.geometry.dispose();
+        particle.mesh.material.dispose();
+      } else {
+        // Update position along path
+        const t = particle.progress;
+        const eased = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; // Ease in-out quad
+
+        particle.mesh.position.lerpVectors(particle.from, particle.to, eased);
+
+        // Add arc motion (parabola)
+        const arcHeight = 0.5 * (1 - Math.pow(2 * t - 1, 2));
+        particle.mesh.position.y += arcHeight;
+
+        // Scale pulsing
+        const pulse = 1 + 0.2 * Math.sin(t * Math.PI * 4);
+        particle.mesh.scale.setScalar(pulse);
+
+        // Fade out near end
+        if (t > 0.8) {
+          particle.mesh.material.opacity = (1 - t) * 5;
+        }
+      }
+    }
+
+    // Remove completed particles (reverse order)
+    for (let i = toRemove.length - 1; i >= 0; i--) {
+      this.eventParticles.splice(toRemove[i], 1);
+    }
+  }
+
+  /**
+   * Particle arrival effect
+   */
+  _onParticleArrived(particle) {
+    const targetMesh = this.nodeMeshes[particle.targetSefirot];
+    if (targetMesh && targetMesh.material) {
+      // Pulse the target node
+      const originalEmissive = targetMesh.material.emissiveIntensity;
+      targetMesh.material.emissiveIntensity = 0.8;
+      setTimeout(() => {
+        targetMesh.material.emissiveIntensity = originalEmissive;
+      }, 200);
+    }
+  }
+
+  /**
+   * Trigger event flow between two Sefirot nodes
+   * @param {string} fromSefirot - Source Sefirot name
+   * @param {string} toSefirot - Target Sefirot name
+   * @param {string} type - Event type (judgment, pattern, block, warning)
+   */
+  triggerEventFlow(fromSefirot, toSefirot, type = 'event') {
+    const fromPos = this.nodePositions[fromSefirot];
+    const toPos = this.nodePositions[toSefirot];
+
+    if (!fromPos || !toPos) return;
+
+    // Event colors by type
+    const colors = {
+      judgment: 0x4ecdc4,  // Teal
+      pattern: 0xf093fb,   // Pink
+      block: 0xffd93d,     // Gold
+      warning: 0xff6b6b,   // Red
+      event: 0x00ff88,     // Green
+    };
+
+    const color = colors[type] || colors.event;
+
+    // Create particle
+    const geometry = new THREE.SphereGeometry(0.08, 8, 8);
+    const material = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 1,
+    });
+
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.copy(new THREE.Vector3(fromPos.x, fromPos.y, fromPos.z));
+
+    this.scene.add(mesh);
+
+    this.eventParticles.push({
+      mesh,
+      from: new THREE.Vector3(fromPos.x, fromPos.y, fromPos.z),
+      to: new THREE.Vector3(toPos.x, toPos.y, toPos.z),
+      progress: 0,
+      speed: 0.02 + Math.random() * 0.01, // Variable speed
+      type,
+      targetSefirot: toSefirot,
+    });
+  }
+
+  /**
+   * Update node health state (active/busy/warning)
+   * @param {string} sefirot - Sefirot name
+   * @param {string} state - 'active', 'busy', 'warning', 'inactive'
+   */
+  updateNodeState(sefirot, state) {
+    const mesh = this.nodeMeshes[sefirot];
+    if (!mesh || !mesh.material) return;
+
+    const stateColors = {
+      active: mesh.userData.originalColor || 0x4ecdc4,
+      busy: 0xffd93d,     // Gold (processing)
+      warning: 0xff6b6b,  // Red
+      inactive: 0x444444, // Gray
+    };
+
+    mesh.material.color.setHex(stateColors[state] || stateColors.active);
+    mesh.material.emissive.setHex(stateColors[state] || stateColors.active);
+    mesh.material.emissiveIntensity = state === 'busy' ? 0.4 : 0.1;
+  }
+
+  /**
+   * Update node stats badge
+   * @param {string} sefirot - Sefirot name
+   * @param {object} stats - { events, patterns, warnings }
+   */
+  updateNodeStats(sefirot, stats) {
+    this.nodeStats[sefirot] = stats;
+    // Stats display handled by UI overlay
+  }
+
+  /**
+   * Get node stats for display
+   */
+  getNodeStats() {
+    return this.nodeStats;
   }
 
   /**
@@ -281,6 +438,14 @@ export class ThreeScene {
       if (conn.material) conn.material.dispose();
     });
     this.connections = [];
+
+    // Remove event particles
+    this.eventParticles.forEach(p => {
+      this.scene.remove(p.mesh);
+      if (p.mesh.geometry) p.mesh.geometry.dispose();
+      if (p.mesh.material) p.mesh.material.dispose();
+    });
+    this.eventParticles = [];
   }
 
   /**
@@ -452,6 +617,9 @@ export class ThreeScene {
    */
   loadSefirotTree(dogs) {
     this.clear();
+    this.nodePositions = {};
+    this.nodeMeshes = {};
+    this.nodeStats = {};
 
     if (!dogs || dogs.length === 0) return;
 
@@ -485,31 +653,51 @@ export class ThreeScene {
       Malkhut: { x: 0, y: -3, z: 0 },    // Bottom (Kingdom)
     };
 
+    // Store positions for event flow
+    this.nodePositions = { ...positions };
+
     // Create nodes for each dog
     for (const dog of dogs) {
       const pos = positions[dog.sefirot] || { x: 0, y: 0, z: 0 };
       const color = colors[dog.sefirot] || 0xffffff;
 
       // Add sphere for the dog
-      this.addSphere(pos, color, {
+      const mesh = this.addSphere(pos, color, {
         name: dog.name,
         type: 'dog',
         sefirot: dog.sefirot,
         role: dog.role,
+        originalColor: color,
       }, dog.name === 'CYNIC' ? 0.7 : 0.4);
+
+      // Store mesh reference for state updates
+      this.nodeMeshes[dog.sefirot] = mesh;
+
+      // Initialize stats
+      this.nodeStats[dog.sefirot] = { events: 0, patterns: 0, warnings: 0 };
 
       // Add label below
       this.addLabel(dog.name, new THREE.Vector3(pos.x, pos.y - 0.6, pos.z), color);
     }
 
-    // Add connections (simplified tree)
+    // Sefirot tree connections (paths of the Tree of Life)
     const connections = [
+      // Upper triad
       ['Keter', 'Chochmah'], ['Keter', 'Binah'],
+      ['Chochmah', 'Binah'],
+      // Knowledge bridge
       ['Chochmah', 'Daat'], ['Binah', 'Daat'],
+      // Middle pillars
       ['Chochmah', 'Chesed'], ['Binah', 'Gevurah'],
+      ['Chesed', 'Gevurah'],
+      // Central column
       ['Chesed', 'Tiferet'], ['Gevurah', 'Tiferet'],
+      ['Daat', 'Tiferet'],
+      // Lower connections
       ['Tiferet', 'Netzach'], ['Tiferet', 'Hod'],
+      ['Netzach', 'Hod'],
       ['Netzach', 'Yesod'], ['Hod', 'Yesod'],
+      // Foundation to Kingdom
       ['Yesod', 'Malkhut'],
     ];
 

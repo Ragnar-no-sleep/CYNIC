@@ -1115,3 +1115,105 @@
 .arch-codebase-tooltip-name {
   font-weight: 600;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   SEFIROT LIVE STATS PANEL
+   ═══════════════════════════════════════════════════════════ */
+
+.arch-sefirot-stats {
+  position: absolute;
+  top: var(--space-md);
+  right: var(--space-md);
+  width: 220px;
+  padding: var(--space-md);
+  background: rgba(18, 18, 26, 0.95);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  backdrop-filter: blur(8px);
+  font-size: var(--font-size-sm);
+  z-index: 10;
+}
+
+.arch-sefirot-stats .stats-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-sm);
+  padding-bottom: var(--space-sm);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.arch-sefirot-stats .stats-title {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.arch-sefirot-stats .stats-badge {
+  font-size: var(--font-size-xs);
+  color: var(--accent-cyan);
+  padding: 2px 8px;
+  background: rgba(0, 212, 170, 0.15);
+  border-radius: var(--border-radius-sm);
+}
+
+.arch-sefirot-stats .stats-dogs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.arch-sefirot-stats .stats-dog-item {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: var(--space-xs);
+  align-items: center;
+  padding: var(--space-xs) 0;
+}
+
+.arch-sefirot-stats .stats-dog-name {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.arch-sefirot-stats .stats-dog-sefirot {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.arch-sefirot-stats .stats-dog-counts {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.arch-sefirot-stats .stats-empty {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  text-align: center;
+  padding: var(--space-sm);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   DEMO BUTTON
+   ═══════════════════════════════════════════════════════════ */
+
+.arch-demo-btn {
+  position: absolute;
+  bottom: var(--space-md);
+  right: var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  background: rgba(18, 18, 26, 0.9);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  z-index: 10;
+}
+
+.arch-demo-btn:hover {
+  background: var(--accent-cyan);
+  color: var(--bg-primary);
+  border-color: var(--accent-cyan);
+}

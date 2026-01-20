@@ -144,6 +144,10 @@ export class API {
     return () => this.listeners.get(event)?.delete(callback);
   }
 
+  off(event, callback) {
+    this.listeners.get(event)?.delete(callback);
+  }
+
   _emit(event, data) {
     this.listeners.get(event)?.forEach(cb => {
       try {

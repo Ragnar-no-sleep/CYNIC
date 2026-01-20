@@ -9,6 +9,21 @@ import { ThreeScene } from '../lib/three-scene.js';
 import { CodebaseGraphData, CodebaseNodeType, CodebaseColors } from '../lib/codebase-graph-data.js';
 import { CodebaseGraphScene } from '../lib/codebase-graph-scene.js';
 
+// Map dog names to Sefirot for event flow
+const DOG_TO_SEFIROT = {
+  cynic: 'Keter',
+  sage: 'Chochmah',
+  analyst: 'Binah',
+  scholar: 'Daat',
+  architect: 'Chesed',
+  guardian: 'Gevurah',
+  oracle: 'Tiferet',
+  scout: 'Netzach',
+  deployer: 'Hod',
+  janitor: 'Yesod',
+  cartographer: 'Malkhut',
+};
+
 export class ArchView {
   constructor(options = {}) {
     this.api = options.api;
@@ -27,6 +42,19 @@ export class ArchView {
     // UI state
     this.breadcrumbPath = ['CYNIC'];
     this.isLoading = false;
+
+    // Event flow stats
+    this.dogStats = {};
+    for (const dog of Object.keys(DOG_TO_SEFIROT)) {
+      this.dogStats[dog] = { events: 0, patterns: 0, warnings: 0 };
+    }
+
+    // SSE event handlers bound
+    this._boundEventHandlers = {
+      agent: (data) => this._handleAgentEvent(data),
+      judgment: (data) => this._handleJudgmentEvent(data),
+      block: (data) => this._handleBlockEvent(data),
+    };
   }
 
   /**
@@ -52,8 +80,197 @@ export class ArchView {
     // Initialize scenes
     this._initScenes();
 
+    // Subscribe to SSE events for live animation
+    this._subscribeToEvents();
+
     // Load initial data
     this._loadSefirotTree();
+  }
+
+  /**
+   * Subscribe to SSE events for live Sefirot animation
+   */
+  _subscribeToEvents() {
+    if (!this.api) return;
+
+    // Subscribe to agent events (dog activity)
+    this.api.on('agent', this._boundEventHandlers.agent);
+
+    // Subscribe to judgments
+    this.api.on('judgment', this._boundEventHandlers.judgment);
+
+    // Subscribe to blocks
+    this.api.on('block', this._boundEventHandlers.block);
+  }
+
+  /**
+   * Unsubscribe from SSE events
+   */
+  _unsubscribeFromEvents() {
+    if (!this.api) return;
+
+    this.api.off('agent', this._boundEventHandlers.agent);
+    this.api.off('judgment', this._boundEventHandlers.judgment);
+    this.api.off('block', this._boundEventHandlers.block);
+  }
+
+  /**
+   * Handle agent event - triggers event flow animation
+   */
+  _handleAgentEvent(data) {
+    if (this.currentView !== 'sefirot' || !this.sefirotScene) return;
+
+    const { from, to, type } = data;
+    const fromSefirot = DOG_TO_SEFIROT[from?.toLowerCase()];
+    const toSefirot = DOG_TO_SEFIROT[to?.toLowerCase()];
+
+    if (fromSefirot && toSefirot) {
+      this.sefirotScene.triggerEventFlow(fromSefirot, toSefirot, type || 'event');
+
+      // Update stats
+      const toDog = to?.toLowerCase();
+      if (this.dogStats[toDog]) {
+        if (type === 'pattern') this.dogStats[toDog].patterns++;
+        else if (type === 'warning') this.dogStats[toDog].warnings++;
+        else this.dogStats[toDog].events++;
+        this._updateSefirotStats();
+      }
+    }
+  }
+
+  /**
+   * Handle judgment event - animate from Oracle to CYNIC
+   */
+  _handleJudgmentEvent(data) {
+    if (this.currentView !== 'sefirot' || !this.sefirotScene) return;
+
+    // Judgments flow from Oracle (Tiferet) up to CYNIC (Keter)
+    this.sefirotScene.triggerEventFlow('Tiferet', 'Keter', 'judgment');
+
+    // Update Oracle stats
+    this.dogStats.oracle = this.dogStats.oracle || { events: 0, patterns: 0, warnings: 0 };
+    this.dogStats.oracle.events++;
+    this._updateSefirotStats();
+  }
+
+  /**
+   * Handle block event - animate chain formation
+   */
+  _handleBlockEvent(data) {
+    if (this.currentView !== 'sefirot' || !this.sefirotScene) return;
+
+    // Block creation flows from Yesod (Janitor) to Malkhut (Cartographer)
+    this.sefirotScene.triggerEventFlow('Yesod', 'Malkhut', 'block');
+
+    // Update Janitor stats
+    this.dogStats.janitor = this.dogStats.janitor || { events: 0, patterns: 0, warnings: 0 };
+    this.dogStats.janitor.events++;
+    this._updateSefirotStats();
+  }
+
+  /**
+   * Trigger a demo event flow (for testing)
+   */
+  triggerDemoFlow() {
+    if (!this.sefirotScene) return;
+
+    // Simulate event flowing through the tree
+    const flows = [
+      ['Keter', 'Chochmah', 'event'],
+      ['Chochmah', 'Daat', 'pattern'],
+      ['Binah', 'Gevurah', 'warning'],
+      ['Tiferet', 'Yesod', 'judgment'],
+      ['Yesod', 'Malkhut', 'block'],
+    ];
+
+    flows.forEach(([from, to, type], i) => {
+      setTimeout(() => {
+        this.sefirotScene.triggerEventFlow(from, to, type);
+
+        // Update demo stats
+        const toDog = Object.keys(DOG_TO_SEFIROT).find(k => DOG_TO_SEFIROT[k] === to);
+        if (toDog && this.dogStats[toDog]) {
+          if (type === 'pattern') this.dogStats[toDog].patterns++;
+          else if (type === 'warning') this.dogStats[toDog].warnings++;
+          else this.dogStats[toDog].events++;
+          this._updateSefirotStats();
+        }
+      }, i * 300);
+    });
+  }
+
+  /**
+   * Create Sefirot stats panel (live metrics per dog)
+   */
+  _createSefirotStatsPanel() {
+    const panel = Utils.createElement('div', {
+      className: 'arch-sefirot-stats',
+      id: 'arch-sefirot-stats',
+    });
+
+    // Active dogs list (top 5 by events)
+    const header = Utils.createElement('div', { className: 'stats-header' }, [
+      Utils.createElement('span', { className: 'stats-title' }, ['🐕 Live Activity']),
+      Utils.createElement('span', { className: 'stats-badge', id: 'stats-total' }, ['0 events']),
+    ]);
+
+    const dogsList = Utils.createElement('div', { className: 'stats-dogs', id: 'stats-dogs-list' });
+
+    panel.appendChild(header);
+    panel.appendChild(dogsList);
+
+    return panel;
+  }
+
+  /**
+   * Update Sefirot stats display
+   */
+  _updateSefirotStats() {
+    const totalEl = document.getElementById('stats-total');
+    const listEl = document.getElementById('stats-dogs-list');
+    if (!totalEl || !listEl) return;
+
+    // Calculate totals
+    let total = 0;
+    const dogEntries = [];
+    for (const [dog, stats] of Object.entries(this.dogStats)) {
+      const count = stats.events + stats.patterns + stats.warnings;
+      total += count;
+      if (count > 0) {
+        dogEntries.push({ dog, ...stats, total: count });
+      }
+    }
+
+    // Update total
+    totalEl.textContent = `${total} event${total !== 1 ? 's' : ''}`;
+
+    // Sort by total and take top 6
+    dogEntries.sort((a, b) => b.total - a.total);
+    const topDogs = dogEntries.slice(0, 6);
+
+    // Render list
+    Utils.clearElement(listEl);
+    for (const entry of topDogs) {
+      const sefirot = DOG_TO_SEFIROT[entry.dog];
+      const item = Utils.createElement('div', { className: 'stats-dog-item' }, [
+        Utils.createElement('span', { className: 'stats-dog-name' }, [
+          entry.dog.charAt(0).toUpperCase() + entry.dog.slice(1),
+        ]),
+        Utils.createElement('span', { className: 'stats-dog-sefirot' }, [sefirot]),
+        Utils.createElement('span', { className: 'stats-dog-counts' }, [
+          entry.events > 0 ? `📥${entry.events}` : '',
+          entry.patterns > 0 ? ` 🔮${entry.patterns}` : '',
+          entry.warnings > 0 ? ` ⚠️${entry.warnings}` : '',
+        ].filter(Boolean).join('')),
+      ]);
+      listEl.appendChild(item);
+    }
+
+    if (topDogs.length === 0) {
+      listEl.appendChild(Utils.createElement('div', { className: 'stats-empty' }, [
+        'No activity yet. Click "Demo Flow" to test.',
+      ]));
+    }
   }
 
   /**
@@ -164,11 +381,24 @@ export class ArchView {
     const legend = Utils.createElement('div', { className: 'arch-legend', id: 'arch-legend' });
     this._renderLegend(legend, 'sefirot');
 
+    // Sefirot stats panel (live metrics per dog)
+    const statsPanel = this._createSefirotStatsPanel();
+
+    // Demo button (triggers test event flow)
+    const demoBtn = Utils.createElement('button', {
+      className: 'arch-demo-btn',
+      id: 'arch-demo-btn',
+      title: 'Trigger demo event flow',
+      onClick: () => this.triggerDemoFlow(),
+    }, ['✨ Demo Flow']);
+
     rightPanel.appendChild(viewToggle);
     rightPanel.appendChild(sefirotCanvas);
     rightPanel.appendChild(codebaseCanvas);
     rightPanel.appendChild(navButtons);
+    rightPanel.appendChild(statsPanel);
     rightPanel.appendChild(legend);
+    rightPanel.appendChild(demoBtn);
 
     return rightPanel;
   }
@@ -210,16 +440,22 @@ export class ArchView {
     const sefirotCanvas = document.getElementById('arch-canvas-sefirot');
     const codebaseCanvas = document.getElementById('arch-canvas-codebase');
     const navButtons = document.getElementById('arch-nav-buttons');
+    const statsPanel = document.getElementById('arch-sefirot-stats');
+    const demoBtn = document.getElementById('arch-demo-btn');
 
     if (view === 'sefirot') {
       sefirotCanvas.style.display = 'block';
       codebaseCanvas.style.display = 'none';
       navButtons.style.display = 'none';
+      if (statsPanel) statsPanel.style.display = 'block';
+      if (demoBtn) demoBtn.style.display = 'block';
       this._loadSefirotTree();
     } else {
       sefirotCanvas.style.display = 'none';
       codebaseCanvas.style.display = 'block';
       navButtons.style.display = 'flex';
+      if (statsPanel) statsPanel.style.display = 'none';
+      if (demoBtn) demoBtn.style.display = 'none';
 
       // Initialize codebase scene if needed
       if (!this.codebaseScene.isInitialized) {
@@ -873,6 +1109,9 @@ export class ArchView {
    * Cleanup
    */
   destroy() {
+    // Unsubscribe from SSE events
+    this._unsubscribeFromEvents();
+
     if (this.sefirotScene) {
       this.sefirotScene.dispose();
       this.sefirotScene = null;

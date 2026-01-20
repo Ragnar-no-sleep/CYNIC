@@ -151,25 +151,25 @@ GARDER? /
 
 > **Vision**: Un dashboard 3D permettant de visualiser l'avancée vers la singularité sur TOUS ses aspects - du code aux émergences.
 
-#### 2.1 - Architecture Codebase 3D
+#### 2.1 - Architecture Codebase 3D ✅ DONE (2026-01-20)
 
 ```
-□ 2.1.1 - Parser le codebase avec Serena LSP
-          - Extraire packages, modules, classes, méthodes
-          - Construire le graphe de dépendances
-          - Mapper les call graphs
+✅ 2.1.1 - Parser le codebase avec Serena LSP
+          - brain_codebase API (10 packages, 185 modules, 198 classes)
+          - CodebaseGraphData model (hierarchical)
 
-□ 2.1.2 - Visualisation 3D navigable (Three.js)
-          - Niveau 1: Packages (sphères colorées)
-          - Niveau 2: Modules/Fichiers (cubes)
-          - Niveau 3: Classes (polyèdres)
-          - Niveau 4: Méthodes (nodes connectés)
-          - Liens: imports, calls, extends, implements
+✅ 2.1.2 - Visualisation 3D navigable (Three.js)
+          - Packages (sphères teal)
+          - Modules (cubes purple)
+          - Classes (dodecaèdres pink)
+          - Functions (octaèdres gold)
+          - Methods (tetraèdres green)
 
-□ 2.1.3 - Navigation interactive
+✅ 2.1.3 - Navigation interactive
           - Zoom sémantique (package → class → method)
-          - Recherche par nom de symbole
-          - Highlight des dépendances au hover
+          - Recherche par nom de symbole (live search)
+          - Breadcrumb navigation
+          - Stats bar (packages, modules, classes, functions, methods, lines)
 ```
 
 #### 2.2 - Collective State (Sefirot Tree)
