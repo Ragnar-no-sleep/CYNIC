@@ -172,7 +172,7 @@ GARDER? /
           - Stats bar (packages, modules, classes, functions, methods, lines)
 ```
 
-#### 2.2 - Collective State (Sefirot Tree)
+#### 2.2 - Collective State (Sefirot Tree) ✅ DONE (2026-01-20)
 
 ```
 ✅ 2.2.1 - Arbre Sefirot 3D temps-réel (2026-01-20)
@@ -186,10 +186,11 @@ GARDER? /
           - Events, patterns, warnings counters per dog
           - Real-time updates from SSE
 
-□ 2.2.3 - Event replay
-          - Timeline des événements
-          - Rejouer des séquences
-          - Analyser les décisions
+✅ 2.2.3 - Event replay (2026-01-20)
+          - Timeline des événements (visual track with markers)
+          - Rejouer des séquences (play/pause/step controls, speed 0.5x-10x)
+          - Analyser les décisions (verdict distribution, Q-Score trend sparkline)
+          - Range selection for decision analysis
 ```
 
 #### 2.3 - Wisdom & Knowledge Growth ✅ DONE (2026-01-20)
