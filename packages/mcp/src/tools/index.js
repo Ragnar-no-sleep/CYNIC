@@ -194,6 +194,12 @@ export function createJudgeTool(judge, persistence = null, sessionManager = null
       }
 
       // Build response with consistent ID
+      // DEBUG: Log CULTURE before building result (use console.error to ensure it appears in Render logs)
+      console.error(`[MCP JUDGE] ====== CULTURE SCORE CHECK ======`);
+      console.error(`[MCP JUDGE] judgment.axiomScores.CULTURE: ${judgment.axiomScores?.CULTURE}`);
+      console.error(`[MCP JUDGE] judgment.qScore: ${judgment.qScore}`);
+      console.error(`[MCP JUDGE] Full axiomScores: ${JSON.stringify(judgment.axiomScores)}`);
+
       const result = {
         requestId: judgmentId,
         score: judgment.qScore,
