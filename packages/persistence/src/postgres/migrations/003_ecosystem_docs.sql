@@ -33,13 +33,13 @@ CREATE TABLE IF NOT EXISTS ecosystem_docs (
     UNIQUE(project, doc_type)
 );
 
--- Indexes
-CREATE INDEX idx_ecosystem_docs_project ON ecosystem_docs(project);
-CREATE INDEX idx_ecosystem_docs_type ON ecosystem_docs(doc_type);
-CREATE INDEX idx_ecosystem_docs_hash ON ecosystem_docs(content_hash);
+-- Indexes (IF NOT EXISTS for idempotency)
+CREATE INDEX IF NOT EXISTS idx_ecosystem_docs_project ON ecosystem_docs(project);
+CREATE INDEX IF NOT EXISTS idx_ecosystem_docs_type ON ecosystem_docs(doc_type);
+CREATE INDEX IF NOT EXISTS idx_ecosystem_docs_hash ON ecosystem_docs(content_hash);
 
 -- Full-text search
-CREATE INDEX idx_ecosystem_docs_fts ON ecosystem_docs
+CREATE INDEX IF NOT EXISTS idx_ecosystem_docs_fts ON ecosystem_docs
     USING GIN (to_tsvector('english', content));
 
 -- Comment
