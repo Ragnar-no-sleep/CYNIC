@@ -7,6 +7,7 @@ import { Utils } from '../lib/utils.js';
 import { MetricsCards } from '../components/metrics-cards.js';
 import { ChainViz } from '../components/chain-viz.js';
 import { DogsStatus } from '../components/dogs-status.js';
+import { PatternGallery } from '../components/pattern-gallery.js';
 
 export class OperatorView {
   constructor(options = {}) {
@@ -14,10 +15,16 @@ export class OperatorView {
     this.container = null;
     this.metricsCards = new MetricsCards();
     this.chainViz = new ChainViz({
+      api: options.api,
       onBlockClick: (block) => this._onBlockClick(block),
+      onJudgmentClick: (jdg) => this._onJudgmentClick(jdg),
     });
     this.dogsStatus = new DogsStatus({
       onDogClick: (dog) => this._onDogClick(dog),
+    });
+    this.patternGallery = new PatternGallery({
+      api: options.api,
+      onPatternClick: (pattern) => this._onPatternClick(pattern),
     });
     this.alerts = [];
   }
@@ -66,6 +73,11 @@ export class OperatorView {
     middleSection.appendChild(chainSection);
     middleSection.appendChild(dogsSection);
 
+    // Pattern Gallery section
+    const patternSection = Utils.createElement('section', { className: 'operator-section pattern-section' });
+    const patternContent = Utils.createElement('div', { id: 'pattern-container' });
+    patternSection.appendChild(patternContent);
+
     // Bottom section: Alerts
     const alertsSection = Utils.createElement('section', { className: 'operator-section alerts-section' });
     const alertsHeader = Utils.createElement('div', { className: 'section-header' }, [
@@ -79,12 +91,14 @@ export class OperatorView {
     // Assemble
     layout.appendChild(metricsSection);
     layout.appendChild(middleSection);
+    layout.appendChild(patternSection);
     layout.appendChild(alertsSection);
     container.appendChild(layout);
 
     // Render components
     this.metricsCards.render(metricsContent, MetricsCards.getDefaultCards());
     this.chainViz.render(chainContent);
+    this.patternGallery.render(patternContent);
     this.dogsStatus.render(dogsContent, 'grid');
     this._renderAlerts();
 
@@ -186,11 +200,7 @@ export class OperatorView {
         break;
 
       case 'pattern':
-        this._addAlert({
-          type: 'warning',
-          message: `Pattern detected: ${event.data?.description || 'Unknown'}`,
-          timestamp: Date.now(),
-        });
+        this.onNewPattern(event.data);
         break;
 
       case 'agent':
@@ -263,6 +273,44 @@ export class OperatorView {
     this._addAlert({
       type: 'info',
       message: `${dog.name} (${dog.sefirot}): ${dog.role}`,
+      timestamp: Date.now(),
+    });
+  }
+
+  /**
+   * Handle judgment click (from chain viz)
+   */
+  _onJudgmentClick(jdg) {
+    console.log('Judgment clicked:', jdg);
+    const verdict = jdg.verdict || 'UNKNOWN';
+    const q = jdg.Q || jdg.qScore || 0;
+    this._addAlert({
+      type: verdict === 'HOWL' || verdict === 'WAG' ? 'success' : verdict === 'BARK' ? 'error' : 'warning',
+      message: `Judgment ${jdg.id?.slice(0, 12) || '?'}: ${verdict} (Q=${Math.round(q)})`,
+      timestamp: Date.now(),
+    });
+  }
+
+  /**
+   * Handle pattern click (from pattern gallery)
+   */
+  _onPatternClick(pattern) {
+    console.log('Pattern clicked:', pattern);
+    this._addAlert({
+      type: 'info',
+      message: `Pattern: ${pattern.category || 'unknown'} - ${pattern.description || pattern.type || 'detected'}`,
+      timestamp: Date.now(),
+    });
+  }
+
+  /**
+   * Handle new pattern event (called by app.js)
+   */
+  onNewPattern(pattern) {
+    this.patternGallery.addPattern(pattern);
+    this._addAlert({
+      type: 'warning',
+      message: `New pattern: ${pattern.category || 'unknown'} detected`,
       timestamp: Date.now(),
     });
   }
