@@ -21,6 +21,7 @@
 import { formatTimestamp, truncate, debounce } from '../lib/utils.js';
 import { getStationInfo, getToolIcon, getToolColor } from '../lib/station-map.js';
 import { cynicAudio } from '../lib/audio.js';
+import { EventTimeline } from '../components/event-timeline.js';
 
 /**
  * Escape HTML to prevent XSS
@@ -65,6 +66,12 @@ export class LiveView {
     // Session management
     this.session = null;
     this.sessionLoading = false;
+    // Event Timeline (Phase 2.2.3)
+    this.eventTimeline = new EventTimeline({
+      onEventSelect: (event) => this._onTimelineEventSelect(event),
+      onReplayTick: (event, index) => this._onReplayTick(event, index),
+    });
+    this.showTimeline = false;  // Toggle state
   }
 
   /**
@@ -116,6 +123,7 @@ export class LiveView {
               `).join('')}
             </div>
             <button class="audio-btn" title="Toggle audio">🔇</button>
+            <button class="timeline-toggle-btn ${this.showTimeline ? 'active' : ''}" title="Toggle event timeline">🎬</button>
             <button class="clear-btn" title="Clear observations">🗑️</button>
           </div>
           <!-- Prompt Injection -->
@@ -132,6 +140,10 @@ export class LiveView {
           </div>
         </div>
 
+        <!-- Event Timeline (Phase 2.2.3) -->
+        <div class="event-timeline-section ${this.showTimeline ? 'visible' : ''}" id="event-timeline-section">
+        </div>
+
         <div class="live-body">
           <div class="observations-list">
             ${this._renderObservations()}
@@ -144,6 +156,15 @@ export class LiveView {
     `;
 
     this._attachEventListeners();
+
+    // Render event timeline if visible
+    if (this.showTimeline) {
+      const timelineSection = this.container?.querySelector('#event-timeline-section');
+      if (timelineSection) {
+        this.eventTimeline.render(timelineSection);
+        this.eventTimeline.update(this.observations);
+      }
+    }
   }
 
   /**
@@ -262,6 +283,9 @@ export class LiveView {
 
       this._renderObservationsList();
       this._updateStats();
+
+      // Update timeline (Phase 2.2.3)
+      this._addEventToTimeline(observation);
 
     } catch (err) {
       console.error('🔴 Live: Failed to parse event', err);
@@ -914,6 +938,14 @@ export class LiveView {
       console.warn('🔊 [Audio] Button NOT found!');
     }
 
+    // Timeline toggle button (Phase 2.2.3)
+    const timelineToggleBtn = this.container?.querySelector('.timeline-toggle-btn');
+    if (timelineToggleBtn) {
+      timelineToggleBtn.addEventListener('click', () => {
+        this._toggleTimeline();
+      });
+    }
+
     // Prompt injection handlers
     const promptInput = this.container?.querySelector('.prompt-input');
     const judgeBtn = this.container?.querySelector('.judge-btn');
@@ -1293,11 +1325,91 @@ export class LiveView {
     }
   }
 
+  // ===== Event Timeline Methods (Phase 2.2.3) =====
+
+  /**
+   * Toggle timeline visibility
+   */
+  _toggleTimeline() {
+    this.showTimeline = !this.showTimeline;
+
+    const section = this.container?.querySelector('#event-timeline-section');
+    const btn = this.container?.querySelector('.timeline-toggle-btn');
+
+    if (section) {
+      section.classList.toggle('visible', this.showTimeline);
+      if (this.showTimeline && !section.hasChildNodes()) {
+        this.eventTimeline.render(section);
+        this.eventTimeline.update(this.observations);
+      }
+    }
+
+    if (btn) {
+      btn.classList.toggle('active', this.showTimeline);
+    }
+  }
+
+  /**
+   * Handle event selection from timeline
+   */
+  _onTimelineEventSelect(event) {
+    // Select observation in the list
+    this.selectedId = event.id;
+    this._updateSelection();
+    this._updateDetail();
+
+    // Scroll to observation in list
+    const item = this.container?.querySelector(`.observation-item[data-id="${event.id}"]`);
+    if (item) {
+      item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }
+
+  /**
+   * Handle replay tick from timeline
+   */
+  _onReplayTick(event, index) {
+    // Select observation
+    this.selectedId = event.id;
+    this._updateSelection();
+    this._updateDetail();
+
+    // Play audio for event type
+    if (event.type === 'judgment' && event.data?.verdict) {
+      cynicAudio.playJudgment(event.data.verdict);
+    } else if (event.type === 'block') {
+      cynicAudio.playBlock(event.data?.slot || 0);
+    } else if (event.type === 'pattern') {
+      cynicAudio.playPattern();
+    }
+  }
+
+  /**
+   * Update timeline with current observations
+   */
+  _updateTimeline() {
+    if (this.showTimeline && this.eventTimeline) {
+      this.eventTimeline.update(this.observations);
+    }
+  }
+
+  /**
+   * Add event to timeline
+   */
+  _addEventToTimeline(observation) {
+    if (this.showTimeline && this.eventTimeline) {
+      this.eventTimeline.addEvent(observation);
+    }
+  }
+
   /**
    * Cleanup
    */
   destroy() {
     this.disconnect();
+    if (this.eventTimeline) {
+      this.eventTimeline.destroy();
+    }
     this.container = null;
   }
 }
