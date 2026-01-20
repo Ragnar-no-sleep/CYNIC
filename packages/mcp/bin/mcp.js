@@ -35,9 +35,15 @@ try {
 logConfigStatus();
 
 // Run database migrations before starting (auto-migrate on deploy)
+// φ⁻¹ × 10000 = 6180ms timeout - never block server startup
+const MIGRATION_TIMEOUT = 6180;
 try {
   console.log('🐕 Running auto-migrations...');
-  const result = await migrate({ silent: false, exitOnError: false });
+  const migrationPromise = migrate({ silent: false, exitOnError: false });
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('Migration timed out (6180ms)')), MIGRATION_TIMEOUT)
+  );
+  const result = await Promise.race([migrationPromise, timeoutPromise]);
   if (result.applied > 0) {
     console.log(`✅ Applied ${result.applied} migration(s)`);
   } else {
