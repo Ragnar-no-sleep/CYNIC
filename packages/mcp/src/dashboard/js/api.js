@@ -263,9 +263,23 @@ export class API {
 
   /**
    * Get patterns
+   * Supports both positional args (category, limit) and object form ({category, limit})
    */
-  async patterns(category = 'all', limit = 10) {
-    return this.callTool('brain_patterns', { category, limit });
+  async patterns(categoryOrOptions = 'all', limit = 10) {
+    // Handle object form: patterns({ category: 'all', limit: 100 })
+    if (typeof categoryOrOptions === 'object' && categoryOrOptions !== null) {
+      const { category = 'all', limit: optLimit = 10 } = categoryOrOptions;
+      return this.callTool('brain_patterns', { category, limit: optLimit });
+    }
+    // Handle positional form: patterns('all', 10)
+    return this.callTool('brain_patterns', { category: categoryOrOptions, limit });
+  }
+
+  /**
+   * Learning loop operations
+   */
+  async learning(options = {}) {
+    return this.callTool('brain_learning', options);
   }
 
   /**
