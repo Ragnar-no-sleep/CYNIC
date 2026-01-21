@@ -42,7 +42,7 @@
 
 import { PHI_INV } from '@cynic/core';
 import { AgentEventBus } from '../event-bus.js';
-import { AgentEvent, AgentEventMessage, AgentId, ConsensusVote } from '../events.js';
+import { AgentEvent, AgentEventMessage, AgentId, ConsensusVote, EventPriority } from '../events.js';
 import { ProfileCalculator, ProfileLevel } from '../../profile/calculator.js';
 import { OrganicSignals } from '../../profile/organic-signals.js';
 import { LocalStore } from '../../privacy/local-store.js';
@@ -429,6 +429,78 @@ export class CollectivePack {
    */
   async getWisdom(topic, options = {}) {
     return this.sage.shareWisdom(topic, options);
+  }
+
+  /**
+   * Review a judgment (Gap #1 - Collective Consciousness Integration)
+   *
+   * The collective reviews the judgment and may reach consensus on
+   * whether it's correct, needs adjustment, or is anomalous.
+   *
+   * @param {Object} judgment - The judgment to review
+   * @param {Object} item - The original item that was judged
+   * @returns {Promise<Object>} Collective review result
+   */
+  async reviewJudgment(judgment, item) {
+    // Emit event for all dogs to observe
+    await this.eventBus.publish({
+      type: 'judgment:review_request',
+      source: 'collective',
+      target: '*', // All agents
+      priority: EventPriority.NORMAL,
+      payload: {
+        judgmentId: judgment.id,
+        verdict: judgment.verdict,
+        qScore: judgment.q_score || judgment.global_score,
+        confidence: judgment.confidence,
+        dimensions: judgment.dimensions,
+        item: {
+          type: item?.type,
+          identifier: item?.identifier || item?.name,
+          contentPreview: typeof item?.content === 'string'
+            ? item.content.slice(0, 200)
+            : null,
+        },
+      },
+    });
+
+    // Collect opinions from key dogs (async, parallel)
+    const opinions = await Promise.allSettled([
+      this.analyst.assessJudgment?.(judgment, item),
+      this.sage.reflectOnJudgment?.(judgment, item),
+      this.cynic.scrutinizeJudgment?.(judgment, item),
+    ]);
+
+    // Filter successful opinions
+    const validOpinions = opinions
+      .filter(r => r.status === 'fulfilled' && r.value)
+      .map(r => r.value);
+
+    // If we have enough opinions, request consensus
+    if (validOpinions.length >= 2) {
+      const consensusResult = await this.eventBus.requestConsensus?.('collective', {
+        topic: 'judgment_review',
+        judgmentId: judgment.id,
+        options: ['APPROVE', 'ADJUST', 'REJECT'],
+        context: {
+          type: 'judgment',
+          judgmentId: judgment.id,
+          opinions: validOpinions,
+        },
+      });
+
+      return {
+        reviewed: true,
+        opinions: validOpinions,
+        consensus: consensusResult,
+      };
+    }
+
+    return {
+      reviewed: true,
+      opinions: validOpinions,
+      consensus: null,
+    };
   }
 
   /**

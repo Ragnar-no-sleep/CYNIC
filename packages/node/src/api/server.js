@@ -136,6 +136,7 @@ export class APIServer {
           'GET /explorer/burns',
           'GET /explorer/search?q=',
           'GET /explorer/learning',
+          'POST /feedback/:judgmentId',
         ],
       });
     });
@@ -366,12 +367,86 @@ export class APIServer {
       }
     });
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // FEEDBACK ENDPOINT (Gap #3)
+    // External feedback → LearningService → Weight adjustment
+    // ═══════════════════════════════════════════════════════════════════════════
+    this.app.post('/feedback/:judgmentId', async (req, res) => {
+      if (!this.node) {
+        return res.status(503).json({ error: 'Node not available' });
+      }
+
+      try {
+        const { judgmentId } = req.params;
+        const { feedbackType, source, confidence, details } = req.body;
+
+        // Validate required fields
+        if (!judgmentId) {
+          return res.status(400).json({
+            error: 'Bad Request',
+            message: 'Missing judgmentId in path',
+          });
+        }
+
+        // Validate feedbackType
+        const validTypes = ['positive', 'negative', 'correct', 'incorrect'];
+        if (!feedbackType || !validTypes.includes(feedbackType)) {
+          return res.status(400).json({
+            error: 'Bad Request',
+            message: `Invalid feedbackType. Must be one of: ${validTypes.join(', ')}`,
+          });
+        }
+
+        // Access learning service
+        const learningService = this.node._learningService;
+        if (!learningService) {
+          return res.status(503).json({
+            error: 'Service Unavailable',
+            message: 'Learning service not initialized',
+          });
+        }
+
+        // Process feedback
+        const feedbackResult = learningService.processFeedback({
+          judgmentId,
+          feedbackType,
+          source: source || 'api',
+          confidence: typeof confidence === 'number' ? confidence : PHI_INV,
+          details: details || {},
+          timestamp: Date.now(),
+        });
+
+        // Get updated patterns stats
+        const stats = learningService.getPatterns?.() || {};
+
+        res.status(200).json({
+          status: 'accepted',
+          judgmentId,
+          feedbackType,
+          source: source || 'api',
+          message: '*tail wag* Feedback ingested into learning loop',
+          learningStats: {
+            totalFeedback: stats.overall?.feedbackCount || 0,
+            positiveRatio: stats.overall?.positiveRatio || 0,
+            anomalyCount: stats.overall?.anomalyCount || 0,
+          },
+          timestamp: Date.now(),
+        });
+      } catch (err) {
+        console.error('Feedback error:', err);
+        res.status(500).json({
+          error: 'Internal Server Error',
+          message: err.message,
+        });
+      }
+    });
+
     // 404 handler
     this.app.use((req, res) => {
       res.status(404).json({
         error: 'Not Found',
         message: `Route ${req.method} ${req.path} not found`,
-        available: ['/', '/health', '/info', '/consensus/status', '/judge', '/judge/kscore', '/merkle/proof/:hash', '/burns/verify/:signature', '/burns/stats', '/emergence/*', '/explorer', '/explorer/ui', '/explorer/judgments', '/explorer/blocks', '/explorer/operators', '/explorer/burns', '/explorer/search'],
+        available: ['/', '/health', '/info', '/consensus/status', '/judge', '/judge/kscore', '/merkle/proof/:hash', '/burns/verify/:signature', '/burns/stats', '/emergence/*', '/explorer', '/explorer/ui', '/explorer/judgments', '/explorer/blocks', '/explorer/operators', '/explorer/burns', '/explorer/search', '/feedback/:judgmentId'],
       });
     });
 

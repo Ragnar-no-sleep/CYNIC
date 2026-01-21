@@ -60,17 +60,12 @@ async function main() {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // IMPORT LEARNINGS - Load accumulated learnings from cynic-learnings.md
+    // LEARNINGS - PostgreSQL via brain_learning MCP tool (no local file)
+    // State is automatically loaded when MCP server starts
     // ═══════════════════════════════════════════════════════════════════════════
-    let learningsImport = { success: false, imported: 0 };
-    try {
-      learningsImport = await cynic.importLearningsFromFile();
-    } catch (e) {
-      // Non-blocking - learnings import failure shouldn't block session start
-    }
 
-    // Format the awakening message
-    const message = cynic.formatEcosystemStatus(ecosystem, profile, learningsImport);
+    // Format the awakening message (no learnings import needed - PostgreSQL handles it)
+    const message = cynic.formatEcosystemStatus(ecosystem, profile, null);
 
     // Start brain session first (async but we don't wait)
     cynic.startBrainSession(user.userId, {

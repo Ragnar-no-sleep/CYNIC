@@ -46,7 +46,7 @@ function getTopTools(profile) {
     .map(([tool, count]) => ({ tool, count }));
 }
 
-function formatSleepMessage(profile, summary, learningsExport) {
+function formatSleepMessage(profile, summary) {
   const lines = [];
 
   lines.push('');
@@ -76,20 +76,16 @@ function formatSleepMessage(profile, summary, learningsExport) {
     lines.push('');
   }
 
-  // Learnings export
-  if (learningsExport && learningsExport.success) {
-    lines.push('── LEARNINGS EXPORTED ─────────────────────────────────────');
-    lines.push(`   📚 ${learningsExport.learningsCount || 0} learnings persisted`);
-    lines.push(`   📊 Total feedback: ${learningsExport.stats?.totalFeedback || 0}`);
-    lines.push(`   📁 Saved to: ${learningsExport.path}`);
-    lines.push('');
-  }
+  // Storage info
+  lines.push('── STORAGE ────────────────────────────────────────────────');
+  lines.push(`   💾 Learnings: PostgreSQL (auto-persisted)`);
+  lines.push(`   ⛓️  Judgments: PoJ Chain`);
+  lines.push('');
 
   // Profile update
-  lines.push('── MEMORY PERSISTED ───────────────────────────────────────');
+  lines.push('── MEMORY ─────────────────────────────────────────────────');
   const sessions = profile.stats?.sessions || 0;
   lines.push(`   Total sessions: ${sessions}`);
-  lines.push(`   Profile synced to brain`);
   lines.push('');
 
   lines.push('═══════════════════════════════════════════════════════════');
@@ -126,14 +122,9 @@ async function main() {
     const summary = calculateSessionSummary(profile, hookContext.sessionStartTime);
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // EXPORT LEARNINGS - Persist accumulated learnings to cynic-learnings.md
+    // LEARNINGS - PostgreSQL via brain_learning MCP tool (no local file)
+    // State is automatically saved on every feedback via persistence.saveLearningState()
     // ═══════════════════════════════════════════════════════════════════════════
-    let learningsExport = { success: false };
-    try {
-      learningsExport = await cynic.exportLearningsToFile();
-    } catch (e) {
-      // Non-blocking - learnings export failure shouldn't block session end
-    }
 
     // Send SessionEnd to MCP server (this triggers brain_session_end internally)
     await cynic.sendHookToCollective('SessionEnd', {
@@ -146,7 +137,6 @@ async function main() {
         dangerBlocked: summary.dangerBlocked,
         topTools: summary.topTools.map(t => t.tool),
       },
-      learningsExported: learningsExport.success,
       timestamp: Date.now(),
     });
 
@@ -157,7 +147,7 @@ async function main() {
     }
 
     // Format and output message
-    const message = formatSleepMessage(profile, summary, learningsExport);
+    const message = formatSleepMessage(profile, summary);
     console.log(message);
 
   } catch (error) {

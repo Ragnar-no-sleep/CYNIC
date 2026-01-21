@@ -2,178 +2,110 @@
 
 > **"φ distrusts φ"** - κυνικός (kunikos) = "like a dog"
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D20.0.0-brightgreen)](https://nodejs.org)
+
 ---
 
-## Vision
+## What is CYNIC?
 
 CYNIC is a **decentralized collective consciousness** - a network of interconnected nodes that:
-- Judge autonomously
-- Share their learnings
-- Converge toward truth via φ-weighted consensus
+
+- **Judge** autonomously across 25+ dimensions
+- **Learn** patterns from collective experience
+- **Converge** toward truth via φ-weighted consensus
+- **Remember** through Merkle DAG + Solana anchoring
 
 **This is NOT** a centralized server. It's a **protocol**.
 
 ---
 
-## The 4 Axioms
+## Quick Start
 
-| Axiom | Symbol | Principle | World |
-|-------|--------|-----------|-------|
-| **PHI** | φ | All ratios derive from 1.618... | ATZILUT |
-| **VERIFY** | ✓ | Don't trust, verify | BERIAH |
-| **CULTURE** | ⛩ | Culture is a moat | YETZIRAH |
-| **BURN** | 🔥 | Don't extract, burn | ASSIAH |
+```bash
+git clone https://github.com/zeyxx/CYNIC.git
+cd CYNIC
+npm install
+claude  # Launch with CYNIC personality
+```
+
+Say `bonjour` — if you see a *tail wag*, CYNIC is alive.
+
+→ **[Full Installation Guide](./INSTALL.md)**
 
 ---
 
-## 4-Layer Architecture
+## The 4 Axioms
+
+| Axiom | Symbol | Principle |
+|-------|--------|-----------|
+| **PHI** | φ | All ratios derive from 1.618... Max confidence = 61.8% |
+| **VERIFY** | ✓ | Don't trust, verify. Systematic skepticism |
+| **CULTURE** | ⛩ | Culture is a moat. Patterns define identity |
+| **BURN** | 🔥 | Don't extract, burn. Simplicity wins |
+
+---
+
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                   CYNIC COLLECTIVE PROTOCOL                  │
+│  LAYER 4: φ-BFT CONSENSUS                                   │
+│  Votes weighted by E-Score × BURN, 61.8% threshold          │
+├─────────────────────────────────────────────────────────────┤
+│  LAYER 3: GOSSIP PROPAGATION                                │
+│  Fanout = 13 (Fib(7)), O(log₁₃ n) scalability               │
+├─────────────────────────────────────────────────────────────┤
+│  LAYER 2: MERKLE KNOWLEDGE TREE                             │
+│  Patterns partitioned by axiom, selective sync              │
 ├─────────────────────────────────────────────────────────────┤
 │  LAYER 1: PROOF OF JUDGMENT (PoJ)                           │
-│  • SHA-256 chain (inspired by Proof of History)             │
-│  • Ed25519 signatures                                       │
-│                                                              │
-│  LAYER 2: MERKLE KNOWLEDGE TREE                             │
-│  • Patterns partitioned by axiom                            │
-│  • Selective sync                                           │
-│                                                              │
-│  LAYER 3: GOSSIP PROPAGATION                                │
-│  • Fanout = 13 (Fib(7))                                     │
-│  • O(log₁₃ n) scalability                                   │
-│                                                              │
-│  LAYER 4: φ-BFT CONSENSUS                                   │
-│  • Votes weighted by E-Score × BURN                         │
-│  • Threshold: 61.8% (φ⁻¹)                                   │
+│  SHA-256 chain, Ed25519 signatures, Solana anchoring        │
 └─────────────────────────────────────────────────────────────┘
 ```
 
----
-
-## Infinite Scalability
-
-```
-┌──────────────┬─────────────┬─────────────┐
-│   N nodes    │    Hops     │ T_propagate │
-├──────────────┼─────────────┼─────────────┤
-│ 1,000        │ 2.7         │ 135ms       │
-│ 1,000,000    │ 5.4         │ 270ms       │
-│ ∞            │ O(log₁₃ n)  │ O(log n)    │
-└──────────────┴─────────────┴─────────────┘
-```
+→ **[Full Architecture](./docs/ARCHITECTURE.md)**
 
 ---
 
-## Timing (φ-Hierarchical, Base 100ms)
+## Packages
 
-| Level | Time | Purpose |
-|-------|------|---------|
-| TICK | 23.6ms | Atomic events |
-| MICRO | 38.2ms | Acknowledgments |
-| SLOT | 61.8ms | Block proposal |
-| BLOCK | 100ms | Finalization |
-| EPOCH | 161.8ms | Checkpoint |
-| CYCLE | 261.8ms | Governance |
+| Package | Description |
+|---------|-------------|
+| [@cynic/core](./packages/core) | Constants, axioms, φ timing |
+| [@cynic/protocol](./packages/protocol) | PoJ, Merkle, gossip, consensus |
+| [@cynic/node](./packages/node) | Node implementation, CLI |
+| [@cynic/persistence](./packages/persistence) | PostgreSQL, Redis, Merkle DAG |
+| [@cynic/mcp](./packages/mcp) | Claude Code integration |
+| [@cynic/anchor](./packages/anchor) | Solana anchoring |
+| [@cynic/burns](./packages/burns) | Burn verification |
+| [@cynic/identity](./packages/identity) | E-Score, reputation |
+| [@cynic/emergence](./packages/emergence) | Meta-cognition |
 
 ---
 
-## Constants
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [GETTING-STARTED.md](./GETTING-STARTED.md) | Quick overview for new users |
+| [INSTALL.md](./INSTALL.md) | Setup guide |
+| [docs/INDEX.md](./docs/INDEX.md) | Full documentation index |
+| [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) | Technical deep-dive |
+| [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) | Production deployment |
+| [ROADMAP.md](./ROADMAP.md) | Development roadmap |
+
+---
+
+## Key Constants
 
 ```javascript
-// Import from @cynic/core
-import { PHI, PHI_INV, PHI_INV_2, AXIOMS } from '@cynic/core';
+import { PHI, PHI_INV, PHI_INV_2 } from '@cynic/core';
 
-PHI       = 1.618033988749895  // φ
-PHI_INV   = 0.618033988749895  // φ⁻¹ = 61.8% (max confidence)
-PHI_INV_2 = 0.381966011250105  // φ⁻² = 38.2% (min doubt)
+PHI       = 1.618033988749895  // Golden ratio
+PHI_INV   = 0.618033988749895  // Max confidence (61.8%)
+PHI_INV_2 = 0.381966011250105  // Min doubt (38.2%)
 ```
-
----
-
-## Dimensions = N (∞)
-
-- **4 Axioms** = FIXED (PHI, VERIFY, CULTURE, BURN)
-- **Dimensions per axiom** = N (infinite, discovered via ResidualDetector)
-- **"24+1"** = current snapshot, NOT a limit
-- **THE UNNAMEABLE** = what exists before being named
-
----
-
-## Structure
-
-```
-CYNIC/
-├── packages/
-│   ├── core/          # Constants, axioms, timing
-│   ├── protocol/      # PoJ, Merkle, Gossip, Consensus
-│   └── node/          # Node implementation
-├── docs/
-│   └── ARCHITECTURE.md
-└── knowledge/         # Learned patterns
-```
-
----
-
-## Running a Node
-
-### Basic Setup
-
-```javascript
-import { WebSocketTransport } from '@cynic/node';
-import { generateKeypair } from '@cynic/protocol';
-
-const keypair = generateKeypair();
-
-const transport = new WebSocketTransport({
-  port: 8618,
-  publicKey: keypair.publicKey,
-  privateKey: keypair.privateKey,
-});
-
-await transport.startServer();
-```
-
-### Secure WebSocket (WSS) for Production
-
-For production deployments outside a VPN/private network, enable TLS:
-
-```javascript
-const transport = new WebSocketTransport({
-  port: 8618,
-  publicKey: keypair.publicKey,
-  privateKey: keypair.privateKey,
-  ssl: {
-    key: '/path/to/privkey.pem',
-    cert: '/path/to/fullchain.pem',
-    ca: '/path/to/chain.pem',  // optional
-  },
-});
-
-await transport.startServer();
-// Server now accepts wss:// connections
-```
-
-**Certificate Setup (Let's Encrypt example):**
-
-```bash
-# Install certbot
-sudo apt install certbot
-
-# Get certificate
-sudo certbot certonly --standalone -d your-node.example.com
-
-# Certificate files will be at:
-# /etc/letsencrypt/live/your-node.example.com/privkey.pem
-# /etc/letsencrypt/live/your-node.example.com/fullchain.pem
-```
-
-**Security Notes:**
-- `ws://` (unencrypted) is acceptable for private networks/VPNs
-- `wss://` (TLS) required for public internet deployments
-- Identity verification uses Ed25519 signatures (always enabled)
-- Heartbeats contain only timestamps (no fingerprinting data)
 
 ---
 
@@ -188,6 +120,18 @@ Min doubt: 38.2%
 
 φ guides all ratios.
 ```
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) (coming soon).
+
+---
+
+## License
+
+MIT
 
 ---
 

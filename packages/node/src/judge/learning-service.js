@@ -758,6 +758,90 @@ export class LearningService extends EventEmitter {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // ANOMALY SIGNALS (Gap #2 - ResidualDetector → Learning)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Process anomaly signal from ResidualDetector
+   *
+   * When the judge produces a judgment with high residual (unexplained variance),
+   * this signal is used to identify dimensions that may need adjustment.
+   *
+   * @param {Object} signal - Anomaly signal
+   * @param {string} signal.judgmentId - Judgment ID
+   * @param {number} signal.residual - Residual value (0-1)
+   * @param {number} signal.threshold - Anomaly threshold
+   * @param {Object} signal.dimensions - Dimension scores
+   * @param {string} signal.verdict - Judgment verdict
+   * @param {number} signal.qScore - Q-Score
+   */
+  processAnomalySignal(signal) {
+    if (!signal || !signal.judgmentId) return;
+
+    // Record anomaly pattern
+    const anomalyEntry = {
+      id: `anomaly_${signal.judgmentId}`,
+      timestamp: Date.now(),
+      residual: signal.residual,
+      threshold: signal.threshold,
+      dimensions: signal.dimensions,
+      verdict: signal.verdict,
+      qScore: signal.qScore,
+    };
+
+    // Store in history (limited buffer)
+    if (!this._patterns.anomalies) {
+      this._patterns.anomalies = [];
+    }
+    this._patterns.anomalies.push(anomalyEntry);
+    if (this._patterns.anomalies.length > 100) {
+      this._patterns.anomalies.shift();
+    }
+
+    // Analyze dimension scores for high/low extremes
+    // These might indicate miscalibrated weights
+    if (signal.dimensions) {
+      for (const [dim, score] of Object.entries(signal.dimensions)) {
+        if (typeof score !== 'number') continue;
+
+        // Very high or very low scores in anomalous judgments suggest weight issues
+        if (score > 90 || score < 10) {
+          const existing = this._patterns.byDimension.get(dim) || {
+            feedbackCount: 0,
+            anomalyCount: 0,
+            avgError: 0,
+          };
+
+          existing.anomalyCount = (existing.anomalyCount || 0) + 1;
+          this._patterns.byDimension.set(dim, existing);
+
+          // If we see repeated anomalies for this dimension, flag it
+          if (existing.anomalyCount >= 3) {
+            this.emit('dimension-anomaly', {
+              dimension: dim,
+              anomalyCount: existing.anomalyCount,
+              recommendation: `${dim} may need weight recalibration`,
+            });
+          }
+        }
+      }
+    }
+
+    // Emit for external listeners
+    this.emit('anomaly-processed', {
+      judgmentId: signal.judgmentId,
+      residual: signal.residual,
+      timestamp: Date.now(),
+    });
+
+    // Track overall anomaly rate
+    this._patterns.overall.anomalyCount =
+      (this._patterns.overall.anomalyCount || 0) + 1;
+
+    return anomalyEntry;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // INSIGHTS & STATISTICS
   // ═══════════════════════════════════════════════════════════════════════════
 

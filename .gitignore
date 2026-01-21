@@ -54,3 +54,6 @@ packages/persistence/scripts/
 # Local data directories
 data/
 packages/*/data/
+
+# Rust lock files
+Cargo.lock
