@@ -37,8 +37,12 @@ import { createBurnVerifier, BurnStatus } from '@cynic/burns';
 import { Operator } from './operator/operator.js';
 import { CYNICJudge } from './judge/judge.js';
 import { ResidualDetector } from './judge/residual.js';
+import { LearningService } from './judge/learning-service.js';
 import { StateManager } from './state/manager.js';
 import { createEmergenceLayer } from './emergence/layer.js';
+import { SharedMemory } from './memory/shared-memory.js';
+import { UserLab, LabManager } from './memory/user-lab.js';
+import { DogOrchestrator, DogMode } from './agents/orchestrator.js';
 import { WebSocketTransport, ConnectionState } from './transport/websocket.js';
 
 /**
@@ -238,6 +242,35 @@ export class CYNICNode {
       nodeId: this.operator.id,
       eScore: this.operator.getEScore(),
     });
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // 6-Layer Memory Architecture - "Fresh execution, collective wisdom"
+    // ═══════════════════════════════════════════════════════════════════════
+
+    // Layer 2-3: SharedMemory (Collective + Procedural)
+    this._sharedMemory = new SharedMemory({
+      storage: this.state.storage,
+    });
+
+    // Layer 4: User Labs
+    this._labManager = new LabManager({
+      dataDir: options.dataDir ? `${options.dataDir}/labs` : null,
+    });
+
+    // RLHF Learning Service
+    this._learningService = new LearningService({
+      persistence: this._persistence,
+      learningRate: 0.236, // φ⁻³
+    });
+
+    // Set learning service on judge
+    this.judge.setLearningService(this._learningService);
+
+    // Dog Orchestrator (parallel subagents with hybrid context)
+    this._orchestrator = new DogOrchestrator({
+      sharedMemory: this._sharedMemory,
+      mode: options.orchestratorMode || DogMode.PARALLEL,
+    });
   }
 
   /**
@@ -433,6 +466,18 @@ export class CYNICNode {
       // Initialize emergence layer
       this._emergence.initialize();
 
+      // ═══════════════════════════════════════════════════════════════════════
+      // Initialize 6-Layer Memory Architecture
+      // ═══════════════════════════════════════════════════════════════════════
+
+      await this._sharedMemory.initialize();
+      await this._learningService.init();
+
+      // Wire emergence patterns → SharedMemory (Gap #4 feedback loop)
+      this._wireEmergenceFeedback();
+
+      console.log(`🧠 Memory layers initialized (6-layer hybrid architecture)`);
+
       this.status = NodeStatus.RUNNING;
       this.startedAt = Date.now();
 
@@ -501,6 +546,15 @@ export class CYNICNode {
       }
     }
 
+    // Save 6-layer memory state
+    if (this._sharedMemory) {
+      await this._sharedMemory.save();
+      console.log(`🧠 SharedMemory saved`);
+    }
+    if (this._labManager) {
+      await this._labManager.saveAll();
+    }
+
     // Save state
     await this.state.save();
 
@@ -536,6 +590,90 @@ export class CYNICNode {
     if (this._cycleTimer) {
       clearInterval(this._cycleTimer);
       this._cycleTimer = null;
+    }
+  }
+
+  /**
+   * Wire emergence layer feedback to SharedMemory and LearningService
+   * This closes the feedback loop: Emergence → SharedMemory → Judge → Better Judgments
+   * @private
+   */
+  _wireEmergenceFeedback() {
+    // 1. When emergence detects a significant pattern, add it to SharedMemory
+    // Check patterns on each epoch and sync significant ones
+    const originalOnEpoch = this._onEpoch.bind(this);
+    this._onEpoch = () => {
+      originalOnEpoch();
+      this._syncEmergencePatternsToMemory();
+    };
+
+    // 2. When feedback is processed, sync to SharedMemory
+    this._learningService.on('feedback-processed', (result) => {
+      // Note: result contains { scoreDelta, queueSize, shouldLearn }
+      // We'll sync after learning completes for weight adjustments
+    });
+
+    // 3. When learning completes, sync weight changes to SharedMemory
+    this._learningService.on('learning-complete', (result) => {
+      // Sync weight modifiers to SharedMemory
+      if (result.weightChanges) {
+        for (const [dimension, change] of Object.entries(result.weightChanges)) {
+          this._sharedMemory.adjustWeight(dimension, change.delta || 0, 'rlhf');
+        }
+      }
+
+      // Record as feedback
+      this._sharedMemory.recordFeedback({
+        type: 'learning_cycle',
+        iteration: result.iteration,
+        source: 'learning_service',
+      });
+    });
+
+    // 4. When a new learning entry is added, consider adding as pattern
+    this._learningService.on('learning-added', (entry) => {
+      // Add significant learnings as patterns
+      if (entry.type === 'bias_correction' || entry.type === 'pattern') {
+        this._sharedMemory.addPattern({
+          id: `learn_${entry.id || Date.now().toString(36)}`,
+          rule: entry.insight || entry.description || `Learning: ${entry.type}`,
+          applicableTo: entry.applicableTo || ['*'],
+          confidence: Math.min(entry.confidence || 0.6, 0.618),
+          source: 'rlhf',
+          verified: false,
+        });
+      }
+    });
+  }
+
+  /**
+   * Sync significant emergence patterns to SharedMemory
+   * @private
+   */
+  _syncEmergencePatternsToMemory() {
+    if (!this._emergence || !this._sharedMemory) return;
+
+    const topPatterns = this._emergence.patterns.getTopPatterns(10);
+
+    for (const pattern of topPatterns) {
+      // Only sync significant patterns not already in SharedMemory
+      if (pattern.significance >= 0.5) {
+        const existingId = `emrg_${pattern.id}`;
+        const existing = this._sharedMemory._patterns?.get(existingId);
+
+        if (!existing) {
+          this._sharedMemory.addPattern({
+            id: existingId,
+            type: pattern.type,
+            rule: pattern.summary || `Detected pattern: ${pattern.type}`,
+            applicableTo: ['*'],
+            confidence: Math.min(pattern.significance, 0.618), // Cap at φ⁻¹
+            source: 'emergence',
+            verified: pattern.verified || false,
+            occurrences: pattern.occurrences,
+          });
+        }
+      }
     }
   }
 

@@ -1,0 +1,582 @@
+/**
+ * Shared Memory - The collective intelligence layer
+ *
+ * Implements Layer 2 (Collective) and Layer 3 (Procedural) of the
+ * 6-layer hybrid context architecture.
+ *
+ * Persists across sessions, syncs across swarm.
+ *
+ * @module @cynic/node/memory/shared-memory
+ */
+
+'use strict';
+
+import { PHI_INV } from '@cynic/core';
+
+/**
+ * Fibonacci limits for memory stores
+ */
+const LIMITS = {
+  MAX_PATTERNS: 1597,       // F(17)
+  MAX_EMBEDDINGS: 2584,     // F(18)
+  MAX_FEEDBACK: 987,        // F(16)
+  MAX_PROCEDURES: 233,      // F(13)
+};
+
+/**
+ * SharedMemory - Collective knowledge accessible to all dogs
+ */
+export class SharedMemory {
+  /**
+   * @param {Object} options
+   * @param {Object} options.storage - Storage backend
+   * @param {Object} [options.swarm] - Swarm instance for sync
+   */
+  constructor(options = {}) {
+    this.storage = options.storage;
+    this.swarm = options.swarm;
+
+    // Layer 2: Collective Memory
+    this._patterns = new Map();           // Pattern ID -> Pattern
+    this._judgmentIndex = [];             // For similarity search
+    this._dimensionWeights = {};          // Learned weights per dimension
+
+    // Layer 3: Procedural Memory
+    this._procedures = new Map();         // Item type -> Procedure
+    this._scoringRules = new Map();       // Item type -> Rules
+
+    // Feedback log for RLHF
+    this._feedbackLog = [];
+
+    // Stats
+    this.stats = {
+      patternsAdded: 0,
+      judgmentsIndexed: 0,
+      feedbackReceived: 0,
+      weightAdjustments: 0,
+    };
+
+    this.initialized = false;
+  }
+
+  /**
+   * Initialize from storage
+   */
+  async initialize() {
+    if (this.initialized) return;
+
+    try {
+      const saved = await this.storage?.get('shared_memory');
+      if (saved) {
+        this._patterns = new Map(saved.patterns || []);
+        this._judgmentIndex = saved.judgmentIndex || [];
+        this._dimensionWeights = saved.weights || {};
+        this._procedures = new Map(saved.procedures || []);
+        this._scoringRules = new Map(saved.scoringRules || []);
+        this._feedbackLog = saved.feedback || [];
+        this.stats = { ...this.stats, ...saved.stats };
+      }
+    } catch (err) {
+      console.warn('[SharedMemory] Failed to load:', err.message);
+    }
+
+    // Initialize default procedures if empty
+    if (this._procedures.size === 0) {
+      this._initDefaultProcedures();
+    }
+
+    this.initialized = true;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // LAYER 2: PATTERN MEMORY
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Get patterns relevant to an item
+   * @param {Object} item - Item to find patterns for
+   * @param {number} [limit=5] - Max patterns to return
+   * @returns {Object[]} Relevant patterns sorted by relevance
+   */
+  getRelevantPatterns(item, limit = 5) {
+    if (!item) return [];
+
+    const itemType = item.type || 'unknown';
+    const itemTags = item.tags || [];
+
+    const scored = Array.from(this._patterns.values())
+      .map(pattern => ({
+        ...pattern,
+        relevance: this._calculatePatternRelevance(pattern, itemType, itemTags),
+      }))
+      .filter(p => p.relevance > 0.1)
+      .sort((a, b) => b.relevance - a.relevance)
+      .slice(0, limit);
+
+    // Mark as used
+    for (const pattern of scored) {
+      const stored = this._patterns.get(pattern.id);
+      if (stored) {
+        stored.useCount = (stored.useCount || 0) + 1;
+        stored.lastUsed = Date.now();
+      }
+    }
+
+    return scored;
+  }
+
+  /**
+   * Add a new pattern to memory
+   * @param {Object} pattern - Pattern to add
+   * @returns {string} Pattern ID
+   */
+  addPattern(pattern) {
+    const id = pattern.id || `pat_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+
+    this._patterns.set(id, {
+      ...pattern,
+      id,
+      addedAt: Date.now(),
+      useCount: 0,
+      verified: pattern.verified || false,
+    });
+
+    this.stats.patternsAdded++;
+
+    // Prune if over limit
+    if (this._patterns.size > LIMITS.MAX_PATTERNS) {
+      this._prunePatterns();
+    }
+
+    return id;
+  }
+
+  /**
+   * Verify a pattern (marks it as proven)
+   * @param {string} patternId - Pattern ID
+   */
+  verifyPattern(patternId) {
+    const pattern = this._patterns.get(patternId);
+    if (pattern) {
+      pattern.verified = true;
+      pattern.verifiedAt = Date.now();
+    }
+  }
+
+  _calculatePatternRelevance(pattern, itemType, itemTags) {
+    let relevance = 0;
+
+    // Type match (40% weight)
+    if (pattern.applicableTo?.includes(itemType) || pattern.applicableTo?.includes('*')) {
+      relevance += 0.4;
+    }
+
+    // Tag overlap (30% weight)
+    const patternTags = pattern.tags || [];
+    const overlap = itemTags.filter(t => patternTags.includes(t)).length;
+    if (overlap > 0) {
+      relevance += 0.3 * (overlap / Math.max(itemTags.length, patternTags.length, 1));
+    }
+
+    // Recency boost (20% weight)
+    const ageHours = (Date.now() - (pattern.lastUsed || pattern.addedAt || 0)) / 3600000;
+    if (ageHours < 24) relevance += 0.2;
+    else if (ageHours < 168) relevance += 0.1;
+
+    // Verified bonus (10% weight)
+    if (pattern.verified) relevance += 0.1;
+
+    // Usage count bonus (capped)
+    const usageBonus = Math.min(0.1, (pattern.useCount || 0) * 0.01);
+    relevance += usageBonus;
+
+    return Math.min(relevance, 1);
+  }
+
+  _prunePatterns() {
+    // Sort by score (recency + usage + verified)
+    const sorted = Array.from(this._patterns.entries())
+      .map(([id, p]) => ({
+        id,
+        score: (p.verified ? 1000 : 0) +
+               (p.useCount || 0) * 10 +
+               (Date.now() - (p.addedAt || 0)) / -86400000,
+      }))
+      .sort((a, b) => a.score - b.score);
+
+    // Remove bottom 10%
+    const toRemove = Math.floor(sorted.length * 0.1);
+    for (let i = 0; i < toRemove; i++) {
+      this._patterns.delete(sorted[i].id);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // LAYER 2: JUDGMENT SIMILARITY
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Get similar past judgments
+   * @param {Object} item - Current item
+   * @param {number} [limit=3] - Max results
+   * @returns {Object[]} Similar judgments with similarity scores
+   */
+  getSimilarJudgments(item, limit = 3) {
+    if (!item || this._judgmentIndex.length === 0) return [];
+
+    const itemText = this._extractText(item);
+    const itemTokens = this._tokenize(itemText);
+    const itemType = item.type || 'unknown';
+
+    const scored = this._judgmentIndex
+      .map(entry => {
+        // Type match bonus
+        const typeMatch = entry.type === itemType ? 0.3 : 0;
+        // Token similarity
+        const tokenSim = this._jaccard(itemTokens, entry.tokens);
+        return {
+          ...entry.judgment,
+          similarity: typeMatch + tokenSim * 0.7,
+        };
+      })
+      .filter(j => j.similarity > 0.15)
+      .sort((a, b) => b.similarity - a.similarity)
+      .slice(0, limit);
+
+    return scored;
+  }
+
+  /**
+   * Index a judgment for similarity search
+   * @param {Object} judgment - Judgment to index
+   * @param {Object} item - Original item
+   */
+  indexJudgment(judgment, item) {
+    const text = this._extractText(item);
+    const tokens = this._tokenize(text);
+
+    this._judgmentIndex.push({
+      judgment: {
+        id: judgment.id,
+        global_score: judgment.global_score,
+        verdict: judgment.verdict,
+        timestamp: judgment.timestamp,
+        itemType: item.type,
+      },
+      type: item.type || 'unknown',
+      tokens,
+      indexedAt: Date.now(),
+    });
+
+    this.stats.judgmentsIndexed++;
+
+    // Prune if over limit
+    if (this._judgmentIndex.length > LIMITS.MAX_EMBEDDINGS) {
+      const toRemove = Math.floor(this._judgmentIndex.length * 0.1);
+      this._judgmentIndex.splice(0, toRemove);
+    }
+  }
+
+  _extractText(item) {
+    if (typeof item === 'string') return item;
+    return [
+      item.content,
+      item.name,
+      item.description,
+      item.identifier,
+      ...(item.tags || []),
+    ].filter(Boolean).join(' ');
+  }
+
+  _tokenize(text) {
+    return text.toLowerCase()
+      .replace(/[^a-z0-9\s]/g, '')
+      .split(/\s+/)
+      .filter(t => t.length > 2);
+  }
+
+  _jaccard(tokensA, tokensB) {
+    if (!tokensA.length || !tokensB.length) return 0;
+    const setA = new Set(tokensA);
+    const setB = new Set(tokensB);
+    const intersection = [...setA].filter(x => setB.has(x)).length;
+    const union = new Set([...setA, ...setB]).size;
+    return union > 0 ? intersection / union : 0;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // LAYER 2: LEARNED WEIGHTS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Get learned dimension weights
+   * @returns {Object} Dimension -> weight mapping
+   */
+  getLearnedWeights() {
+    return { ...this._dimensionWeights };
+  }
+
+  /**
+   * Get weight for a specific dimension
+   * @param {string} dimension - Dimension name
+   * @returns {number} Weight (default 1.0)
+   */
+  getWeight(dimension) {
+    return this._dimensionWeights[dimension] ?? 1.0;
+  }
+
+  /**
+   * Adjust dimension weight from feedback
+   * @param {string} dimension - Dimension name
+   * @param {number} delta - Weight adjustment (-1 to +1)
+   * @param {string} [source='feedback'] - Feedback source
+   */
+  adjustWeight(dimension, delta, source = 'feedback') {
+    const current = this._dimensionWeights[dimension] ?? 1.0;
+    const learningRate = 0.236; // ~= phi^-3
+
+    // Bounded update [0.1, 3.0]
+    const newWeight = Math.max(0.1, Math.min(3.0,
+      current + delta * learningRate
+    ));
+
+    this._dimensionWeights[dimension] = newWeight;
+    this.stats.weightAdjustments++;
+
+    // Log feedback
+    this._feedbackLog.push({
+      type: 'weight_adjustment',
+      dimension,
+      oldWeight: current,
+      newWeight,
+      delta,
+      source,
+      timestamp: Date.now(),
+    });
+
+    // Prune feedback log
+    if (this._feedbackLog.length > LIMITS.MAX_FEEDBACK) {
+      this._feedbackLog.splice(0, this._feedbackLog.length - LIMITS.MAX_FEEDBACK);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // LAYER 3: PROCEDURAL MEMORY
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Get procedure for item type
+   * @param {string} itemType - Item type
+   * @returns {Object|null} Procedure or null
+   */
+  getForItemType(itemType) {
+    return this._procedures.get(itemType) ||
+           this._procedures.get('default') ||
+           null;
+  }
+
+  /**
+   * Get scoring rules for item type
+   * @param {string} itemType - Item type
+   * @returns {Object} Scoring rules
+   */
+  getScoringRules(itemType) {
+    return this._scoringRules.get(itemType) ||
+           this._scoringRules.get('default') ||
+           {};
+  }
+
+  /**
+   * Add or update a procedure
+   * @param {string} itemType - Item type
+   * @param {Object} procedure - Procedure definition
+   */
+  setProcedure(itemType, procedure) {
+    this._procedures.set(itemType, {
+      ...procedure,
+      type: itemType,
+      updatedAt: Date.now(),
+    });
+  }
+
+  /**
+   * Add or update scoring rules
+   * @param {string} itemType - Item type
+   * @param {Object} rules - Scoring rules
+   */
+  setScoringRules(itemType, rules) {
+    this._scoringRules.set(itemType, {
+      ...rules,
+      type: itemType,
+      updatedAt: Date.now(),
+    });
+  }
+
+  _initDefaultProcedures() {
+    // Default procedure for unknown types
+    this.setProcedure('default', {
+      steps: [
+        'Identify item type and context',
+        'Apply relevant dimension scoring',
+        'Check for red flags or anomalies',
+        'Synthesize overall assessment',
+      ],
+    });
+
+    // Token procedure
+    this.setProcedure('token', {
+      steps: [
+        'Check holder distribution (top 10 < 30%)',
+        'Verify liquidity status',
+        'Calculate K-Score if available',
+        'Assess social sentiment vs hype',
+        'Check burn history and tokenomics',
+      ],
+    });
+
+    // Code procedure
+    this.setProcedure('code', {
+      steps: [
+        'Check for security vulnerabilities',
+        'Assess code quality and readability',
+        'Verify test coverage exists',
+        'Check for code smells and debt',
+        'Review architectural patterns',
+      ],
+    });
+
+    // Decision procedure
+    this.setProcedure('decision', {
+      steps: [
+        'Identify stakeholders and impact',
+        'List pros and cons',
+        'Assess reversibility',
+        'Check alignment with goals',
+        'Consider second-order effects',
+      ],
+    });
+
+    // Default scoring rules
+    this.setScoringRules('default', {
+      minScore: 0,
+      maxScore: 100,
+      verdictThresholds: {
+        HOWL: 85,
+        WAG: 62,
+        GROWL: 38,
+        BARK: 0,
+      },
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PERSISTENCE & SYNC
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Save to storage
+   */
+  async save() {
+    if (!this.storage) return;
+
+    try {
+      await this.storage.set('shared_memory', {
+        patterns: Array.from(this._patterns.entries()),
+        judgmentIndex: this._judgmentIndex.slice(-500), // Keep recent 500
+        weights: this._dimensionWeights,
+        procedures: Array.from(this._procedures.entries()),
+        scoringRules: Array.from(this._scoringRules.entries()),
+        feedback: this._feedbackLog.slice(-100),
+        stats: this.stats,
+        savedAt: Date.now(),
+      });
+    } catch (err) {
+      console.warn('[SharedMemory] Failed to save:', err.message);
+    }
+  }
+
+  /**
+   * Export for swarm sync (only verified/proven data)
+   * @returns {Object} Exportable state
+   */
+  export() {
+    return {
+      patterns: Array.from(this._patterns.values())
+        .filter(p => p.verified || (p.useCount || 0) >= 3),
+      weights: this._dimensionWeights,
+      procedures: Array.from(this._procedures.values()),
+      timestamp: Date.now(),
+    };
+  }
+
+  /**
+   * Import from swarm sync
+   * @param {Object} remote - Remote memory state
+   */
+  import(remote) {
+    // Merge patterns (don't overwrite existing)
+    for (const pattern of (remote.patterns || [])) {
+      if (!this._patterns.has(pattern.id)) {
+        this.addPattern({ ...pattern, importedFrom: 'swarm' });
+      }
+    }
+
+    // Merge weights (average with local)
+    for (const [dim, weight] of Object.entries(remote.weights || {})) {
+      const local = this._dimensionWeights[dim] ?? 1.0;
+      this._dimensionWeights[dim] = (local + weight) / 2;
+    }
+
+    // Merge procedures (prefer newer)
+    for (const proc of (remote.procedures || [])) {
+      const local = this._procedures.get(proc.type);
+      if (!local || (proc.updatedAt || 0) > (local.updatedAt || 0)) {
+        this.setProcedure(proc.type, proc);
+      }
+    }
+  }
+
+  /**
+   * Get memory stats
+   * @returns {Object} Stats summary
+   */
+  getStats() {
+    return {
+      patternCount: this._patterns.size,
+      verifiedPatterns: Array.from(this._patterns.values()).filter(p => p.verified).length,
+      judgmentIndexSize: this._judgmentIndex.length,
+      dimensionsTracked: Object.keys(this._dimensionWeights).length,
+      procedureCount: this._procedures.size,
+      feedbackCount: this._feedbackLog.length,
+      ...this.stats,
+      initialized: this.initialized,
+    };
+  }
+
+  /**
+   * Record feedback from user/system
+   * @param {Object} feedback - Feedback data
+   */
+  recordFeedback(feedback) {
+    this._feedbackLog.push({
+      ...feedback,
+      timestamp: Date.now(),
+    });
+    this.stats.feedbackReceived++;
+
+    if (this._feedbackLog.length > LIMITS.MAX_FEEDBACK) {
+      this._feedbackLog.splice(0, this._feedbackLog.length - LIMITS.MAX_FEEDBACK);
+    }
+  }
+
+  /**
+   * Get recent feedback
+   * @param {number} [count=10] - Number of entries
+   * @returns {Object[]} Recent feedback
+   */
+  getRecentFeedback(count = 10) {
+    return this._feedbackLog.slice(-count);
+  }
+}
+
+export default SharedMemory;

@@ -200,3 +200,24 @@ export {
   createReputationGraph,
   TrustLevel,
 } from '@cynic/identity';
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Memory Layer - 6-Layer Hybrid Context Architecture
+// ═══════════════════════════════════════════════════════════════════════════════
+export {
+  // SharedMemory (Layer 2: Collective + Layer 3: Procedural)
+  SharedMemory,
+  // UserLab (Layer 4: Personal context)
+  UserLab,
+  LabManager,
+} from './memory/index.js';
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Dog Orchestrator - Parallel subagent spawning with context injection
+// ═══════════════════════════════════════════════════════════════════════════════
+export {
+  DogOrchestrator,
+  DogMode,
+  DogModel,
+  DOG_CONFIG,
+} from './agents/orchestrator.js';
