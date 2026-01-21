@@ -1084,11 +1084,6 @@ export function scoreDimension(name, item, context = {}) {
   if (scorer) {
     const baseScore = scorer(item, context);
 
-    // DEBUG: Log CULTURE dimensions for negative scoring verification
-    if (['AUTHENTICITY', 'RELEVANCE', 'NOVELTY', 'ALIGNMENT', 'IMPACT', 'RESONANCE'].includes(name)) {
-      console.log(`[SCORER DEBUG] ${name}: ${baseScore}`);
-    }
-
     // If we have a derived hint, blend it with the scored value
     // This helps when enrichment detected something the scorer might miss
     if (typeof derivedHint === 'number') {

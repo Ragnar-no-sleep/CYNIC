@@ -1,8 +1,5 @@
 #!/usr/bin/env node
 
-// DIAGNOSTIC: First line after shebang - must appear in logs
-console.log('[MCP] ========= DEPLOY BUILD c1948fe+ =========');
-
 /**
  * CYNIC MCP Server CLI
  *

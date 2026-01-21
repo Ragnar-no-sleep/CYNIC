@@ -115,11 +115,6 @@ export class CYNICJudge {
     // Score each dimension
     const dimensionScores = this._scoreDimensions(item, context);
 
-    // DEBUG: Log CULTURE dimension scores
-    const cultureKeys = ['AUTHENTICITY', 'RELEVANCE', 'NOVELTY', 'ALIGNMENT', 'IMPACT', 'RESONANCE'];
-    const cultureDimScores = cultureKeys.map(k => `${k}:${dimensionScores[k]}`).join(', ');
-    console.log(`[JUDGE DEBUG] CULTURE dimensions: ${cultureDimScores}`);
-
     // Calculate global score (weighted average - legacy)
     const globalScore = this._calculateGlobalScore(dimensionScores);
 
@@ -482,10 +477,6 @@ export class CYNICJudge {
 
       for (const [dimName, config] of Object.entries(dims)) {
         const score = dimensionScores[dimName];
-        // DEBUG: Log each dimension check for CULTURE
-        if (axiom === 'CULTURE') {
-          console.log(`[AXIOM DEBUG] ${dimName}: score=${score}, type=${typeof score}, isNumber=${typeof score === 'number'}`);
-        }
         if (typeof score === 'number') {
           let weight = config.weight;
 
@@ -504,11 +495,6 @@ export class CYNICJudge {
       axiomScores[axiom] = totalWeight > 0
         ? Math.round(weightedSum / totalWeight * 10) / 10
         : 50; // Neutral if no data
-
-      // DEBUG: Log CULTURE axiom calculation
-      if (axiom === 'CULTURE') {
-        console.log(`[AXIOM DEBUG] CULTURE: weightedSum=${weightedSum}, totalWeight=${totalWeight}, result=${axiomScores[axiom]}`);
-      }
     }
 
     // Store THE_UNNAMEABLE separately (not in Q-Score formula)

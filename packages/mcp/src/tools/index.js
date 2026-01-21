@@ -52,45 +52,17 @@ export function createJudgeTool(judge, persistence = null, sessionManager = null
       required: ['item'],
     },
     handler: async (params) => {
-      // DEBUG: ENTRY POINT - this MUST appear if handler is called
-      console.error('[HANDLER ENTRY] brain_cynic_judge handler invoked');
-
       const { item, context = {} } = params;
       if (!item) throw new Error('Missing required parameter: item');
-
-      // DEBUG: Log original item
-      console.log('[JUDGE DEBUG] Original item:', JSON.stringify(item).slice(0, 500));
 
       // Enrich item with metadata for richer judgment
       // This extracts sources, analyzes code/text, generates hashes, etc.
       const enrichedItem = enrichItem(item, context);
 
-      // DEBUG: Log enriched item (especially derivedScores)
-      console.log('[JUDGE DEBUG] Enriched derivedScores:', JSON.stringify(enrichedItem.derivedScores));
-
       // Use graph integration if available, otherwise direct judge
-      console.error(`[HANDLER] Using graphIntegration: ${!!graphIntegration}`);
-      let judgment;
-      try {
-        judgment = graphIntegration
-          ? await graphIntegration.judgeWithGraph(enrichedItem, context)
-          : judge.judge(enrichedItem, context);
-        console.error(`[HANDLER] Judgment completed, CULTURE: ${judgment?.axiomScores?.CULTURE}`);
-      } catch (judgeErr) {
-        console.error(`[HANDLER ERROR] Judge failed: ${judgeErr.message}`);
-        throw judgeErr;
-      }
-
-      // DEBUG: Log judgment result CULTURE scores
-      console.log('[JUDGE DEBUG] axiomScores.CULTURE:', judgment.axiomScores?.CULTURE);
-      console.log('[JUDGE DEBUG] dimensionScores CULTURE:', JSON.stringify({
-        AUTHENTICITY: judgment.dimensionScores?.AUTHENTICITY,
-        RELEVANCE: judgment.dimensionScores?.RELEVANCE,
-        NOVELTY: judgment.dimensionScores?.NOVELTY,
-        ALIGNMENT: judgment.dimensionScores?.ALIGNMENT,
-        IMPACT: judgment.dimensionScores?.IMPACT,
-        RESONANCE: judgment.dimensionScores?.RESONANCE,
-      }));
+      const judgment = graphIntegration
+        ? await graphIntegration.judgeWithGraph(enrichedItem, context)
+        : judge.judge(enrichedItem, context);
 
       // Generate fallback ID (used if persistence unavailable)
       let judgmentId = `jdg_${Date.now().toString(36)}`;
