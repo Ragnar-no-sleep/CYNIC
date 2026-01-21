@@ -753,6 +753,146 @@ async function sendBuildFeedback(params) {
 }
 
 // =============================================================================
+// CROSS-SESSION PROFILE PERSISTENCE
+// =============================================================================
+
+/**
+ * Load user profile from database (cross-session memory)
+ * Called at session start to restore previous session data
+ * @param {string} userId - User ID (hook-generated usr_xxx)
+ * @returns {Promise<Object|null>} Profile from database or null
+ */
+async function loadProfileFromDB(userId) {
+  try {
+    const result = await callBrainTool('brain_profile_load', { userId });
+    if (result.success && result.profile) {
+      return result.profile;
+    }
+    return null;
+  } catch (e) {
+    // Silently fail - local profile is fallback
+    return null;
+  }
+}
+
+/**
+ * Sync user profile to database (cross-session memory)
+ * Called at session end to persist data for next session
+ * @param {string} userId - User ID (hook-generated usr_xxx)
+ * @param {Object} profile - Full profile to sync
+ * @returns {Promise<Object>} Sync result
+ */
+async function syncProfileToDB(userId, profile) {
+  try {
+    return await callBrainTool('brain_profile_sync', {
+      userId,
+      profile,
+    });
+  } catch (e) {
+    // Silently fail - data is still in local JSON
+    return { success: false, error: e.message };
+  }
+}
+
+/**
+ * Merge remote (DB) and local profiles
+ * Remote is source of truth for accumulated stats
+ * @param {Object} remoteProfile - Profile from database
+ * @param {Object} localProfile - Profile from local JSON
+ * @returns {Object} Merged profile
+ */
+function mergeProfiles(remoteProfile, localProfile) {
+  if (!remoteProfile) return localProfile;
+  if (!localProfile) return remoteProfile;
+
+  return {
+    userId: localProfile.userId,
+    identity: {
+      ...(remoteProfile.identity || {}),
+      ...(localProfile.identity || {}),
+      // Keep earliest firstSeen
+      firstSeen: remoteProfile.identity?.firstSeen || localProfile.identity?.firstSeen,
+      lastSeen: localProfile.identity?.lastSeen || new Date().toISOString(),
+    },
+    stats: {
+      // Use max of accumulated stats
+      sessions: Math.max(
+        remoteProfile.stats?.sessions || 0,
+        localProfile.stats?.sessions || 0
+      ),
+      toolCalls: Math.max(
+        remoteProfile.stats?.toolCalls || 0,
+        localProfile.stats?.toolCalls || 0
+      ),
+      errorsEncountered: Math.max(
+        remoteProfile.stats?.errorsEncountered || 0,
+        localProfile.stats?.errorsEncountered || 0
+      ),
+      dangerBlocked: Math.max(
+        remoteProfile.stats?.dangerBlocked || 0,
+        localProfile.stats?.dangerBlocked || 0
+      ),
+    },
+    patterns: {
+      preferredLanguages: [
+        ...new Set([
+          ...(remoteProfile.patterns?.preferredLanguages || []),
+          ...(localProfile.patterns?.preferredLanguages || []),
+        ])
+      ],
+      commonTools: mergeToolCounts(
+        remoteProfile.patterns?.commonTools || {},
+        localProfile.patterns?.commonTools || {}
+      ),
+      workingHours: mergeToolCounts(
+        remoteProfile.patterns?.workingHours || {},
+        localProfile.patterns?.workingHours || {}
+      ),
+      projectTypes: [
+        ...new Set([
+          ...(remoteProfile.patterns?.projectTypes || []),
+          ...(localProfile.patterns?.projectTypes || []),
+        ])
+      ],
+    },
+    preferences: {
+      ...(remoteProfile.preferences || {}),
+      ...(localProfile.preferences || {}),
+    },
+    memory: {
+      recentProjects: [
+        ...new Set([
+          ...(localProfile.memory?.recentProjects || []),
+          ...(remoteProfile.memory?.recentProjects || []),
+        ])
+      ].slice(0, 20),
+      ongoingTasks: localProfile.memory?.ongoingTasks || [],
+      decisions: [
+        ...(localProfile.memory?.decisions || []),
+        ...(remoteProfile.memory?.decisions || []),
+      ].slice(-100),
+    },
+    // Include learning data from remote
+    learning: remoteProfile.learning || {},
+    meta: remoteProfile.meta || {},
+  };
+}
+
+/**
+ * Merge tool/hour counts (take max of each key)
+ * @param {Object} remote - Remote counts
+ * @param {Object} local - Local counts
+ * @returns {Object} Merged counts
+ */
+function mergeToolCounts(remote, local) {
+  const merged = { ...remote };
+  for (const [key, value] of Object.entries(local)) {
+    merged[key] = Math.max(merged[key] || 0, value);
+  }
+  return merged;
+}
+
+// =============================================================================
 // EXPORTS
 // =============================================================================
 
@@ -809,6 +949,11 @@ module.exports = {
   sendCommitFeedback,
   sendPRFeedback,
   sendBuildFeedback,
+
+  // Cross-Session Profile Persistence
+  loadProfileFromDB,
+  syncProfileToDB,
+  mergeProfiles,
 
   // NOTE: Learnings persistence removed - uses PostgreSQL via brain_learning MCP tool
 };

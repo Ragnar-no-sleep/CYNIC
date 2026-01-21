@@ -27,17 +27,42 @@ async function main() {
     // Detect user identity
     const user = cynic.detectUser();
 
-    // Load or create user profile
-    let profile = cynic.loadUserProfile(user.userId);
+    // Load local profile first
+    let localProfile = cynic.loadUserProfile(user.userId);
 
-    // Update profile with current identity info
-    profile = cynic.updateUserProfile(profile, {
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CROSS-SESSION MEMORY: Load profile from PostgreSQL
+    // ═══════════════════════════════════════════════════════════════════════════
+    let remoteProfile = null;
+    let learningsImport = null;
+
+    try {
+      remoteProfile = await cynic.loadProfileFromDB(user.userId);
+      if (remoteProfile) {
+        // Merge remote (accumulated) with local (current session)
+        localProfile = cynic.mergeProfiles(remoteProfile, localProfile);
+        learningsImport = {
+          success: true,
+          imported: remoteProfile.meta?.sessionCount || 0,
+          stats: {
+            accuracy: remoteProfile.learning?.feedbackAccuracy
+              ? Math.round(remoteProfile.learning.feedbackAccuracy * 100)
+              : null
+          }
+        };
+      }
+    } catch (e) {
+      // Silently fail - local profile is fallback
+    }
+
+    // Update profile with current identity info and increment session
+    let profile = cynic.updateUserProfile(localProfile, {
       identity: {
         name: user.name,
         email: user.email
       },
       stats: {
-        sessions: (profile.stats?.sessions || 0) + 1
+        sessions: (localProfile.stats?.sessions || 0) + 1
       }
     });
 
@@ -59,13 +84,8 @@ async function main() {
       }
     }
 
-    // ═══════════════════════════════════════════════════════════════════════════
-    // LEARNINGS - PostgreSQL via brain_learning MCP tool (no local file)
-    // State is automatically loaded when MCP server starts
-    // ═══════════════════════════════════════════════════════════════════════════
-
-    // Format the awakening message (no learnings import needed - PostgreSQL handles it)
-    const message = cynic.formatEcosystemStatus(ecosystem, profile, null);
+    // Format the awakening message (with learnings import info if available)
+    const message = cynic.formatEcosystemStatus(ecosystem, profile, learningsImport);
 
     // Start brain session first (async but we don't wait)
     cynic.startBrainSession(user.userId, {

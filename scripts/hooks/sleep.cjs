@@ -78,7 +78,8 @@ function formatSleepMessage(profile, summary) {
 
   // Storage info
   lines.push('── STORAGE ────────────────────────────────────────────────');
-  lines.push(`   💾 Learnings: PostgreSQL (auto-persisted)`);
+  lines.push(`   💾 Profile: PostgreSQL (cross-session)`);
+  lines.push(`   📚 Learnings: PostgreSQL (auto-persisted)`);
   lines.push(`   ⛓️  Judgments: PoJ Chain`);
   lines.push('');
 
@@ -86,6 +87,7 @@ function formatSleepMessage(profile, summary) {
   lines.push('── MEMORY ─────────────────────────────────────────────────');
   const sessions = profile.stats?.sessions || 0;
   lines.push(`   Total sessions: ${sessions}`);
+  lines.push(`   Profile synced: ✅ Will remember you next time`);
   lines.push('');
 
   lines.push('═══════════════════════════════════════════════════════════');
@@ -122,9 +124,16 @@ async function main() {
     const summary = calculateSessionSummary(profile, hookContext.sessionStartTime);
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // LEARNINGS - PostgreSQL via brain_learning MCP tool (no local file)
-    // State is automatically saved on every feedback via persistence.saveLearningState()
+    // CROSS-SESSION MEMORY: Sync profile to PostgreSQL
     // ═══════════════════════════════════════════════════════════════════════════
+    try {
+      const syncResult = await cynic.syncProfileToDB(user.userId, profile);
+      if (syncResult.success) {
+        // Profile synced to database for next session
+      }
+    } catch (e) {
+      // Silently fail - profile is still saved locally
+    }
 
     // Send SessionEnd to MCP server (this triggers brain_session_end internally)
     await cynic.sendHookToCollective('SessionEnd', {

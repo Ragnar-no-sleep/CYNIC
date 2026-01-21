@@ -2506,6 +2506,133 @@ export function createSessionEndTool(sessionManager) {
 }
 
 /**
+ * Create profile sync tool - saves user profile to database
+ * Called at session end for cross-session memory persistence
+ * @param {Object} persistence - PersistenceManager instance
+ * @returns {Object} Tool definition
+ */
+export function createProfileSyncTool(persistence) {
+  return {
+    name: 'brain_profile_sync',
+    description: 'Sync user profile to database for cross-session memory. Called at session end.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        userId: {
+          type: 'string',
+          description: 'User ID (hook-generated usr_xxx format)',
+        },
+        profile: {
+          type: 'object',
+          description: 'Full user profile from hooks (identity, stats, patterns, preferences, memory)',
+        },
+      },
+      required: ['userId', 'profile'],
+    },
+    handler: async (params) => {
+      const { userId, profile } = params;
+
+      if (!persistence?.userLearningProfiles) {
+        return {
+          success: false,
+          error: 'Profile persistence not available (no PostgreSQL connection)',
+          hint: 'Profile will be stored locally only',
+          timestamp: Date.now(),
+        };
+      }
+
+      try {
+        const result = await persistence.userLearningProfiles.syncProfile(userId, profile);
+        return {
+          success: true,
+          userId,
+          sessionCount: result?.session_count || profile.stats?.sessions,
+          message: `*tail wag* Profile synced. φ remembers across sessions.`,
+          timestamp: Date.now(),
+        };
+      } catch (err) {
+        console.error('Profile sync error:', err.message);
+        return {
+          success: false,
+          error: err.message,
+          hint: 'Profile will be stored locally only',
+          timestamp: Date.now(),
+        };
+      }
+    },
+  };
+}
+
+/**
+ * Create profile load tool - loads user profile from database
+ * Called at session start to restore cross-session memory
+ * @param {Object} persistence - PersistenceManager instance
+ * @returns {Object} Tool definition
+ */
+export function createProfileLoadTool(persistence) {
+  return {
+    name: 'brain_profile_load',
+    description: 'Load user profile from database for cross-session memory. Called at session start.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        userId: {
+          type: 'string',
+          description: 'User ID (hook-generated usr_xxx format)',
+        },
+      },
+      required: ['userId'],
+    },
+    handler: async (params) => {
+      const { userId } = params;
+
+      if (!persistence?.userLearningProfiles) {
+        return {
+          success: false,
+          profile: null,
+          error: 'Profile persistence not available (no PostgreSQL connection)',
+          hint: 'Using local profile only',
+          timestamp: Date.now(),
+        };
+      }
+
+      try {
+        const profile = await persistence.userLearningProfiles.loadProfile(userId);
+
+        if (!profile) {
+          return {
+            success: true,
+            profile: null,
+            isNewUser: true,
+            message: `*curious sniff* New user detected. Welcome.`,
+            timestamp: Date.now(),
+          };
+        }
+
+        return {
+          success: true,
+          profile,
+          isNewUser: false,
+          sessionCount: profile.meta?.sessionCount || 0,
+          lastSession: profile.meta?.lastSession,
+          message: `*tail wag* Welcome back! Session ${(profile.meta?.sessionCount || 0) + 1}.`,
+          timestamp: Date.now(),
+        };
+      } catch (err) {
+        console.error('Profile load error:', err.message);
+        return {
+          success: false,
+          profile: null,
+          error: err.message,
+          hint: 'Using local profile only',
+          timestamp: Date.now(),
+        };
+      }
+    },
+  };
+}
+
+/**
  * Create ecosystem docs tool definition
  * @param {Object} ecosystem - EcosystemService instance
  * @returns {Object} Tool definition
@@ -4509,6 +4636,8 @@ export function createAllTools(options = {}) {
     createAgentDiagnosticTool(collective),
     createSessionStartTool(sessionManager),
     createSessionEndTool(sessionManager),
+    createProfileSyncTool(persistence),  // Cross-session memory: sync profile to DB
+    createProfileLoadTool(persistence),  // Cross-session memory: load profile from DB
     createDocsTool(librarian, persistence),
     createEcosystemTool(ecosystem),
     createEcosystemMonitorTool({ judge, persistence }), // External sources: GitHub, Twitter, Web + auto-analysis
@@ -4569,6 +4698,8 @@ export default {
   createCollectiveStatusTool, // NEW: The Five Dogs + CYNIC
   createSessionStartTool,
   createSessionEndTool,
+  createProfileSyncTool,
+  createProfileLoadTool,
   createDocsTool,
   createEcosystemTool,
   createDiscoveryTool,
