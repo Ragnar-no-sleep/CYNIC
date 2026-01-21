@@ -121,10 +121,13 @@ export class AuthService {
     this.required = options.required ?? isProduction;
 
     // Public paths that don't require auth
+    // /mcp and /message are public to allow Claude Code SSE connections without API keys
     this.publicPaths = new Set(options.publicPaths || [
       '/',
       '/health',
       '/metrics',
+      '/mcp',        // SSE endpoint for Claude Code MCP client
+      '/message',    // JSON-RPC endpoint for MCP tool calls
     ]);
 
     // Rate limiting configuration
