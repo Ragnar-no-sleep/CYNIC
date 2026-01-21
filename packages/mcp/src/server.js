@@ -636,8 +636,9 @@ export class MCPServer {
       return;
     }
 
-    // SSE endpoint for MCP streaming
-    if (url.pathname === '/sse') {
+    // SSE endpoint for MCP streaming (supports both /sse and /mcp paths)
+    // /mcp is the standard MCP SDK path used by Claude Code
+    if (url.pathname === '/sse' || url.pathname === '/mcp') {
       this._handleSseConnection(req, res);
       return;
     }
