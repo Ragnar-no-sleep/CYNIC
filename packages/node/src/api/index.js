@@ -16,3 +16,7 @@ export { BurnsAPI, setupBurnsRoutes } from './burns-api.js';
 
 // Emergence API (Layer 7)
 export { setupEmergenceRoutes } from './emergence-api.js';
+
+// Explorer API (solscan-style)
+export { setupExplorerRoutes } from './explorer-api.js';
+export { setupExplorerUI } from './explorer-ui.js';

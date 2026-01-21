@@ -14,6 +14,8 @@ import express from 'express';
 import { PHI_INV, PHI_INV_2 } from '@cynic/core';
 import { setupBurnsRoutes } from './burns-api.js';
 import { setupEmergenceRoutes } from './emergence-api.js';
+import { setupExplorerRoutes } from './explorer-api.js';
+import { setupExplorerUI } from './explorer-ui.js';
 
 /**
  * API Server for CYNIC Node
@@ -41,6 +43,7 @@ export class APIServer {
     this._configure();
     this._setupBurnsRoutes(); // Burns routes BEFORE main routes (404 handler last)
     this._setupEmergenceRoutes(); // Emergence routes (Layer 7)
+    this._setupExplorerRoutes(); // Explorer routes (solscan-style)
     this._setupRoutes();
   }
 
@@ -122,6 +125,17 @@ export class APIServer {
           'GET /emergence/dimensions',
           'GET /emergence/collective',
           'GET /emergence/meta',
+          'GET /explorer (overview)',
+          'GET /explorer/ui (web interface)',
+          'GET /explorer/judgments',
+          'GET /explorer/judgment/:id',
+          'GET /explorer/blocks',
+          'GET /explorer/block/:hashOrSlot',
+          'GET /explorer/operators',
+          'GET /explorer/operator/:pubkey',
+          'GET /explorer/burns',
+          'GET /explorer/search?q=',
+          'GET /explorer/learning',
         ],
       });
     });
@@ -357,7 +371,7 @@ export class APIServer {
       res.status(404).json({
         error: 'Not Found',
         message: `Route ${req.method} ${req.path} not found`,
-        available: ['/', '/health', '/info', '/consensus/status', '/judge', '/judge/kscore', '/merkle/proof/:hash', '/burns/verify/:signature', '/burns/stats', '/emergence/state', '/emergence/consciousness', '/emergence/patterns', '/emergence/dimensions', '/emergence/collective', '/emergence/meta'],
+        available: ['/', '/health', '/info', '/consensus/status', '/judge', '/judge/kscore', '/merkle/proof/:hash', '/burns/verify/:signature', '/burns/stats', '/emergence/*', '/explorer', '/explorer/ui', '/explorer/judgments', '/explorer/blocks', '/explorer/operators', '/explorer/burns', '/explorer/search'],
       });
     });
 
@@ -389,6 +403,17 @@ export class APIServer {
   _setupEmergenceRoutes() {
     if (this.node) {
       setupEmergenceRoutes(this.app, { node: this.node });
+    }
+  }
+
+  /**
+   * Setup explorer routes (solscan-style)
+   * @private
+   */
+  _setupExplorerRoutes() {
+    if (this.node) {
+      setupExplorerRoutes(this.app, { node: this.node });
+      setupExplorerUI(this.app);
     }
   }
 
