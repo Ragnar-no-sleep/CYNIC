@@ -21,7 +21,6 @@ import {
   ConsensusGossip,
   SlotManager,
 } from '@cynic/protocol';
-import express from 'express';
 import { PHI_INV } from '@cynic/core';
 
 /**
@@ -83,6 +82,88 @@ export async function startCommand(options) {
   console.log(chalk.gray('  Host:    ') + chalk.white(host));
   console.log();
 
+  // Build HTTP handler for API endpoints
+  const httpHandler = (req, res) => {
+    // CORS headers
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Content-Type', 'application/json');
+
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204);
+      return res.end();
+    }
+
+    const url = req.url.split('?')[0];
+
+    // Root
+    if (url === '/') {
+      res.writeHead(200);
+      return res.end(JSON.stringify({
+        name: 'CYNIC Node',
+        version: '0.1.0',
+        nodeId,
+        greek: 'κυνικός',
+        endpoints: ['/health', '/status', '/peers', '/consensus'],
+      }));
+    }
+
+    // Health
+    if (url === '/health') {
+      const stats = transport.getStats();
+      res.writeHead(200);
+      return res.end(JSON.stringify({
+        status: 'healthy',
+        nodeId,
+        uptime: Date.now() - startTime,
+        peers: stats.connections.connected,
+        phi: { maxConfidence: PHI_INV },
+      }));
+    }
+
+    // Status
+    if (url === '/status') {
+      const stats = transport.getStats();
+      const gossipStats = gossip.getStats();
+      const cState = consensus.getState();
+      res.writeHead(200);
+      return res.end(JSON.stringify({
+        nodeId,
+        uptime: Date.now() - startTime,
+        transport: {
+          connections: stats.connections,
+          messagesSent: stats.messagesSent,
+          messagesReceived: stats.messagesReceived,
+        },
+        gossip: { total: gossipStats.total, active: gossipStats.active },
+        consensus: cState,
+      }));
+    }
+
+    // Peers
+    if (url === '/peers') {
+      const peers = transport.getConnectedPeers();
+      res.writeHead(200);
+      return res.end(JSON.stringify({
+        count: peers.length,
+        peers: peers.map(p => ({ id: p.slice(0, 24) + '...' })),
+      }));
+    }
+
+    // Consensus
+    if (url === '/consensus') {
+      const cStats = consensusGossip.getStats();
+      const cState = consensus.getState();
+      res.writeHead(200);
+      return res.end(JSON.stringify({ state: cState, bridge: cStats }));
+    }
+
+    // 404
+    res.writeHead(404);
+    res.end(JSON.stringify({ error: 'Not Found', path: url }));
+  };
+
   // Create transport
   const transport = new WebSocketTransport({
     port,
@@ -90,6 +171,7 @@ export async function startCommand(options) {
     publicKey: keypair.publicKey,
     privateKey: keypair.privateKey,
     heartbeatInterval: 61800, // φ-aligned
+    httpHandler, // HTTP API on same port as WS
   });
 
   // Create gossip protocol
@@ -227,91 +309,10 @@ export async function startCommand(options) {
     }
   }
 
-  // Start HTTP API if requested
-  if (options.api) {
-    const apiPort = parseInt(options.apiPort) || 3000;
-    const app = express();
-    app.use(express.json());
+  // HTTP API is now served on the same port as WebSocket (via httpHandler)
+  // No separate API server needed
 
-    // CORS
-    app.use((req, res, next) => {
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-      if (req.method === 'OPTIONS') return res.sendStatus(204);
-      next();
-    });
-
-    // Root
-    app.get('/', (req, res) => {
-      res.json({
-        name: 'CYNIC Node API',
-        version: '0.1.0',
-        nodeId,
-        greek: 'κυνικός',
-        endpoints: ['/health', '/status', '/peers', '/consensus'],
-      });
-    });
-
-    // Health
-    app.get('/health', (req, res) => {
-      const stats = transport.getStats();
-      res.json({
-        status: 'healthy',
-        nodeId,
-        uptime: Date.now() - startTime,
-        peers: stats.connections.connected,
-        phi: { maxConfidence: PHI_INV },
-      });
-    });
-
-    // Status
-    app.get('/status', (req, res) => {
-      const stats = transport.getStats();
-      const gossipStats = gossip.getStats();
-      const cState = consensus.getState();
-      res.json({
-        nodeId,
-        uptime: Date.now() - startTime,
-        transport: {
-          connections: stats.connections,
-          messagesSent: stats.messagesSent,
-          messagesReceived: stats.messagesReceived,
-          bytesOut: stats.bytesOut,
-          bytesIn: stats.bytesIn,
-        },
-        gossip: {
-          total: gossipStats.total,
-          active: gossipStats.active,
-        },
-        consensus: cState,
-      });
-    });
-
-    // Peers
-    app.get('/peers', (req, res) => {
-      const peers = transport.getConnectedPeers();
-      res.json({
-        count: peers.length,
-        peers: peers.map(p => ({ id: p.slice(0, 24) + '...' })),
-      });
-    });
-
-    // Consensus
-    app.get('/consensus', (req, res) => {
-      const cStats = consensusGossip.getStats();
-      const cState = consensus.getState();
-      res.json({
-        state: cState,
-        bridge: cStats,
-      });
-    });
-
-    // Start API server
-    app.listen(apiPort, () => {
-      console.log(chalk.green('  [OK]   ') + `HTTP API listening on port ${chalk.bold(apiPort)}`);
-    });
-  } else {
+  if (!options.daemon) {
     // Interactive mode
     console.log(chalk.gray('\n  ─────────────────────────────────────────────────'));
     console.log(chalk.bold('  Commands:'));

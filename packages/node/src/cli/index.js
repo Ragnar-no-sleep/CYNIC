@@ -45,8 +45,6 @@ export function createCLI(program) {
     .option('--no-server', 'Client-only mode (no server)')
     .option('-v, --verbose', 'Verbose output')
     .option('-d, --daemon', 'Daemon mode (no interactive REPL)')
-    .option('-a, --api', 'Enable HTTP REST API')
-    .option('--api-port <port>', 'API server port', '3000')
     .action(startCommand);
 
   // Keygen command

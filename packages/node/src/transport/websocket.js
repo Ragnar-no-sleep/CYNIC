@@ -17,6 +17,7 @@
 
 import { WebSocketServer, WebSocket } from 'ws';
 import { EventEmitter } from 'events';
+import { createServer as createHttpServer } from 'http';
 import { createServer as createHttpsServer } from 'https';
 import { readFileSync } from 'fs';
 import { serialize, deserialize } from './serializer.js';
@@ -68,6 +69,7 @@ export class WebSocketTransport extends EventEmitter {
    * @param {string} [options.ssl.key] - Path to private key PEM file
    * @param {string} [options.ssl.cert] - Path to certificate PEM file
    * @param {string} [options.ssl.ca] - Path to CA certificate PEM file (optional)
+   * @param {Function} [options.httpHandler] - HTTP request handler for non-WS requests
    */
   constructor(options = {}) {
     super();
@@ -82,6 +84,7 @@ export class WebSocketTransport extends EventEmitter {
     this.maxQueueSize = options.maxQueueSize || 1000;
     this.maxPeerIdRemaps = options.maxPeerIdRemaps || 10000;
     this.ssl = options.ssl || null;
+    this.httpHandler = options.httpHandler || null;
 
     // Server
     this.server = null;
@@ -152,20 +155,32 @@ export class WebSocketTransport extends EventEmitter {
             reject(err);
           });
         } else {
-          // Plain WS server (no TLS)
-          this.server = new WebSocketServer({
-            port: this.port,
-            host: this.host,
+          // Create HTTP server first, then attach WS to it
+          // This allows handling both HTTP and WS on the same port
+          this.httpServer = createHttpServer((req, res) => {
+            // Handle HTTP requests (non-WebSocket)
+            if (this.httpHandler) {
+              this.httpHandler(req, res);
+            } else {
+              // Default: return WS upgrade required
+              res.writeHead(426, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({
+                error: 'Upgrade Required',
+                message: 'This is a WebSocket endpoint. Use ws:// to connect.',
+              }));
+            }
           });
 
-          this.server.on('listening', () => {
+          this.server = new WebSocketServer({ server: this.httpServer });
+
+          this.httpServer.listen(this.port, this.host, () => {
             this.serverRunning = true;
             this.emit('server:listening', { port: this.port, host: this.host, secure: false });
             this._startHeartbeat();
             resolve();
           });
 
-          this.server.on('error', (err) => {
+          this.httpServer.on('error', (err) => {
             this.emit('server:error', err);
             reject(err);
           });
@@ -211,6 +226,18 @@ export class WebSocketTransport extends EventEmitter {
         new Promise((resolve) => {
           this.httpsServer.close(() => {
             this.httpsServer = null;
+            resolve();
+          });
+        })
+      );
+    }
+
+    // Close HTTP server if used
+    if (this.httpServer) {
+      closePromises.push(
+        new Promise((resolve) => {
+          this.httpServer.close(() => {
+            this.httpServer = null;
             resolve();
           });
         })
