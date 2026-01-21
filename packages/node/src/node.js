@@ -18,6 +18,13 @@ import {
   checkPatternFormation,
   calculateConsensus,
   ConsensusType,
+  // Layer 4: φ-BFT Consensus
+  ConsensusEngine,
+  ConsensusState,
+  BlockStatus,
+  ConsensusGossip,
+  // Block creation
+  createJudgmentBlock,
 } from '@cynic/protocol';
 import {
   createAnchorer,
@@ -91,6 +98,34 @@ export class CYNICNode {
       onMessage: this._handleMessage.bind(this),
       sendFn: options.sendFn || (async () => {}),
     });
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Layer 4: φ-BFT Consensus - "61.8% supermajority"
+    // ═══════════════════════════════════════════════════════════════════════
+
+    this._consensusConfig = {
+      enabled: options.consensus?.enabled ?? true, // Enabled by default
+      confirmationsForFinality: options.consensus?.confirmations || 32,
+    };
+
+    // Initialize consensus engine
+    this._consensus = new ConsensusEngine({
+      publicKey: this.operator.publicKey,
+      privateKey: this.operator.privateKey,
+      eScore: this.operator.getEScore(),
+      burned: this.operator.burned || 0,
+      confirmationsForFinality: this._consensusConfig.confirmationsForFinality,
+    });
+
+    // Initialize consensus-gossip bridge
+    this._consensusGossip = new ConsensusGossip({
+      consensus: this._consensus,
+      gossip: this.gossip,
+      autoSync: true,
+    });
+
+    // Wire consensus events to state updates
+    this._setupConsensusHandlers();
 
     // ═══════════════════════════════════════════════════════════════════════
     // Solana Anchoring - "Onchain is truth"
@@ -173,6 +208,48 @@ export class CYNICNode {
   }
 
   /**
+   * Setup consensus event handlers
+   * @private
+   */
+  _setupConsensusHandlers() {
+    // When a block is finalized by consensus, add it to state chain
+    this._consensus.on('block:finalized', async (event) => {
+      const { blockHash, slot, block } = event;
+      console.log(`✓ Block finalized: slot ${slot}, hash ${blockHash.slice(0, 16)}...`);
+
+      // Import finalized block to state chain
+      if (block && block.judgments) {
+        const result = this.state.chain.importBlock(block);
+        if (!result.success) {
+          console.warn('Failed to import finalized block:', result.errors);
+        }
+      }
+
+      // Emit for external listeners
+      this.emit?.('block:finalized', event);
+    });
+
+    // When a block is confirmed (but not yet finalized)
+    this._consensus.on('block:confirmed', (event) => {
+      console.log(`○ Block confirmed: slot ${event.slot}, ratio ${(event.ratio * 100).toFixed(1)}%`);
+    });
+
+    // When consensus starts
+    this._consensus.on('consensus:started', (event) => {
+      console.log(`φ Consensus started at slot ${event.slot}`);
+    });
+
+    // When a slot changes
+    this._consensus.on('slot:change', (event) => {
+      // Periodic status update every 100 slots
+      if (event.currentSlot % 100 === 0) {
+        const stats = this._consensus.getStats();
+        console.log(`φ Slot ${event.currentSlot}: ${stats.blocksFinalized} finalized, ${stats.pendingBlocks} pending`);
+      }
+    });
+  }
+
+  /**
    * Start the node
    */
   async start() {
@@ -188,6 +265,28 @@ export class CYNICNode {
 
       // Start timers
       this._startTimers();
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // Start Layer 4: φ-BFT Consensus
+      // ═══════════════════════════════════════════════════════════════════════
+
+      if (this._consensusConfig.enabled) {
+        // Register self as validator
+        this._consensus.registerValidator({
+          publicKey: this.operator.publicKey,
+          eScore: this.operator.getEScore(),
+          burned: this.operator.burned || 0,
+          uptime: 1.0,
+        });
+
+        // Start consensus engine
+        this._consensus.start();
+
+        // Start consensus-gossip bridge
+        this._consensusGossip.start();
+
+        console.log(`φ Consensus enabled (61.8% supermajority, ${this._consensusConfig.confirmationsForFinality} confirmations)`);
+      }
 
       // Start anchor queue if enabled
       if (this._anchorConfig.enabled && this._anchorConfig.autoAnchor) {
@@ -215,6 +314,7 @@ export class CYNICNode {
         name: this.operator.identity.name,
         anchoring: this._anchorConfig.enabled,
         burns: this._burnsConfig.enabled,
+        consensus: this._consensusConfig.enabled,
       };
     } catch (err) {
       this.status = NodeStatus.STOPPED;
@@ -234,6 +334,13 @@ export class CYNICNode {
 
     // Stop timers
     this._stopTimers();
+
+    // Stop consensus
+    if (this._consensusConfig.enabled) {
+      this._consensusGossip.stop();
+      this._consensus.stop();
+      console.log(`φ Consensus stopped`);
+    }
 
     // Stop anchor queue and flush pending
     if (this._anchorConfig.enabled) {
@@ -468,15 +575,49 @@ export class CYNICNode {
     // Analyze for residuals
     this.residualDetector.analyze(judgment, context);
 
-    // Add to state
+    // Add to local state (optimistic - will be confirmed by consensus)
     this.state.addJudgment(judgment);
 
-    // Add to chain
-    const block = this.state.chain.addJudgmentBlock([judgment]);
+    // ═══════════════════════════════════════════════════════════════════════
+    // Layer 4: φ-BFT Consensus Block Production
+    // ═══════════════════════════════════════════════════════════════════════
 
-    // Broadcast
-    await this.gossip.broadcastJudgment(judgment);
-    await this.gossip.broadcastBlock(block);
+    let block;
+    let consensusRecord = null;
+
+    if (this._consensusConfig.enabled && this._consensus.state === ConsensusState.PARTICIPATING) {
+      // Create block for consensus proposal
+      const currentSlot = this._consensus.getCurrentSlot();
+      block = createJudgmentBlock({
+        judgments: [judgment],
+        previousHash: this.state.chain.latestHash,
+        timestamp: Date.now(),
+        slot: currentSlot,
+        proposer: this.operator.publicKey,
+      });
+
+      // Propose block to consensus (will be broadcast via ConsensusGossip bridge)
+      try {
+        consensusRecord = this._consensus.proposeBlock(block);
+
+        judgment.consensusStatus = 'PROPOSED';
+        judgment.consensusSlot = consensusRecord.slot;
+        judgment.consensusBlockHash = consensusRecord.hash;
+      } catch (err) {
+        // Consensus might not be ready, fall back to direct broadcast
+        console.warn(`Consensus proposal failed: ${err.message}, falling back to direct broadcast`);
+        block = this.state.chain.addJudgmentBlock([judgment]);
+        await this.gossip.broadcastJudgment(judgment);
+        await this.gossip.broadcastBlock(block);
+      }
+    } else {
+      // Consensus disabled or not participating - direct add to chain
+      block = this.state.chain.addJudgmentBlock([judgment]);
+
+      // Broadcast directly
+      await this.gossip.broadcastJudgment(judgment);
+      await this.gossip.broadcastBlock(block);
+    }
 
     // Update operator stats
     this.operator.recordJudgment();
@@ -511,6 +652,11 @@ export class CYNICNode {
       judgment,
       anchored: this._anchorConfig.enabled,
       burnVerified: context.burnVerified || false,
+      consensus: consensusRecord ? {
+        status: consensusRecord.status,
+        slot: consensusRecord.slot,
+        blockHash: consensusRecord.hash,
+      } : null,
     };
   }
 
@@ -545,6 +691,13 @@ export class CYNICNode {
         enabled: this._burnsConfig.enabled,
         minAmount: this._burnsConfig.minAmount,
         stats: this._burnVerifier.getStats(),
+      },
+      // Layer 4: φ-BFT Consensus stats
+      consensus: {
+        enabled: this._consensusConfig.enabled,
+        state: this._consensus.state,
+        stats: this._consensus.getStats(),
+        validators: this._consensus.validators.size,
       },
       // Emergence layer (Layer 7)
       emergence: this._emergence.getState(),
@@ -695,6 +848,63 @@ export class CYNICNode {
    */
   get collectivePhase() {
     return this._emergence.collective.phase;
+  }
+
+  /**
+   * Get consensus engine for external access
+   * @returns {ConsensusEngine} Consensus engine
+   */
+  get consensus() {
+    return this._consensus;
+  }
+
+  /**
+   * Get consensus-gossip bridge for external access
+   * @returns {ConsensusGossip} Consensus-gossip bridge
+   */
+  get consensusGossip() {
+    return this._consensusGossip;
+  }
+
+  /**
+   * Get current consensus slot
+   * @returns {number} Current slot
+   */
+  get currentSlot() {
+    return this._consensus.getCurrentSlot();
+  }
+
+  /**
+   * Get last finalized slot
+   * @returns {number} Last finalized slot
+   */
+  get lastFinalizedSlot() {
+    return this._consensus.lastFinalizedSlot;
+  }
+
+  /**
+   * Check if a block is finalized
+   * @param {string} blockHash - Block hash
+   * @returns {boolean} True if finalized
+   */
+  isBlockFinalized(blockHash) {
+    return this._consensus.isFinalized(blockHash);
+  }
+
+  /**
+   * Register a peer as validator for consensus
+   * @param {Object} peerInfo - Peer info
+   * @param {string} peerInfo.publicKey - Peer public key
+   * @param {number} [peerInfo.eScore=50] - Peer E-Score
+   * @param {number} [peerInfo.burned=0] - Peer burned amount
+   */
+  registerValidator(peerInfo) {
+    this._consensus.registerValidator({
+      publicKey: peerInfo.publicKey,
+      eScore: peerInfo.eScore || 50,
+      burned: peerInfo.burned || 0,
+      uptime: peerInfo.uptime || 1.0,
+    });
   }
 }
 
