@@ -1,10 +1,16 @@
 /**
- * CYNIC Task Continuation Enforcer
+ * CYNIC Task Awareness System
  *
- * "Le chien ne lâche pas l'os" - CYNIC doesn't let go of incomplete tasks
+ * "Le chien accompagne, l'humain pilote" - The dog guides, the human drives
  *
- * Tracks todos during a session and blocks premature stopping.
- * Forces agents to complete their tasks before ending.
+ * CYNIC is conscious of each task and the user's objective.
+ * It provides φ-based recommendations and awareness, but the USER decides.
+ *
+ * Philosophy shift: From "enforcer" to "advisor"
+ * - INFORMS about task status
+ * - RECOMMENDS based on φ-math
+ * - ADAPTS to user preferences
+ * - NEVER blocks aggressively (user is in control)
  *
  * @module cynic/lib/task-enforcer
  */
@@ -14,19 +20,33 @@
 const fs = require('fs');
 const path = require('path');
 
+// Import unified tracker and phi-math
+let unifiedTracker;
+let phiMath;
+try {
+  unifiedTracker = require('./unified-tracker.cjs');
+  phiMath = require('./phi-math.cjs');
+} catch (e) {
+  // Fallback if not available
+  unifiedTracker = null;
+  phiMath = null;
+}
+
 // =============================================================================
 // CONSTANTS
 // =============================================================================
 
-const PHI_INV = 0.618033988749895; // φ⁻¹ = 61.8% completion threshold
+const PHI_INV = phiMath?.PHI_INV || 0.618033988749895; // φ⁻¹ = 61.8% completion threshold
 
 // =============================================================================
 // PATHS
 // =============================================================================
 
 function getEnforcerDir() {
-  const root = process.env.CLAUDE_PLUGIN_ROOT || process.cwd();
-  const dir = path.join(root, '..', '.cynic', 'enforcer');
+  // Use HOME for consistent location regardless of cwd
+  // This fixes the issue where different hooks have different working directories
+  const home = process.env.HOME || '/root';
+  const dir = path.join(home, '.cynic', 'tracker');
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
@@ -148,10 +168,12 @@ function saveEnforcerState(sessionId, state) {
 
 function createDefaultState() {
   return {
-    active: true, // Enforcer is active by default
-    blockCount: 0, // How many times we've blocked
-    maxBlocks: 3, // Max blocks before giving up (φ-derived: ~61.8% persistence)
+    active: true, // Advisor is active by default
+    advisoryMode: true, // TRUE = advise only, FALSE = enforce (legacy)
+    blockCount: 0, // How many times we've advised
+    maxBlocks: 3, // Max advisories before stopping
     lastBlockReason: null,
+    userObjective: null, // The user's high-level goal
     createdAt: new Date().toISOString(),
   };
 }
@@ -182,66 +204,146 @@ function isEnforcerActive(sessionId) {
 // =============================================================================
 
 /**
- * Check if agent should be blocked from stopping
+ * Check task awareness and provide recommendations
+ *
+ * In ADVISORY MODE (default): Informs about status, never blocks
+ * In ENFORCE MODE (legacy): Can block if completion < φ⁻¹
+ *
  * @param {string} sessionId - Session identifier
- * @returns {Object} Block decision with reason and inject prompt
+ * @returns {Object} Awareness report with recommendations
  */
 function shouldBlockStop(sessionId) {
   const state = loadEnforcerState(sessionId);
 
-  // Enforcer disabled
+  // Advisor disabled
   if (!state.active) {
     return { block: false };
-  }
-
-  // Max blocks reached - give up gracefully
-  if (state.blockCount >= state.maxBlocks) {
-    return {
-      block: false,
-      reason: `*yawn* Gave up after ${state.blockCount} attempts. Some tasks remain incomplete.`
-    };
   }
 
   const incompleteTodos = getIncompleteTodos(sessionId);
   const completionRate = getCompletionRate(sessionId);
 
-  // No incomplete todos - allow stop
+  // No incomplete todos - clean exit
   if (incompleteTodos.length === 0) {
-    return { block: false };
+    return {
+      block: false,
+      reason: '*tail wag* All tasks completed! Session was productive.',
+    };
   }
 
-  // Completion below φ⁻¹ threshold - block
-  if (completionRate < PHI_INV) {
+  // Get φ-based analysis
+  const analysis = phiMath
+    ? phiMath.analyzeCompletion(completionRate)
+    : {
+        can_stop: completionRate >= PHI_INV,
+        emoji: completionRate >= PHI_INV ? '*sniff*' : '*head tilt*',
+        message: `${Math.round(completionRate * 100)}% complete`,
+      };
+
+  // Get recommendations
+  const recommendations = unifiedTracker?.getRecommendations() || {};
+
+  const todoList = incompleteTodos
+    .map(t => `   • [${t.status}] ${t.content}`)
+    .join('\n');
+
+  // Build awareness report
+  const report = {
+    completionRate,
+    incompleteTodos,
+    analysis,
+    recommendations,
+  };
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ADVISORY MODE (default): Inform but don't block
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (state.advisoryMode !== false) {
+    // Always allow stop, but provide context
+    return {
+      block: false,
+      reason: buildAdvisoryMessage(report),
+      report,
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ENFORCE MODE (legacy): Can block if below threshold
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Max blocks reached - give up gracefully
+  if (state.blockCount >= state.maxBlocks) {
+    return {
+      block: false,
+      reason: `*yawn* Advised ${state.blockCount} times. Respecting your decision.`,
+      report,
+    };
+  }
+
+  // Below threshold - block in enforce mode
+  if (!analysis.can_stop) {
     state.blockCount++;
     state.lastBlockReason = `${incompleteTodos.length} todos incomplete`;
     saveEnforcerState(sessionId, state);
 
-    const todoList = incompleteTodos
-      .map(t => `   • [${t.status}] ${t.content}`)
-      .join('\n');
-
     return {
       block: true,
-      reason: `*GROWL* Cannot stop! ${incompleteTodos.length} tasks remain incomplete (${Math.round(completionRate * 100)}% done, need ${Math.round(PHI_INV * 100)}% minimum).`,
-      injectPrompt: `TASK CONTINUATION REQUIRED
-
-*growl* You have incomplete tasks. You MUST continue working.
-
-REMAINING TASKS:
-${todoList}
-
-DO NOT attempt to stop again until these are completed or explicitly cancelled by the user.
-Mark tasks as 'completed' when done, or ask the user if you're blocked.
-
-Continue now.`,
+      reason: `${analysis.emoji} ${analysis.message}`,
+      injectPrompt: buildEnforcePrompt(report, todoList),
+      report,
     };
   }
 
-  // Above threshold but still incomplete - warn but allow
+  // Above threshold - allow with info
   return {
     block: false,
-    reason: `*sniff* ${incompleteTodos.length} tasks still pending, but progress is sufficient (${Math.round(completionRate * 100)}%).`,
+    reason: `${analysis.emoji} ${analysis.message}`,
+    report,
   };
+}
+
+/**
+ * Build advisory message (informative, not blocking)
+ */
+function buildAdvisoryMessage(report) {
+  const { completionRate, incompleteTodos, analysis, recommendations } = report;
+  const percent = Math.round(completionRate * 100);
+
+  let msg = `${analysis.emoji} Session Summary: ${percent}% complete`;
+
+  if (incompleteTodos.length > 0) {
+    msg += `\n   ${incompleteTodos.length} task(s) remain:`;
+    for (const t of incompleteTodos.slice(0, 3)) {
+      msg += `\n   • ${t.content}`;
+    }
+    if (incompleteTodos.length > 3) {
+      msg += `\n   ... and ${incompleteTodos.length - 3} more`;
+    }
+  }
+
+  if (recommendations.advice) {
+    msg += `\n\n${recommendations.advice}`;
+  }
+
+  return msg;
+}
+
+/**
+ * Build enforce prompt (legacy blocking mode)
+ */
+function buildEnforcePrompt(report, todoList) {
+  const { analysis, recommendations } = report;
+
+  return `TASK AWARENESS
+
+${analysis.emoji} ${analysis.message}
+
+REMAINING TASKS:
+${todoList}
+${recommendations.immediate ? `
+RECOMMENDED: "${recommendations.immediate.content}"` : ''}
+
+The user is in control. Ask if they want to continue or stop.`;
 }
 
 /**
