@@ -98,6 +98,26 @@ export const SolanaCluster = {
 };
 
 /**
+ * CYNIC Anchor Program - Deployed on Solana
+ */
+export const CYNIC_PROGRAM = {
+  /** Program ID on devnet/mainnet */
+  PROGRAM_ID: 'D2vprzEbzha6pRDs3EfFToGUvPocFoZTQG1uFkf2boRn',
+
+  /** State PDA seed */
+  STATE_SEED: 'cynic_state',
+
+  /** Root entry PDA seed */
+  ROOT_SEED: 'root',
+
+  /** Max validators (F(8)) */
+  MAX_VALIDATORS: 21,
+
+  /** Max roots to store (F(14)) */
+  MAX_ROOTS: 377,
+};
+
+/**
  * Default configuration
  */
 export const DEFAULT_CONFIG = {
@@ -105,4 +125,7 @@ export const DEFAULT_CONFIG = {
   autoAnchor: true,
   batchSize: ANCHOR_CONSTANTS.ANCHOR_BATCH_SIZE,
   intervalMs: ANCHOR_CONSTANTS.ANCHOR_INTERVAL_MS,
+  /** Use real Anchor program instead of Memo */
+  useAnchorProgram: true,
+  programId: CYNIC_PROGRAM.PROGRAM_ID,
 };

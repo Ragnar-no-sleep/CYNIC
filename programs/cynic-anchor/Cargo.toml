@@ -1,0 +1,26 @@
+[package]
+name = "cynic-anchor"
+version = "0.1.0"
+description = "CYNIC PoJ anchoring on Solana - Proof of Judgment chain"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/cynic-project/cynic"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "cynic_anchor"
+
+[features]
+default = []
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+idl-build = ["anchor-lang/idl-build"]
+
+[dependencies]
+anchor-lang = "0.32.0"
+bs58 = "0.5"
+
+[dev-dependencies]
+anchor-client = "0.32.0"

@@ -51,10 +51,14 @@ export {
   ANCHOR_CONSTANTS,
   SolanaCluster,
   DEFAULT_CONFIG,
+  CYNIC_PROGRAM,
 } from './constants.js';
 
 // Anchorer
 export { SolanaAnchorer, createAnchorer } from './anchorer.js';
+
+// Program Client
+export { CynicProgramClient, createProgramClient } from './program-client.js';
 
 // Queue
 export { AnchorQueue, createAnchorQueue } from './queue.js';

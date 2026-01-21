@@ -16,8 +16,10 @@ import {
   ANCHOR_CONSTANTS,
   SolanaCluster,
   DEFAULT_CONFIG,
+  CYNIC_PROGRAM,
 } from './constants.js';
 import { CynicWallet, base58Encode } from './wallet.js';
+import { CynicProgramClient } from './program-client.js';
 
 /**
  * Result of an anchor operation
@@ -57,16 +59,29 @@ export class SolanaAnchorer {
    * @param {Object} [config.wallet] - Wallet for signing (keypair or adapter)
    * @param {Function} [config.onAnchor] - Callback when anchor completes
    * @param {Function} [config.onError] - Callback on anchor error
+   * @param {boolean} [config.useAnchorProgram] - Use real Anchor program (default: true)
+   * @param {string} [config.programId] - CYNIC program ID
    */
   constructor(config = {}) {
     this.cluster = config.cluster || DEFAULT_CONFIG.cluster;
     this.wallet = config.wallet;
     this.onAnchor = config.onAnchor;
     this.onError = config.onError;
+    this.useAnchorProgram =
+      config.useAnchorProgram !== undefined
+        ? config.useAnchorProgram
+        : DEFAULT_CONFIG.useAnchorProgram;
+    this.programId = config.programId || CYNIC_PROGRAM.PROGRAM_ID;
+
+    // Program client (lazy initialized)
+    this._programClient = null;
 
     // Track anchors
     this.anchors = new Map();
     this.pendingCount = 0;
+
+    // Block height tracking
+    this.blockHeight = 0;
 
     // Stats
     this.stats = {
@@ -76,6 +91,30 @@ export class SolanaAnchorer {
       lastAnchorTime: null,
       lastSignature: null,
     };
+  }
+
+  /**
+   * Get or create the program client
+   * @returns {CynicProgramClient}
+   * @private
+   */
+  _getProgramClient() {
+    if (!this._programClient && this.wallet) {
+      this._programClient = new CynicProgramClient({
+        cluster: this.cluster,
+        wallet: this.wallet,
+        programId: this.programId,
+      });
+    }
+    return this._programClient;
+  }
+
+  /**
+   * Set the current PoJ block height
+   * @param {number} height - Block height
+   */
+  setBlockHeight(height) {
+    this.blockHeight = height;
   }
 
   /**
@@ -204,6 +243,48 @@ export class SolanaAnchorer {
    * @private
    */
   async _sendAnchorTransaction(record) {
+    // Use Anchor program if enabled
+    if (this.useAnchorProgram) {
+      return this._sendAnchorProgramTransaction(record);
+    }
+
+    // Fallback to Memo program (legacy)
+    return this._sendMemoTransaction(record);
+  }
+
+  /**
+   * Send anchor via CYNIC Anchor program
+   * @param {AnchorRecord} record - Anchor record
+   * @returns {Promise<{signature: string, slot: number, rootPda: string}>}
+   * @private
+   */
+  async _sendAnchorProgramTransaction(record) {
+    const client = this._getProgramClient();
+    if (!client) {
+      throw new Error('Wallet required for Anchor program anchoring');
+    }
+
+    // Anchor the root via the program
+    const result = await client.anchorRoot(
+      record.merkleRoot,
+      record.itemIds.length,
+      this.blockHeight
+    );
+
+    return {
+      signature: result.signature,
+      slot: result.slot,
+      rootPda: result.rootPda,
+    };
+  }
+
+  /**
+   * Send anchor via Memo program (legacy fallback)
+   * @param {AnchorRecord} record - Anchor record
+   * @returns {Promise<{signature: string, slot: number}>}
+   * @private
+   */
+  async _sendMemoTransaction(record) {
     // Lazy import @solana/web3.js (may not be installed)
     let Connection, Transaction, TransactionInstruction, PublicKey, Keypair;
     try {
@@ -464,16 +545,75 @@ export class SolanaAnchorer {
 
   /**
    * Verify an anchor exists on Solana
-   * @param {string} signature - Solana tx signature
-   * @param {string} [expectedMerkleRoot] - Expected merkle root in memo
-   * @returns {Promise<{verified: boolean, slot?: number, memo?: string, error?: string}>}
+   * @param {string} signatureOrMerkleRoot - Solana tx signature or merkle root
+   * @param {string} [expectedMerkleRoot] - Expected merkle root (if first arg is signature)
+   * @returns {Promise<{verified: boolean, slot?: number, memo?: string, entry?: Object, error?: string}>}
    */
-  async verifyAnchor(signature, expectedMerkleRoot = null) {
+  async verifyAnchor(signatureOrMerkleRoot, expectedMerkleRoot = null) {
     // Skip simulation signatures
-    if (signature.startsWith('sim_')) {
+    if (signatureOrMerkleRoot.startsWith('sim_')) {
       return { verified: true, simulated: true };
     }
 
+    // If using Anchor program and we have a 64-char hex string, verify via program
+    if (this.useAnchorProgram && /^[a-f0-9]{64}$/i.test(signatureOrMerkleRoot)) {
+      return this._verifyViaProgram(signatureOrMerkleRoot);
+    }
+
+    // Verify via transaction signature (legacy/memo method)
+    return this._verifyViaTransaction(signatureOrMerkleRoot, expectedMerkleRoot);
+  }
+
+  /**
+   * Verify anchor via CYNIC Anchor program (on-chain account lookup)
+   * @param {string} merkleRoot - Merkle root to verify
+   * @returns {Promise<{verified: boolean, entry?: Object, error?: string}>}
+   * @private
+   */
+  async _verifyViaProgram(merkleRoot) {
+    const client = this._getProgramClient();
+    if (!client) {
+      // Fallback to creating a readonly client
+      try {
+        const { Connection, PublicKey } = await import('@solana/web3.js');
+        const connection = new Connection(this.cluster, 'confirmed');
+
+        // Calculate root PDA
+        const rootBytes = Buffer.from(merkleRoot, 'hex');
+        const [rootPda] = PublicKey.findProgramAddressSync(
+          [Buffer.from(CYNIC_PROGRAM.ROOT_SEED), rootBytes],
+          new PublicKey(this.programId)
+        );
+
+        // Fetch account data
+        const accountInfo = await connection.getAccountInfo(rootPda);
+        if (!accountInfo) {
+          return { verified: false, error: 'Root not found on-chain' };
+        }
+
+        return {
+          verified: true,
+          slot: null,
+          message: 'Root exists on-chain (account found)',
+        };
+      } catch (error) {
+        return { verified: false, error: error.message };
+      }
+    }
+
+    // Use program client for full verification
+    const result = await client.verifyRoot(merkleRoot);
+    return result;
+  }
+
+  /**
+   * Verify anchor via transaction signature (legacy/memo)
+   * @param {string} signature - Solana tx signature
+   * @param {string} [expectedMerkleRoot] - Expected merkle root
+   * @returns {Promise<{verified: boolean, slot?: number, memo?: string, error?: string}>}
+   * @private
+   */
+  async _verifyViaTransaction(signature, expectedMerkleRoot = null) {
     // Lazy import @solana/web3.js
     let Connection;
     try {
@@ -514,6 +654,10 @@ export class SolanaAnchorer {
           if (log.includes(ANCHOR_CONSTANTS.MEMO_PREFIX)) {
             memoContent = log;
           }
+          // Check for CYNIC program anchor event
+          if (log.includes('Root anchored')) {
+            memoContent = log;
+          }
         }
       }
 
@@ -542,6 +686,14 @@ export class SolanaAnchorer {
         error: error.message,
       };
     }
+  }
+
+  /**
+   * Get the program client for direct program interaction
+   * @returns {CynicProgramClient|null}
+   */
+  getProgramClient() {
+    return this._getProgramClient();
   }
 
   /**
