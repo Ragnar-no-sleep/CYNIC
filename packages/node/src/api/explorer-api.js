@@ -175,46 +175,36 @@ export function setupExplorerRoutes(app, options = {}) {
   // ═══════════════════════════════════════════════════════════════════════════
 
   /**
-   * GET /explorer/blocks - List blocks (paginated)
+   * GET /explorer/blocks - List blocks (paginated, with persistence fallback)
    */
-  app.get('/explorer/blocks', (req, res) => {
+  app.get('/explorer/blocks', async (req, res) => {
     if (!node) {
       return res.status(503).json({ error: 'Node not available' });
     }
 
     try {
       const limit = Math.min(parseInt(req.query.limit, 10) || 20, 100);
-      const fromSlot = parseInt(req.query.fromSlot, 10) || 0;
 
-      const chain = node.state.chain;
-      const height = chain.getHeight?.() || 0;
+      // Get blocks from StateManager (includes persistence)
+      const recentBlocks = await node.state.getRecentBlocks(limit);
+      const height = await node.state.getBlockCount();
 
-      const blocks = [];
-      const startSlot = Math.max(0, fromSlot);
-      const endSlot = Math.min(height, startSlot + limit);
-
-      for (let slot = endSlot; slot >= startSlot && blocks.length < limit; slot--) {
-        const block = chain.getBlockBySlot?.(slot);
-        if (block) {
-          blocks.push({
-            slot: block.slot,
-            hash: block.hash,
-            previousHash: block.previousHash,
-            timestamp: block.timestamp,
-            proposer: block.proposer?.slice(0, 16) + '...',
-            judgmentCount: block.judgments?.length || 0,
-            status: block.status || 'UNKNOWN',
-          });
-        }
-      }
+      const blocks = recentBlocks.map(block => ({
+        slot: block.slot,
+        hash: block.hash,
+        previousHash: block.previousHash || block.prevHash,
+        timestamp: block.timestamp,
+        proposer: block.proposer ? (block.proposer.slice(0, 16) + '...') : '-',
+        judgmentCount: block.judgmentCount || block.judgments?.length || 0,
+        status: block.status || 'UNKNOWN',
+      }));
 
       res.json({
         blocks,
         pagination: {
           height,
-          fromSlot: startSlot,
           limit,
-          hasMore: startSlot > 0,
+          hasMore: height > blocks.length,
         },
       });
     } catch (err) {
@@ -223,22 +213,23 @@ export function setupExplorerRoutes(app, options = {}) {
   });
 
   /**
-   * GET /explorer/block/:hashOrSlot - Get block by hash or slot
+   * GET /explorer/block/:hashOrSlot - Get block by hash or slot (with persistence)
    */
-  app.get('/explorer/block/:hashOrSlot', (req, res) => {
+  app.get('/explorer/block/:hashOrSlot', async (req, res) => {
     if (!node) {
       return res.status(503).json({ error: 'Node not available' });
     }
 
     try {
       const { hashOrSlot } = req.params;
-      const chain = node.state.chain;
 
       let block;
       if (/^\d+$/.test(hashOrSlot)) {
-        block = chain.getBlockBySlot?.(parseInt(hashOrSlot, 10));
+        // Get by slot (uses persistence fallback)
+        block = await node.state.getBlockBySlot(parseInt(hashOrSlot, 10));
       } else {
-        block = chain.getBlock?.(hashOrSlot);
+        // Get by hash (uses persistence fallback)
+        block = await node.state.getBlockByHash(hashOrSlot);
       }
 
       if (!block) {
@@ -249,7 +240,7 @@ export function setupExplorerRoutes(app, options = {}) {
         block: {
           slot: block.slot,
           hash: block.hash,
-          previousHash: block.previousHash,
+          previousHash: block.previousHash || block.prevHash,
           timestamp: block.timestamp,
           proposer: block.proposer,
           signature: block.signature,

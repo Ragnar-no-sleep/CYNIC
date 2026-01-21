@@ -35,6 +35,9 @@ export class StateManager {
     this._peers = new Map();
     this._judgments = [];
 
+    // Block persistence (individual blocks stored separately)
+    this._blockCache = new Map();
+
     this.initialized = false;
   }
 
@@ -151,6 +154,169 @@ export class StateManager {
    */
   getRecentJudgments(count = 100) {
     return this._judgments.slice(-count);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Block Persistence (Gap #3)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Persist a finalized block
+   * @param {Object} block - Block to persist
+   * @returns {Promise<boolean>} Success
+   */
+  async persistBlock(block) {
+    if (!block?.hash && !block?.slot) return false;
+
+    const blockKey = `block_${block.slot}`;
+    const blockData = {
+      slot: block.slot,
+      hash: block.hash || this._hashBlock(block),
+      previousHash: block.previousHash || block.prevHash,
+      timestamp: block.timestamp,
+      proposer: block.proposer,
+      signature: block.signature,
+      judgments: block.judgments?.map(j => ({
+        id: j.id,
+        global_score: j.global_score,
+        verdict: j.verdict,
+        timestamp: j.timestamp,
+      })) || [],
+      judgmentCount: block.judgments?.length || 0,
+      status: block.status || 'FINALIZED',
+      persistedAt: Date.now(),
+    };
+
+    try {
+      await this.storage.set(blockKey, blockData);
+      this._blockCache.set(block.slot, blockData);
+
+      // Update block index
+      const index = await this.storage.get('block_index') || { slots: [], hashes: {} };
+      if (!index.slots.includes(block.slot)) {
+        index.slots.push(block.slot);
+        index.slots.sort((a, b) => a - b);
+      }
+      index.hashes[blockData.hash] = block.slot;
+      index.lastSlot = Math.max(index.lastSlot || 0, block.slot);
+      await this.storage.set('block_index', index);
+
+      return true;
+    } catch (err) {
+      console.warn('Failed to persist block:', err.message);
+      return false;
+    }
+  }
+
+  /**
+   * Get block by slot
+   * @param {number} slot - Slot number
+   * @returns {Promise<Object|null>} Block or null
+   */
+  async getBlockBySlot(slot) {
+    // Check cache first
+    if (this._blockCache.has(slot)) {
+      return this._blockCache.get(slot);
+    }
+
+    // Check in-memory chain
+    const chainBlock = this._chain?.getBlockBySlot?.(slot);
+    if (chainBlock) return chainBlock;
+
+    // Load from storage
+    try {
+      const block = await this.storage.get(`block_${slot}`);
+      if (block) {
+        this._blockCache.set(slot, block);
+      }
+      return block || null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Get block by hash
+   * @param {string} hash - Block hash
+   * @returns {Promise<Object|null>} Block or null
+   */
+  async getBlockByHash(hash) {
+    // Check in-memory chain first
+    const chainBlock = this._chain?.getBlock?.(hash);
+    if (chainBlock) return chainBlock;
+
+    // Get slot from index
+    try {
+      const index = await this.storage.get('block_index');
+      if (index?.hashes?.[hash]) {
+        return this.getBlockBySlot(index.hashes[hash]);
+      }
+    } catch {
+      // Fall through
+    }
+
+    return null;
+  }
+
+  /**
+   * Get recent blocks from persistence
+   * @param {number} [count=20] - Number of blocks
+   * @returns {Promise<Object[]>} Recent blocks
+   */
+  async getRecentBlocks(count = 20) {
+    // Get from in-memory chain first
+    const chainBlocks = this._chain?.getRecentBlocks?.(count) || [];
+    if (chainBlocks.length >= count) {
+      return chainBlocks;
+    }
+
+    // Supplement from storage
+    try {
+      const index = await this.storage.get('block_index');
+      if (!index?.slots?.length) return chainBlocks;
+
+      const blocks = [];
+      const slots = index.slots.slice(-count).reverse();
+
+      for (const slot of slots) {
+        const block = await this.getBlockBySlot(slot);
+        if (block) blocks.push(block);
+        if (blocks.length >= count) break;
+      }
+
+      return blocks;
+    } catch {
+      return chainBlocks;
+    }
+  }
+
+  /**
+   * Get block count from persistence
+   * @returns {Promise<number>} Block count
+   */
+  async getBlockCount() {
+    const chainHeight = this._chain?.getHeight?.() || 0;
+
+    try {
+      const index = await this.storage.get('block_index');
+      return Math.max(chainHeight, index?.slots?.length || 0);
+    } catch {
+      return chainHeight;
+    }
+  }
+
+  /**
+   * Simple block hash for storage key
+   * @private
+   */
+  _hashBlock(block) {
+    const data = `${block.slot}:${block.timestamp}:${block.proposer || 'unknown'}`;
+    let hash = 0;
+    for (let i = 0; i < data.length; i++) {
+      hash = ((hash << 5) - hash) + data.charCodeAt(i);
+      hash |= 0;
+    }
+    return 'blk_' + Math.abs(hash).toString(16);
   }
 
   /**

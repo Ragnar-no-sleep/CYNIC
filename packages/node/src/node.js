@@ -245,16 +245,39 @@ export class CYNICNode {
    * @private
    */
   _setupConsensusHandlers() {
-    // When a block is finalized by consensus, add it to state chain
+    // When a block is finalized by consensus, add it to state chain and persist
     this._consensus.on('block:finalized', async (event) => {
       const { blockHash, slot, block } = event;
       console.log(`✓ Block finalized: slot ${slot}, hash ${blockHash.slice(0, 16)}...`);
 
-      // Import finalized block to state chain
+      // Import finalized block to state chain (in-memory)
       if (block && block.judgments) {
         const result = this.state.chain.importBlock(block);
         if (!result.success) {
           console.warn('Failed to import finalized block:', result.errors);
+        }
+
+        // Persist block to storage (Gap #3 - persistent PoJ)
+        const persisted = await this.state.persistBlock({
+          ...block,
+          hash: blockHash,
+          status: 'FINALIZED',
+        });
+        if (persisted) {
+          console.log(`💾 Block ${slot} persisted to storage`);
+        }
+
+        // Queue for Solana anchoring if enabled (Gap #5)
+        if (this._anchorConfig?.enabled && this._anchorQueue) {
+          this._anchorQueue.enqueue(`poj_block_${slot}`, {
+            type: 'poj_block',
+            slot,
+            hash: blockHash,
+            merkleRoot: block.merkleRoot || block.stateRoot,
+            judgmentCount: block.judgments?.length || 0,
+            timestamp: block.timestamp,
+          });
+          console.log(`⚓ Block ${slot} queued for Solana anchoring`);
         }
       }
 
