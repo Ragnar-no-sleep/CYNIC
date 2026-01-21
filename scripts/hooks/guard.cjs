@@ -22,6 +22,9 @@ const cynic = require(libPath);
 // Load security watchdog
 const watchdog = require(path.join(__dirname, '..', 'lib', 'watchdog.cjs'));
 
+// Load circuit breaker (anti-loop protection)
+const circuitBreaker = require(path.join(__dirname, '..', 'lib', 'circuit-breaker.cjs'));
+
 // =============================================================================
 // DANGER PATTERNS
 // =============================================================================
@@ -219,6 +222,36 @@ async function main() {
     const hookContext = JSON.parse(input);
     const toolName = hookContext.tool_name || hookContext.toolName || '';
     const toolInput = hookContext.tool_input || hookContext.toolInput || {};
+
+    // ==========================================================================
+    // CIRCUIT BREAKER CHECK (Anti-loop protection)
+    // ==========================================================================
+    const loopCheck = circuitBreaker.checkAndRecord(toolName, toolInput);
+    if (loopCheck.shouldBlock) {
+      // Load user profile for stats
+      const user = cynic.detectUser();
+      const profile = cynic.loadUserProfile(user.userId);
+
+      // Update stats
+      cynic.updateUserProfile(profile, {
+        stats: {
+          loopsBlocked: (profile.stats?.loopsBlocked || 0) + 1
+        }
+      });
+
+      // Record pattern
+      cynic.saveCollectivePattern({
+        type: 'loop_blocked',
+        signature: `${loopCheck.loopType}:${toolName}`,
+        description: loopCheck.reason
+      });
+
+      console.log(JSON.stringify({
+        continue: false,
+        message: `*GROWL* CIRCUIT BREAKER\n\n${loopCheck.reason}\n\n💡 ${loopCheck.suggestion}\n\nPour forcer: reformuler la commande ou attendre 1 minute.`
+      }));
+      return;
+    }
 
     // Analyze based on tool type
     let issues = [];
