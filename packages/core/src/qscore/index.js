@@ -426,6 +426,9 @@ export const COMPARISON = {
 // DEFAULT EXPORT
 // =============================================================================
 
+// Re-export philosophy bridge
+export * from './philosophy-bridge.js';
+
 export default {
   // Main functions
   calculateQScore,

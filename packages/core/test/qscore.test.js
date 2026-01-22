@@ -16,6 +16,13 @@ import {
   analyzeWeaknesses,
   geometricMean,
   nthRoot,
+  // Philosophy bridge
+  PHILOSOPHY_AXIOM_MAP,
+  PHASE_MAP,
+  getPhilosophicalGrounding,
+  getRelevantPhases,
+  enhanceWithPhilosophy,
+  getPhilosophicalManifesto,
 } from '../src/qscore/index.js';
 
 describe('Q-Score', () => {
@@ -240,6 +247,160 @@ describe('Q-Score', () => {
     it('identifies limiting factor', () => {
       const result = calculateFinalScore(90, 50);
       assert.strictEqual(result.limiting, 'Q-Score');
+    });
+  });
+
+  // =====================================================================
+  // PHILOSOPHY BRIDGE TESTS
+  // =====================================================================
+
+  describe('Philosophy Bridge', () => {
+    describe('PHILOSOPHY_AXIOM_MAP', () => {
+      it('has all four axioms mapped', () => {
+        assert.ok(PHILOSOPHY_AXIOM_MAP.PHI);
+        assert.ok(PHILOSOPHY_AXIOM_MAP.VERIFY);
+        assert.ok(PHILOSOPHY_AXIOM_MAP.CULTURE);
+        assert.ok(PHILOSOPHY_AXIOM_MAP.BURN);
+      });
+
+      it('has 6 dimensions per axiom', () => {
+        assert.strictEqual(Object.keys(PHILOSOPHY_AXIOM_MAP.PHI.dimensions).length, 6);
+        assert.strictEqual(Object.keys(PHILOSOPHY_AXIOM_MAP.VERIFY.dimensions).length, 6);
+        assert.strictEqual(Object.keys(PHILOSOPHY_AXIOM_MAP.CULTURE.dimensions).length, 6);
+        assert.strictEqual(Object.keys(PHILOSOPHY_AXIOM_MAP.BURN.dimensions).length, 6);
+      });
+
+      it('dimensions have philosophical sources', () => {
+        const coherence = PHILOSOPHY_AXIOM_MAP.PHI.dimensions.COHERENCE;
+        assert.ok(coherence.philosophical_sources);
+        assert.ok(coherence.philosophical_sources.length > 0);
+        assert.ok(coherence.traditions);
+        assert.ok(coherence.insight);
+      });
+    });
+
+    describe('PHASE_MAP', () => {
+      it('has all 19 phases (27-45)', () => {
+        assert.strictEqual(Object.keys(PHASE_MAP).length, 19);
+        assert.ok(PHASE_MAP['27']);
+        assert.ok(PHASE_MAP['45']);
+      });
+
+      it('phases have required fields', () => {
+        const phase27 = PHASE_MAP['27'];
+        assert.ok(phase27.name);
+        assert.ok(phase27.primaryAxiom);
+        assert.ok(phase27.dimensions);
+        assert.ok(phase27.secondaryAxiom);
+        assert.ok(phase27.secondaryDimensions);
+      });
+    });
+
+    describe('getPhilosophicalGrounding', () => {
+      it('returns grounding for valid axiom/dimension', () => {
+        const result = getPhilosophicalGrounding('PHI', 'COHERENCE');
+        assert.strictEqual(result.axiom, 'PHI');
+        assert.strictEqual(result.dimension, 'COHERENCE');
+        assert.ok(result.philosophical_sources);
+        assert.ok(result.traditions);
+        assert.ok(result.cynicNote);
+      });
+
+      it('returns error for unknown axiom', () => {
+        const result = getPhilosophicalGrounding('UNKNOWN', 'COHERENCE');
+        assert.ok(result.error);
+      });
+
+      it('returns error for unknown dimension', () => {
+        const result = getPhilosophicalGrounding('PHI', 'UNKNOWN');
+        assert.ok(result.error);
+      });
+    });
+
+    describe('getRelevantPhases', () => {
+      it('identifies phases for ethics topic', () => {
+        const result = getRelevantPhases('What is justice in society?');
+        assert.ok(result.relevantPhases.length > 0);
+        assert.ok(result.relevantPhases.some(p => p.phase === '31')); // Social & Political
+      });
+
+      it('identifies phases for mind topic', () => {
+        const result = getRelevantPhases('consciousness and mental states');
+        assert.ok(result.relevantPhases.some(p => p.phase === '28')); // Philosophy of Mind
+      });
+
+      it('identifies phases for economics topic', () => {
+        const result = getRelevantPhases('market value and economics');
+        assert.ok(result.relevantPhases.some(p => p.phase === '44')); // Law & Economics
+      });
+
+      it('returns general for unmatched topic', () => {
+        const result = getRelevantPhases('xyz123');
+        assert.strictEqual(result.relevantPhases.length, 0);
+        assert.ok(result.cynicNote.includes('No specific domains'));
+      });
+    });
+
+    describe('enhanceWithPhilosophy', () => {
+      it('enhances Q-Score result with philosophical context', () => {
+        const qScore = calculateQScoreFromAxioms({
+          PHI: 70,
+          VERIFY: 60,
+          CULTURE: 50,
+          BURN: 40,
+        });
+
+        const enhanced = enhanceWithPhilosophy(qScore, 'economic sustainability');
+
+        assert.strictEqual(enhanced.originalScore, qScore.Q);
+        assert.ok(enhanced.philosophicalContext);
+        assert.ok(enhanced.weakAxiomResources);
+        assert.ok(enhanced.synthesis);
+        assert.ok(enhanced.cynicNote);
+      });
+
+      it('provides resources for weak axioms', () => {
+        const qScore = calculateQScoreFromAxioms({
+          PHI: 80,
+          VERIFY: 80,
+          CULTURE: 80,
+          BURN: 30, // weak
+        });
+
+        const enhanced = enhanceWithPhilosophy(qScore, 'value creation');
+
+        assert.ok(enhanced.weakAxiomResources.BURN);
+        assert.ok(enhanced.weakAxiomResources.BURN.traditions.length > 0);
+      });
+    });
+
+    describe('getPhilosophicalManifesto', () => {
+      it('returns CYNIC identity', () => {
+        const manifesto = getPhilosophicalManifesto();
+        assert.ok(manifesto.identity.includes('CYNIC'));
+        assert.ok(manifesto.identity.includes('κυνικός'));
+      });
+
+      it('includes all 19 phases', () => {
+        const manifesto = getPhilosophicalManifesto();
+        assert.strictEqual(manifesto.phases.length, 19);
+      });
+
+      it('includes all four axioms', () => {
+        const manifesto = getPhilosophicalManifesto();
+        assert.ok(manifesto.axioms.PHI);
+        assert.ok(manifesto.axioms.VERIFY);
+        assert.ok(manifesto.axioms.CULTURE);
+        assert.ok(manifesto.axioms.BURN);
+      });
+
+      it('includes philosophical traditions', () => {
+        const manifesto = getPhilosophicalManifesto();
+        assert.ok(manifesto.traditions.analytic);
+        assert.ok(manifesto.traditions.continental);
+        assert.ok(manifesto.traditions.eastern);
+        assert.ok(manifesto.traditions.pragmatic);
+      });
     });
   });
 });

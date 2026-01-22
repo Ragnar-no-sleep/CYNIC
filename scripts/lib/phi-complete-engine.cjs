@@ -163,6 +163,41 @@ function registerPhases() {
     contribution: 'Unified philosophical system'
   });
 
+  state.phases.set('41', {
+    name: 'Philosophy of Mathematics',
+    engines: ['math-foundations-engine', 'math-ontology-engine', 'math-practice-engine'],
+    core: 'Foundations, ontology, mathematical practice',
+    contribution: 'Formal reasoning foundations'
+  });
+
+  state.phases.set('42', {
+    name: 'Pragmatism & Process',
+    engines: ['pragmatism-engine', 'process-philosophy-engine', 'american-philosophy-engine'],
+    core: 'Peirce, James, Dewey, Whitehead',
+    contribution: 'Action-oriented epistemology'
+  });
+
+  state.phases.set('43', {
+    name: 'Global Philosophy',
+    engines: ['african-philosophy-engine', 'islamic-philosophy-engine', 'latin-american-engine'],
+    core: 'African, Islamic, Latin American traditions',
+    contribution: 'Truly global philosophical coverage'
+  });
+
+  state.phases.set('44', {
+    name: 'Philosophy of Law & Economics',
+    engines: ['philosophy-of-law-engine', 'philosophy-of-economics-engine', 'law-economics-engine'],
+    core: 'Jurisprudence, economic value, law-economics integration',
+    contribution: 'Legal and economic reasoning'
+  });
+
+  state.phases.set('45', {
+    name: 'Cognitive Philosophy',
+    engines: ['embodied-cognition-engine', 'philosophy-of-perception-engine', 'philosophy-of-emotion-engine'],
+    core: 'Embodied cognition, perception, emotion',
+    contribution: 'The lived, embodied mind'
+  });
+
   state.stats.phasesRegistered = state.phases.size;
 }
 
@@ -386,6 +421,24 @@ function identifyRelevantDomains(question) {
   if (q.includes('buddhis') || q.includes('dao') || q.includes('zen') || q.includes('vedant')) {
     domains.push('eastern');
   }
+  if (q.includes('math') || q.includes('number') || q.includes('proof') || q.includes('axiom')) {
+    domains.push('mathematics');
+  }
+  if (q.includes('pragma') || q.includes('process') || q.includes('inquiry') || q.includes('dewey')) {
+    domains.push('pragmatism');
+  }
+  if (q.includes('african') || q.includes('ubuntu') || q.includes('islamic') || q.includes('liberation')) {
+    domains.push('global');
+  }
+  if (q.includes('law') || q.includes('legal') || q.includes('rights') || q.includes('juris')) {
+    domains.push('law');
+  }
+  if (q.includes('econom') || q.includes('market') || q.includes('value') || q.includes('capital')) {
+    domains.push('economics');
+  }
+  if (q.includes('embodi') || q.includes('percept') || q.includes('emotion') || q.includes('feeling')) {
+    domains.push('cognitive');
+  }
 
   return domains.length > 0 ? domains : ['general'];
 }
@@ -407,8 +460,11 @@ function getCompleteness() {
       western: 'Epistemology, ethics, metaphysics, logic, mind, language, action, political, science, religion, aesthetics',
       eastern: 'Buddhist, Daoist, Vedanta',
       continental: 'Phenomenology, existentialism, critical theory',
-      formal: 'Modal logic, decision theory, game theory',
-      applied: 'Bioethics, environmental ethics, tech ethics',
+      formal: 'Modal logic, decision theory, game theory, philosophy of mathematics',
+      applied: 'Bioethics, environmental ethics, tech ethics, law, economics',
+      global: 'African, Islamic, Latin American philosophy',
+      pragmatic: 'Pragmatism, process philosophy',
+      cognitive: 'Embodied cognition, perception, emotion',
       meta: 'Method, progress, integration'
     },
     status: 'φ-COMPLETE',
