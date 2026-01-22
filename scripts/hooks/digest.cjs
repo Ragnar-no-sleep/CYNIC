@@ -23,6 +23,36 @@ const cynic = require(libPath);
 const enforcerPath = path.join(__dirname, '..', 'lib', 'task-enforcer.cjs');
 const enforcer = require(enforcerPath);
 
+// Load consciousness for session summary
+const consciousnessPath = path.join(__dirname, '..', 'lib', 'consciousness.cjs');
+let consciousness = null;
+try {
+  consciousness = require(consciousnessPath);
+  consciousness.init();
+} catch (e) {
+  // Consciousness not available
+}
+
+// Load voluntary poverty for deletion stats
+const povertyPath = path.join(__dirname, '..', 'lib', 'voluntary-poverty.cjs');
+let voluntaryPoverty = null;
+try {
+  voluntaryPoverty = require(povertyPath);
+  voluntaryPoverty.init();
+} catch (e) {
+  // Voluntary poverty not available
+}
+
+// Load cognitive thermodynamics for efficiency stats
+const thermoPath = path.join(__dirname, '..', 'lib', 'cognitive-thermodynamics.cjs');
+let thermodynamics = null;
+try {
+  thermodynamics = require(thermoPath);
+  thermodynamics.init();
+} catch (e) {
+  // Thermodynamics not available
+}
+
 // =============================================================================
 // SESSION ANALYSIS
 // =============================================================================
@@ -92,7 +122,7 @@ function extractInsights(profile, collectivePatterns) {
   return insights;
 }
 
-function formatDigestMessage(profile, analysis, insights) {
+function formatDigestMessage(profile, analysis, insights, engineStats) {
   const lines = [];
 
   lines.push('');
@@ -121,6 +151,23 @@ function formatDigestMessage(profile, analysis, insights) {
     }
   }
   lines.push('');
+
+  // Engine stats (new)
+  if (engineStats && Object.keys(engineStats).length > 0) {
+    lines.push('── ENGINE ACTIVITY ────────────────────────────────────────');
+    if (engineStats.deletions > 0) {
+      lines.push(`   ✂️ Deletions celebrated: ${engineStats.deletions} (voluntary poverty)`);
+    }
+    if (engineStats.efficiency) {
+      lines.push(`   ⚡ Cognitive efficiency: ${Math.round(engineStats.efficiency * 100)}%`);
+    }
+    if (engineStats.consciousnessScore) {
+      const bar = '█'.repeat(Math.floor(engineStats.consciousnessScore / 10)) +
+                  '░'.repeat(10 - Math.floor(engineStats.consciousnessScore / 10));
+      lines.push(`   🧠 Consciousness: [${bar}] ${engineStats.consciousnessScore}% / 61.8%`);
+    }
+    lines.push('');
+  }
 
   // Insights
   if (insights.length > 0) {
@@ -226,8 +273,38 @@ async function main() {
     analysis.todosCompleted = analysis.todosTotal - incompleteTodos.length;
     analysis.completionRate = completionRate;
 
+    // Collect engine stats
+    const engineStats = {};
+
+    if (voluntaryPoverty) {
+      try {
+        const stats = voluntaryPoverty.getStats();
+        if (stats.totalDeletions > 0) {
+          engineStats.deletions = stats.totalDeletions;
+        }
+      } catch (e) { /* ignore */ }
+    }
+
+    if (thermodynamics) {
+      try {
+        const stats = thermodynamics.getStats();
+        if (stats.efficiency) {
+          engineStats.efficiency = stats.efficiency;
+        }
+      } catch (e) { /* ignore */ }
+    }
+
+    if (consciousness) {
+      try {
+        const snapshot = consciousness.getConsciousnessSnapshot();
+        if (snapshot.consciousnessScore) {
+          engineStats.consciousnessScore = Math.round(snapshot.consciousnessScore);
+        }
+      } catch (e) { /* ignore */ }
+    }
+
     // Format message
-    const message = formatDigestMessage(profile, analysis, insights);
+    const message = formatDigestMessage(profile, analysis, insights, engineStats);
 
     // Cleanup enforcer data for this session
     enforcer.cleanupSession(sessionId);

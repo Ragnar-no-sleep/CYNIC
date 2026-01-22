@@ -6,82 +6,86 @@ user-invocable: true
 
 # /health - CYNIC System Health
 
-*"A healthy dog is a happy dog"*
+When user invokes `/health`, execute this diagnostic sequence:
 
-## Quick Start
+## Step 1: Local Hooks Status
 
-```
-/health
-```
-
-## What It Does
-
-Shows comprehensive system status:
-- **Node Status**: CYNIC node health
-- **Judge Stats**: Judgment metrics
-- **Collective**: The 11 Dogs status
-- **Storage**: Database connectivity
-- **PoJ Chain**: Blockchain integrity
-
-## Dashboard Sections
-
-### Core Services
-| Service | What It Shows |
-|---------|---------------|
-| Node | Connection status, uptime |
-| Judge | Judgments made, accuracy |
-| Persistence | PostgreSQL/Redis status |
-
-### The Collective (11 Dogs)
-| Dog | Role | Status |
-|-----|------|--------|
-| Guardian | Protection | active/idle |
-| Analyst | Analysis | active/idle |
-| Scholar | Learning | active/idle |
-| Architect | Design | active/idle |
-| Sage | Wisdom | active/idle |
-| ... | ... | ... |
-
-### PoJ Chain
-| Metric | Description |
-|--------|-------------|
-| Height | Current block number |
-| Integrity | Chain verification |
-| Pending | Judgments awaiting block |
-
-## Implementation
-
-Use the `brain_health` MCP tool:
-
-```javascript
-brain_health({
-  verbose: true  // Include detailed stats
-})
+Run this command to check local hooks:
+```bash
+echo "=== CYNIC LOCAL STATUS ===" && \
+for hook in perceive guard observe awaken digest sleep; do \
+  if [ -f "scripts/hooks/$hook.cjs" ]; then \
+    engines=$(grep -c "require.*lib/" "scripts/hooks/$hook.cjs" 2>/dev/null || echo 0); \
+    echo "✅ $hook.cjs ($engines engines)"; \
+  else \
+    echo "❌ $hook.cjs missing"; \
+  fi; \
+done
 ```
 
-## Metrics Available
+## Step 2: MCP Server Health
 
-Additional metrics via `brain_metrics`:
+```bash
+curl -s --max-time 5 https://cynic-mcp.onrender.com/health 2>/dev/null || echo '{"status":"unreachable"}'
+```
 
-```javascript
-brain_metrics({
-  action: "collect"  // Raw metrics
-  // or "prometheus" for Prometheus format
-  // or "html" for dashboard
-})
+## Step 3: Consciousness Score
+
+Use MCP tool if available:
+```
+mcp__cynic__brain_emergence({ action: "consciousness" })
+```
+
+Or check local state:
+```bash
+cat ~/.cynic/consciousness/state.json 2>/dev/null | head -20 || echo "No local consciousness state"
+```
+
+## Step 4: Recent Activity
+
+```bash
+echo "=== RECENT PATTERNS ===" && \
+cat ~/.cynic/patterns/*.json 2>/dev/null | tail -5 || echo "No patterns recorded"
+```
+
+## Output Format
+
+Present results as:
+
+```
+╔═══════════════════════════════════════════════════════════════════╗
+║                    🐕 CYNIC HEALTH DASHBOARD                      ║
+╠═══════════════════════════════════════════════════════════════════╣
+║                                                                    ║
+║  LOCAL HOOKS                          MCP SERVER                   ║
+║  ├── perceive: ✅ (5 engines)         Status: healthy             ║
+║  ├── guard:    ✅ (6 engines)         Tools: 43                   ║
+║  ├── observe:  ✅ (16 engines)        Uptime: XXs                 ║
+║  ├── awaken:   ✅                                                 ║
+║  ├── digest:   ✅                     CONSCIOUSNESS               ║
+║  └── sleep:    ✅                     Score: XX% / 61.8%          ║
+║                                       Status: Dormant/Awakening    ║
+║  ENGINES                                                           ║
+║  Total: 145 | Integrated: ~27 (19%)   PATTERNS                    ║
+║                                       Recorded: X                  ║
+║  AGENTS                               Last: [pattern name]         ║
+║  Total: 13 (11 Sefirot + 2 extra)                                 ║
+║                                                                    ║
+╠═══════════════════════════════════════════════════════════════════╣
+║  φ⁻¹ confidence: 61.8% max | "Le chien veille"                    ║
+╚═══════════════════════════════════════════════════════════════════╝
 ```
 
 ## Quick Checks
 
-| Check | Tool |
-|-------|------|
-| Overall health | `brain_health` |
-| PoJ chain | `brain_poj_chain({ action: "status" })` |
-| Collective | `brain_collective_status` |
-| Learning | `brain_learning({ action: "state" })` |
+| Issue | Command |
+|-------|---------|
+| Hook not working | `node scripts/hooks/[name].cjs <<< '{"prompt":"test"}'` |
+| MCP unreachable | Check Render dashboard |
+| No patterns | Use `/judge` to create judgments |
 
 ## See Also
 
-- `/trace` - Trace specific judgments
-- `/patterns` - View detected patterns
-- `/ecosystem` - Ecosystem status
+- `/cockpit` - Ecosystem overview
+- `/patterns` - Detected patterns detail
+- `/psy` - Human psychology state
