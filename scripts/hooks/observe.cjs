@@ -104,6 +104,26 @@ try {
   // Psychology not available - continue without
 }
 
+// Load cognitive thermodynamics for heat/work/efficiency tracking (Phase 10A)
+const thermoPath = path.join(__dirname, '..', 'lib', 'cognitive-thermodynamics.cjs');
+let thermodynamics = null;
+try {
+  thermodynamics = require(thermoPath);
+  thermodynamics.init();
+} catch (e) {
+  // Thermodynamics not available - continue without
+}
+
+// Load cosmopolitan learning for collective pattern sharing (Phase 6C)
+const cosmoPath = path.join(__dirname, '..', 'lib', 'cosmopolitan-learning.cjs');
+let cosmopolitan = null;
+try {
+  cosmopolitan = require(cosmoPath);
+  cosmopolitan.init();
+} catch (e) {
+  // Cosmopolitan learning not available - continue without
+}
+
 // =============================================================================
 // PATTERN DETECTION
 // =============================================================================
@@ -490,6 +510,58 @@ async function main() {
         consciousness.observeHumanPattern('lastActiveHour', hour);
       } catch (e) {
         // Consciousness tracking failed - continue without
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // COGNITIVE THERMODYNAMICS: Track heat/work/efficiency (Phase 10A)
+    // "Ἐνέργεια - First Law: Energy is conserved"
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (thermodynamics) {
+      try {
+        if (isError) {
+          // Errors generate heat (frustration)
+          const errorType = detectErrorType(typeof toolOutput === 'string' ? toolOutput : '');
+          thermodynamics.recordHeat(toolName, errorType);
+        } else {
+          // Successful actions produce work
+          const workUnits = toolName === 'Write' || toolName === 'Edit' ? 15 : 10;
+          thermodynamics.recordWork(toolName, workUnits);
+        }
+
+        // Record action for entropy calculation
+        thermodynamics.recordAction(toolName);
+      } catch (e) {
+        // Thermodynamics tracking failed - continue without
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // COSMOPOLITAN LEARNING: Share patterns to collective (Phase 6C)
+    // "Κοσμοπολίτης - learn from the world, share with the world"
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (cosmopolitan && !isError) {
+      try {
+        // Only share patterns if user opted in
+        if (cosmopolitan.isOptedIn()) {
+          // Share successful tool patterns
+          for (const pattern of patterns) {
+            if (pattern.type !== 'error') {
+              cosmopolitan.recordLocalPattern(pattern);
+            }
+          }
+
+          // Check if it's time to sync (non-blocking)
+          if (cosmopolitan.shouldSync()) {
+            setImmediate(() => {
+              try {
+                cosmopolitan.sync().catch(() => {});
+              } catch (e) { /* ignore */ }
+            });
+          }
+        }
+      } catch (e) {
+        // Cosmopolitan learning failed - continue without
       }
     }
 

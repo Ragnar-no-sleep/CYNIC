@@ -29,6 +29,36 @@ try {
   // Elenchus not available - continue without
 }
 
+// Load Chria Database for wisdom injection (Phase 8B)
+const chriaPath = path.join(__dirname, '..', 'lib', 'chria-database.cjs');
+let chriaDB = null;
+try {
+  chriaDB = require(chriaPath);
+  chriaDB.init();
+} catch (e) {
+  // Chria database not available - continue without
+}
+
+// Load Ti Esti engine for essence questions (Phase 6B)
+const tiEstiPath = path.join(__dirname, '..', 'lib', 'ti-esti-engine.cjs');
+let tiEsti = null;
+try {
+  tiEsti = require(tiEstiPath);
+  tiEsti.init();
+} catch (e) {
+  // Ti Esti not available - continue without
+}
+
+// Load Definition Tracker for user definitions (Phase 6B)
+const definitionPath = path.join(__dirname, '..', 'lib', 'definition-tracker.cjs');
+let definitionTracker = null;
+try {
+  definitionTracker = require(definitionPath);
+  definitionTracker.init();
+} catch (e) {
+  // Definition tracker not available - continue without
+}
+
 // =============================================================================
 // INTENT DETECTION
 // =============================================================================
@@ -262,6 +292,76 @@ async function main() {
         }
       } catch (e) {
         // Elenchus processing failed - continue without
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // TI ESTI: Essence questions (Phase 6B)
+    // "Τί ἐστι - Qu'est-ce que c'est?"
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (tiEsti && prompt.length > 15) {
+      try {
+        const promptLower = prompt.toLowerCase();
+        // Detect "what is X?" style questions
+        const isEssenceQuestion = promptLower.match(/^(what is|what's|qu'?est[- ]ce que?|c'?est quoi)\s+/i) ||
+                                  promptLower.match(/^(define|défin)/i);
+
+        if (isEssenceQuestion) {
+          const essenceResult = tiEsti.investigateConcept(prompt);
+          if (essenceResult && essenceResult.dimensions?.length > 0) {
+            const dims = essenceResult.dimensions.slice(0, 3).map(d => d.name).join(', ');
+            injections.push(`── TI ESTI ────────────────────────────────────────────────\n   🔍 Dimensions to explore: ${dims}\n   ${essenceResult.approach || ''}`);
+          }
+        }
+      } catch (e) {
+        // Ti Esti processing failed - continue without
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // DEFINITION TRACKER: Track user definitions (Phase 6B)
+    // "Les mots dérivent - le chien se souvient"
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (definitionTracker && prompt.length > 20) {
+      try {
+        // Check for definition statements: "X means Y", "by X I mean Y", etc.
+        const definitionMatch = prompt.match(/(?:by\s+)?["']?(\w+)["']?\s+(?:means?|is|refers?\s+to|I\s+mean)\s+(.+)/i) ||
+                                prompt.match(/(?:quand je dis|je définis?)\s+["']?(\w+)["']?\s+(?:comme|c'est)\s+(.+)/i);
+
+        if (definitionMatch) {
+          const term = definitionMatch[1];
+          const definition = definitionMatch[2].slice(0, 200);
+          definitionTracker.recordDefinition(term, definition);
+        }
+
+        // Check for definition drift
+        const driftResult = definitionTracker.checkForDrift(prompt);
+        if (driftResult && driftResult.hasDrift) {
+          injections.push(`── DEFINITION DRIFT ───────────────────────────────────────\n   ⚠️ "${driftResult.term}": Earlier you said "${driftResult.previous.slice(0, 50)}..."\n   Now it seems to mean something different?`);
+        }
+      } catch (e) {
+        // Definition tracking failed - continue without
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CHRIA: Wisdom injection (Phase 8B)
+    // "Χρεία - la sagesse en peu de mots"
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (chriaDB && prompt.length > 20 && injections.length === 0) {
+      try {
+        // Only inject chria when we haven't injected anything else
+        // and with φ⁻² probability (38.2%)
+        if (Math.random() < 0.382) {
+          const contextTags = intents.map(i => i.intent);
+          const chria = chriaDB.getContextualChria(contextTags, prompt);
+          if (chria) {
+            injections.push(`── CHRIA ──────────────────────────────────────────────────\n   📜 "${chria.text}"\n      — ${chria.source}`);
+            chriaDB.recordUsage(chria.id);
+          }
+        }
+      } catch (e) {
+        // Chria injection failed - continue without
       }
     }
 
