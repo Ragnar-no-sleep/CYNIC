@@ -145,6 +145,21 @@ async function main() {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // PSYCHOLOGY SYNC: Load human understanding from PostgreSQL
+    // "Comprendre l'humain pour mieux l'aider"
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (psychology) {
+      try {
+        const remotePsychology = await psychology.loadFromDB(user.userId);
+        if (remotePsychology) {
+          // Psychology state imported from remote - learning persists
+        }
+      } catch (e) {
+        // Silently fail - local psychology state is fallback
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // BREAK DETECTION: Check gap since last session for psychology module
     // "Le repos fait partie du travail"
     // ═══════════════════════════════════════════════════════════════════════════

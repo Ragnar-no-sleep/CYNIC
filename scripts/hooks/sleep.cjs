@@ -29,6 +29,15 @@ try {
   // Consciousness not available - continue without
 }
 
+// Load human psychology for cross-session sync
+const psychologyPath = path.join(__dirname, '..', 'lib', 'human-psychology.cjs');
+let psychology = null;
+try {
+  psychology = require(psychologyPath);
+} catch (e) {
+  // Psychology not available - continue without
+}
+
 // =============================================================================
 // SESSION FINALIZATION
 // =============================================================================
@@ -154,6 +163,21 @@ async function main() {
         const consciousnessSync = await consciousness.syncToDB(user.userId);
         if (consciousnessSync) {
           // Consciousness synced - learning will persist across machines
+        }
+      } catch (e) {
+        // Silently fail - local files remain as backup
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PSYCHOLOGY SYNC: Persist human understanding to PostgreSQL
+    // "Comprendre l'humain pour mieux l'aider"
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (psychology) {
+      try {
+        const psychologySync = await psychology.syncToDB(user.userId);
+        if (psychologySync) {
+          // Psychology synced - human understanding persists across sessions
         }
       } catch (e) {
         // Silently fail - local files remain as backup

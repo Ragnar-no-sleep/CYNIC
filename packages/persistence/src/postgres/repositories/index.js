@@ -30,3 +30,6 @@ export { DiscoveryRepository } from './discovery.js';
 
 // Phase 14: Consciousness Persistence
 export { ConsciousnessRepository } from './consciousness.js';
+
+// Phase 15: Psychology System
+export { PsychologyRepository } from './psychology.js';

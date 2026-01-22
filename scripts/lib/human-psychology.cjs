@@ -452,6 +452,170 @@ function resetSession() {
 }
 
 // =============================================================================
+// CROSS-SESSION PERSISTENCE
+// "Le chien apprend. L'apprentissage persiste."
+// =============================================================================
+
+/**
+ * Export psychology data for cross-session persistence
+ * Called by sleep.cjs to sync to PostgreSQL
+ * @returns {Object} Data for persistence
+ */
+function exportForPersistence() {
+  const state = loadState();
+  if (!state) return null;
+
+  // Also gather learning loop data if available
+  let calibration = null;
+  let userPatterns = null;
+  let interventionStats = null;
+
+  try {
+    const learningLoop = require('./learning-loop.cjs');
+    const calData = learningLoop.getCalibration();
+    calibration = calData;
+    userPatterns = learningLoop.getUserPatterns();
+  } catch (e) {
+    // Learning loop not available
+  }
+
+  try {
+    const interventionEngine = require('./intervention-engine.cjs');
+    interventionStats = interventionEngine.getStats();
+  } catch (e) {
+    // Intervention engine not available
+  }
+
+  return {
+    dimensions: state.dimensions,
+    emotions: state.emotions,
+    temporal: {
+      lastSessionDuration: state.temporal?.sessionDuration || 0,
+      circadianHour: state.temporal?.circadianHour,
+      lastActionTime: state.temporal?.lastActionTime,
+    },
+    calibration,
+    userPatterns,
+    interventionStats,
+  };
+}
+
+/**
+ * Import psychology data from cross-session persistence
+ * Called by awaken.cjs to restore from PostgreSQL
+ * @param {Object} data - Data from PostgreSQL
+ */
+function importFromPersistence(data) {
+  if (!data) return;
+
+  const state = loadState() || createDefaultState();
+
+  // Merge dimensions (keep current session values if higher confidence)
+  if (data.dimensions) {
+    for (const [key, imported] of Object.entries(data.dimensions)) {
+      if (state.dimensions[key]) {
+        const current = state.dimensions[key];
+        // Keep current if higher confidence, else blend
+        if (current.confidence < (imported.confidence || 0)) {
+          state.dimensions[key] = {
+            ...imported,
+            lastUpdate: Date.now(),
+          };
+        }
+      }
+    }
+  }
+
+  // Merge emotions similarly
+  if (data.emotions) {
+    for (const [key, imported] of Object.entries(data.emotions)) {
+      if (state.emotions[key]) {
+        const current = state.emotions[key];
+        if (current.confidence < (imported.confidence || 0)) {
+          state.emotions[key] = {
+            ...imported,
+            lastUpdate: Date.now(),
+          };
+        }
+      }
+    }
+  }
+
+  saveState(state);
+
+  // Restore learning loop data if available
+  if (data.calibration || data.userPatterns) {
+    try {
+      const learningLoop = require('./learning-loop.cjs');
+      learningLoop.importLearningData({
+        calibration: data.calibration,
+        userPatterns: data.userPatterns,
+      });
+    } catch (e) {
+      // Learning loop not available
+    }
+  }
+}
+
+/**
+ * Sync psychology to database
+ * Wrapper for MCP persistence call
+ * @param {string} userId - User ID
+ * @returns {Promise<Object|null>} Sync result
+ */
+async function syncToDB(userId) {
+  const data = exportForPersistence();
+  if (!data) return null;
+
+  try {
+    // Dynamic import to avoid circular dependencies
+    const fetch = (await import('node-fetch')).default;
+    const mcpUrl = process.env.CYNIC_MCP_URL || 'http://localhost:3001';
+
+    const response = await fetch(`${mcpUrl}/sync-psychology`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, data }),
+    });
+
+    if (response.ok) {
+      return await response.json();
+    }
+    return null;
+  } catch (e) {
+    // MCP not available - data is still saved locally
+    return null;
+  }
+}
+
+/**
+ * Load psychology from database
+ * Wrapper for MCP persistence call
+ * @param {string} userId - User ID
+ * @returns {Promise<Object|null>} Loaded data
+ */
+async function loadFromDB(userId) {
+  try {
+    const fetch = (await import('node-fetch')).default;
+    const mcpUrl = process.env.CYNIC_MCP_URL || 'http://localhost:3001';
+
+    const response = await fetch(`${mcpUrl}/load-psychology?userId=${encodeURIComponent(userId)}`);
+
+    if (response.ok) {
+      const data = await response.json();
+      if (data) {
+        importFromPersistence(data);
+        return data;
+      }
+    }
+    return null;
+  } catch (e) {
+    // MCP not available
+    return null;
+  }
+}
+
+// =============================================================================
 // EXPORTS
 // =============================================================================
 
@@ -475,6 +639,12 @@ module.exports = {
   updateDimension,
   updateEmotion,
   calculateComposites,
+
+  // Cross-session persistence
+  exportForPersistence,
+  importFromPersistence,
+  syncToDB,
+  loadFromDB,
 
   // For testing
   createDefaultState,

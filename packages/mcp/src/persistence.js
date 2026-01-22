@@ -27,6 +27,7 @@ import {
   TriggerRepository,
   DiscoveryRepository,
   UserLearningProfilesRepository,
+  PsychologyRepository,
   SessionStore,
 } from '@cynic/persistence';
 
@@ -370,6 +371,7 @@ export class PersistenceManager {
     this.triggers = null;
     this.discovery = null;
     this.userLearningProfiles = null;
+    this.psychology = null;
 
     // Fallback store (file or memory)
     this._fallback = null;
@@ -407,6 +409,7 @@ export class PersistenceManager {
         this.triggers = new TriggerRepository(this.postgres);
         this.discovery = new DiscoveryRepository(this.postgres);
         this.userLearningProfiles = new UserLearningProfilesRepository(this.postgres);
+        this.psychology = new PsychologyRepository(this.postgres);
 
         this._backend = 'postgres';
         console.error('   PostgreSQL: connected');
@@ -1139,6 +1142,142 @@ export class PersistenceManager {
     return [];
   }
 
+  // ===========================================================================
+  // PSYCHOLOGY METHODS
+  // "Comprendre l'humain pour mieux l'aider" - cross-session persistence
+  // Primary: PostgreSQL → Fallback: None (local files handle ephemeral)
+  // ===========================================================================
+
+  /**
+   * Sync psychology state from local to database
+   * Called at session end via sleep.cjs
+   * @param {string} userId - User ID
+   * @param {Object} data - Psychology data (dimensions, emotions, calibration, etc.)
+   * @returns {Promise<Object|null>} Synced result
+   */
+  async syncPsychology(userId, data) {
+    if (this.psychology) {
+      try {
+        return await this.psychology.syncPsychology(userId, data);
+      } catch (err) {
+        console.error('Error syncing psychology:', err.message);
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Load psychology state from database
+   * Called at session start via awaken.cjs
+   * @param {string} userId - User ID
+   * @returns {Promise<Object|null>} Psychology data or null
+   */
+  async loadPsychology(userId) {
+    if (this.psychology) {
+      try {
+        return await this.psychology.loadPsychology(userId);
+      } catch (err) {
+        console.error('Error loading psychology:', err.message);
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Record intervention outcome for learning
+   * @param {string} userId - User ID
+   * @param {Object} intervention - Intervention data
+   * @returns {Promise<void>}
+   */
+  async recordIntervention(userId, intervention) {
+    if (this.psychology) {
+      try {
+        await this.psychology.recordIntervention(userId, intervention);
+      } catch (err) {
+        console.error('Error recording intervention:', err.message);
+      }
+    }
+  }
+
+  /**
+   * Get intervention effectiveness stats
+   * @param {string} userId - User ID
+   * @returns {Promise<Object|null>} Effectiveness stats by type
+   */
+  async getInterventionEffectiveness(userId) {
+    if (this.psychology) {
+      try {
+        return await this.psychology.getInterventionEffectiveness(userId);
+      } catch (err) {
+        console.error('Error getting intervention effectiveness:', err.message);
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Record learning observation for calibration
+   * @param {string} userId - User ID
+   * @param {Object} observation - Learning observation
+   * @returns {Promise<void>}
+   */
+  async recordLearningObservation(userId, observation) {
+    if (this.psychology) {
+      try {
+        await this.psychology.recordLearningObservation(userId, observation);
+      } catch (err) {
+        console.error('Error recording learning observation:', err.message);
+      }
+    }
+  }
+
+  /**
+   * Get calibration stats from learning observations
+   * @param {string} userId - User ID
+   * @returns {Promise<Object|null>} Calibration stats by module
+   */
+  async getCalibrationStats(userId) {
+    if (this.psychology) {
+      try {
+        return await this.psychology.getCalibrationStats(userId);
+      } catch (err) {
+        console.error('Error getting calibration stats:', err.message);
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Get aggregate psychology stats across all users
+   * @returns {Promise<Object>} Aggregate stats
+   */
+  async getPsychologyStats() {
+    if (this.psychology) {
+      try {
+        return await this.psychology.getStats();
+      } catch (err) {
+        console.error('Error getting psychology stats:', err.message);
+      }
+    }
+    return { totalUsers: 0, totalSessions: 0, avgAccuracy: 0 };
+  }
+
+  /**
+   * Get top performers (highest calibration accuracy)
+   * @param {number} [limit=10] - Max results
+   * @returns {Promise<Array>} Top users
+   */
+  async getTopPerformers(limit = 10) {
+    if (this.psychology) {
+      try {
+        return await this.psychology.getTopPerformers(limit);
+      } catch (err) {
+        console.error('Error getting top performers:', err.message);
+      }
+    }
+    return [];
+  }
+
   /**
    * Get health status
    */
@@ -1242,6 +1381,7 @@ export class PersistenceManager {
       pojChain: !!this.pojBlocks || hasFallback, // Now has fallback - CYNIC must verify itself
       triggers: !!this.triggers || hasFallback, // PostgreSQL triggers repository with fallback
       libraryCache: !!this.libraryCache, // No fallback - requires PostgreSQL
+      psychology: !!this.psychology, // Cross-session psychology - requires PostgreSQL
       sessions: !!this.sessionStore,
       cache: !!this.redis,
     };
