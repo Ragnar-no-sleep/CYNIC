@@ -134,6 +134,26 @@ try {
   // Voluntary poverty not available - continue without
 }
 
+// Load dialectic synthesizer for pattern synthesis (Phase 6B)
+const dialecticPath = path.join(__dirname, '..', 'lib', 'dialectic-synthesizer.cjs');
+let dialectic = null;
+try {
+  dialectic = require(dialecticPath);
+  dialectic.init();
+} catch (e) {
+  // Dialectic synthesizer not available - continue without
+}
+
+// Load inference engine for deeper reasoning
+const inferencePath = path.join(__dirname, '..', 'lib', 'inference-engine.cjs');
+let inferenceEngine = null;
+try {
+  inferenceEngine = require(inferencePath);
+  inferenceEngine.init();
+} catch (e) {
+  // Inference engine not available - continue without
+}
+
 // =============================================================================
 // PATTERN DETECTION
 // =============================================================================

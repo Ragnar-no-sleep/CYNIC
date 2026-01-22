@@ -55,6 +55,15 @@ try {
   // Voluntary poverty not available - continue without
 }
 
+// Load Heisenberg confidence for uncertainty bands
+const heisenbergPath = path.join(__dirname, '..', 'lib', 'heisenberg-confidence.cjs');
+let heisenberg = null;
+try {
+  heisenberg = require(heisenbergPath);
+} catch (e) {
+  // Heisenberg not available - continue without
+}
+
 // =============================================================================
 // DANGER PATTERNS
 // =============================================================================

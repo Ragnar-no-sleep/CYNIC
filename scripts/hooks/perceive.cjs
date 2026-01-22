@@ -59,6 +59,34 @@ try {
   // Definition tracker not available - continue without
 }
 
+// Load Fallacy Detector for argument analysis
+const fallacyPath = path.join(__dirname, '..', 'lib', 'fallacy-detector.cjs');
+let fallacyDetector = null;
+try {
+  fallacyDetector = require(fallacyPath);
+  fallacyDetector.init();
+} catch (e) {
+  // Fallacy detector not available - continue without
+}
+
+// Load Role Reversal for teaching moments
+const roleReversalPath = path.join(__dirname, '..', 'lib', 'role-reversal.cjs');
+let roleReversal = null;
+try {
+  roleReversal = require(roleReversalPath);
+} catch (e) {
+  // Role reversal not available - continue without
+}
+
+// Load Hypothesis Testing for claim validation
+const hypothesisPath = path.join(__dirname, '..', 'lib', 'hypothesis-testing.cjs');
+let hypothesisTesting = null;
+try {
+  hypothesisTesting = require(hypothesisPath);
+} catch (e) {
+  // Hypothesis testing not available - continue without
+}
+
 // =============================================================================
 // INTENT DETECTION
 // =============================================================================
@@ -362,6 +390,55 @@ async function main() {
         }
       } catch (e) {
         // Chria injection failed - continue without
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // FALLACY DETECTOR: Check for logical fallacies
+    // "Le chien renifle les sophismes"
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (fallacyDetector && prompt.length > 50) {
+      try {
+        const analysis = fallacyDetector.analyze(prompt);
+        if (analysis && analysis.fallacies && analysis.fallacies.length > 0) {
+          const topFallacy = analysis.fallacies[0];
+          if (topFallacy.confidence > 0.5) {
+            injections.push(`── FALLACY ────────────────────────────────────────────────\n   ⚠️ Possible ${topFallacy.name}: ${topFallacy.explanation || ''}\n   Consider: ${topFallacy.remedy || 'Verify the reasoning'}`);
+          }
+        }
+      } catch (e) {
+        // Fallacy detection failed - continue without
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // ROLE REVERSAL: Detect teaching opportunities
+    // "Enseigner, c'est apprendre deux fois"
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (roleReversal && prompt.length > 30 && Math.random() < 0.236) {
+      try {
+        const opportunity = roleReversal.detectReversalOpportunity(prompt, {});
+        if (opportunity && opportunity.shouldReverse) {
+          injections.push(`── MAIEUTIC ───────────────────────────────────────────────\n   🎓 ${opportunity.question}\n   (Explaining helps understand deeper)`);
+        }
+      } catch (e) {
+        // Role reversal failed - continue without
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // HYPOTHESIS: Track claims and hypotheses
+    // "Toute assertion est une hypothèse à tester"
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (hypothesisTesting && prompt.length > 40) {
+      try {
+        // Check for assertion patterns that could be hypotheses
+        const assertionPatterns = /(?:I think|I believe|probably|likely|should be|must be|always|never)/i;
+        if (assertionPatterns.test(prompt) && Math.random() < 0.382) {
+          injections.push(`── HYPOTHESIS ─────────────────────────────────────────────\n   🔬 *sniff* This sounds like a hypothesis. What would falsify it?`);
+        }
+      } catch (e) {
+        // Hypothesis detection failed - continue without
       }
     }
 
