@@ -1,0 +1,748 @@
+/**
+ * CYNIC Cockpit Library
+ *
+ * "Le cockpit qui voit tout" - Continuous ecosystem awareness
+ *
+ * Provides:
+ * - Real-time ecosystem status
+ * - Dependency graph tracking
+ * - Proactive alerts
+ * - Cross-repo monitoring
+ *
+ * @module cynic/lib/cockpit
+ */
+
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+const { execFileSync } = require('child_process');
+
+// Import core library
+const cynic = require('./cynic-core.cjs');
+
+// =============================================================================
+// CONSTANTS
+// =============================================================================
+
+const COCKPIT_VERSION = '1.0.0';
+const SCAN_INTERVAL_MS = cynic.HEARTBEAT_MS; // 61.8 seconds (φ-aligned)
+const ALERT_TTL_MS = 3600000; // 1 hour
+const MAX_ALERTS = 100;
+
+// Known ecosystem repos and their roles
+const ECOSYSTEM_REPOS = {
+  'CYNIC-new': { role: 'core', critical: true },
+  'GASdf': { role: 'gasless', critical: true },
+  'HolDex': { role: 'kscore', critical: true },
+  'asdf-brain': { role: 'legacy-proto', critical: false },
+  'asdf-manifesto': { role: 'docs', critical: false },
+  'claude-mem': { role: 'deprecated', critical: false },
+  'framework-kit': { role: 'external', critical: false },
+};
+
+// Dependency map (who depends on whom)
+const KNOWN_DEPENDENCIES = {
+  'CYNIC-new': ['GASdf', 'HolDex'],      // CYNIC consumes these APIs
+  'GASdf': ['HolDex'],                    // GASdf uses K-Score oracle
+  'HolDex': [],                           // Independent
+  'asdf-brain': ['CYNIC-new'],            // Legacy depends on new
+};
+
+// =============================================================================
+// PATHS
+// =============================================================================
+
+function getCockpitDir() {
+  const dir = path.join(cynic.getDataDir(), 'cockpit');
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  return dir;
+}
+
+function getStatusPath() {
+  return path.join(getCockpitDir(), 'status.json');
+}
+
+function getAlertsPath() {
+  return path.join(getCockpitDir(), 'alerts.json');
+}
+
+function getDepsPath() {
+  return path.join(getCockpitDir(), 'dependencies.json');
+}
+
+function getHistoryPath() {
+  return path.join(getCockpitDir(), 'history.json');
+}
+
+// =============================================================================
+// SAFE EXECUTION
+// =============================================================================
+
+function safeExec(command, args, options = {}) {
+  try {
+    return execFileSync(command, args, {
+      encoding: 'utf-8',
+      timeout: 5000,
+      ...options
+    }).trim();
+  } catch (e) {
+    return null;
+  }
+}
+
+// =============================================================================
+// ECOSYSTEM SCANNING
+// =============================================================================
+
+/**
+ * Deep scan of all ecosystem repos
+ * @returns {Object} Full ecosystem status
+ */
+function scanEcosystem() {
+  const workspacesDir = '/workspaces';
+  const status = {
+    version: COCKPIT_VERSION,
+    timestamp: new Date().toISOString(),
+    repos: {},
+    summary: {
+      total: 0,
+      healthy: 0,
+      warnings: 0,
+      critical: 0,
+    },
+  };
+
+  if (!fs.existsSync(workspacesDir)) {
+    return status;
+  }
+
+  const repos = fs.readdirSync(workspacesDir);
+
+  for (const repoName of repos) {
+    const repoPath = path.join(workspacesDir, repoName);
+
+    // Skip non-directories and hidden dirs
+    if (!fs.statSync(repoPath).isDirectory() || repoName.startsWith('.')) {
+      continue;
+    }
+
+    const repoStatus = scanRepo(repoPath, repoName);
+    if (repoStatus) {
+      status.repos[repoName] = repoStatus;
+      status.summary.total++;
+
+      if (repoStatus.health === 'healthy') status.summary.healthy++;
+      else if (repoStatus.health === 'warning') status.summary.warnings++;
+      else if (repoStatus.health === 'critical') status.summary.critical++;
+    }
+  }
+
+  return status;
+}
+
+/**
+ * Scan a single repository
+ * @param {string} repoPath - Full path to repo
+ * @param {string} repoName - Repository name
+ * @returns {Object|null} Repo status or null if not a valid repo
+ */
+function scanRepo(repoPath, repoName) {
+  // Must have .git directory
+  if (!fs.existsSync(path.join(repoPath, '.git'))) {
+    return null;
+  }
+
+  const repoConfig = ECOSYSTEM_REPOS[repoName] || { role: 'unknown', critical: false };
+
+  // Get git state
+  const gitState = getDetailedGitState(repoPath);
+
+  // Detect project type
+  const projectType = detectProjectType(repoPath);
+
+  // Get package info if available
+  const packageInfo = getPackageInfo(repoPath);
+
+  // Calculate health
+  const health = calculateRepoHealth(gitState, repoConfig);
+
+  // Get recent activity
+  const recentCommits = getRecentCommits(repoPath, 5);
+
+  return {
+    name: repoName,
+    path: repoPath,
+    role: repoConfig.role,
+    critical: repoConfig.critical,
+    type: projectType,
+    version: packageInfo?.version || null,
+    health,
+    git: gitState,
+    recentCommits,
+    lastScanned: new Date().toISOString(),
+  };
+}
+
+/**
+ * Get detailed git state for a repo
+ */
+function getDetailedGitState(repoPath) {
+  const branch = safeExec('git', ['branch', '--show-current'], { cwd: repoPath });
+  if (!branch) return null;
+
+  const status = safeExec('git', ['status', '--porcelain'], { cwd: repoPath }) || '';
+  const lines = status.split('\n').filter(l => l.length > 0);
+
+  // Parse status
+  const modified = lines.filter(l => l.startsWith(' M') || l.startsWith('M ')).length;
+  const untracked = lines.filter(l => l.startsWith('??')).length;
+  const staged = lines.filter(l => l.match(/^[MADRC] /)).length;
+  const deleted = lines.filter(l => l.includes('D')).length;
+
+  // Check if ahead/behind remote
+  const trackingInfo = safeExec('git', ['rev-list', '--left-right', '--count', `origin/${branch}...HEAD`], { cwd: repoPath });
+  let ahead = 0, behind = 0;
+  if (trackingInfo) {
+    const parts = trackingInfo.split(/\s+/);
+    behind = parseInt(parts[0]) || 0;
+    ahead = parseInt(parts[1]) || 0;
+  }
+
+  // Get last commit info
+  const lastCommit = safeExec('git', ['log', '-1', '--format=%H|%s|%ar'], { cwd: repoPath });
+  let lastCommitInfo = null;
+  if (lastCommit) {
+    const [hash, message, age] = lastCommit.split('|');
+    lastCommitInfo = { hash: hash?.slice(0, 7), message, age };
+  }
+
+  return {
+    branch,
+    clean: status === '',
+    modified,
+    untracked,
+    staged,
+    deleted,
+    ahead,
+    behind,
+    lastCommit: lastCommitInfo,
+  };
+}
+
+/**
+ * Get recent commits
+ */
+function getRecentCommits(repoPath, count = 5) {
+  const log = safeExec('git', ['log', `-${count}`, '--format=%H|%s|%an|%ar'], { cwd: repoPath });
+  if (!log) return [];
+
+  return log.split('\n').filter(l => l).map(line => {
+    const [hash, message, author, age] = line.split('|');
+    return { hash: hash?.slice(0, 7), message, author, age };
+  });
+}
+
+/**
+ * Detect project type from files
+ */
+function detectProjectType(repoPath) {
+  if (fs.existsSync(path.join(repoPath, 'package.json'))) return 'node';
+  if (fs.existsSync(path.join(repoPath, 'Cargo.toml'))) return 'rust';
+  if (fs.existsSync(path.join(repoPath, 'go.mod'))) return 'go';
+  if (fs.existsSync(path.join(repoPath, 'pyproject.toml'))) return 'python';
+  if (fs.existsSync(path.join(repoPath, 'Anchor.toml'))) return 'anchor';
+  return 'unknown';
+}
+
+/**
+ * Get package.json info
+ */
+function getPackageInfo(repoPath) {
+  const pkgPath = path.join(repoPath, 'package.json');
+  if (!fs.existsSync(pkgPath)) return null;
+
+  try {
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+    return {
+      name: pkg.name,
+      version: pkg.version,
+      dependencies: Object.keys(pkg.dependencies || {}),
+      devDependencies: Object.keys(pkg.devDependencies || {}),
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * Calculate repo health based on git state
+ */
+function calculateRepoHealth(gitState, repoConfig) {
+  if (!gitState) return 'unknown';
+
+  // Critical repos have stricter thresholds
+  const isCritical = repoConfig.critical;
+
+  // Critical conditions
+  if (gitState.behind > 10) return 'critical';
+  if (isCritical && gitState.modified > 20) return 'critical';
+
+  // Warning conditions
+  if (gitState.behind > 0) return 'warning';
+  if (gitState.modified > 5) return 'warning';
+  if (gitState.untracked > 10) return 'warning';
+  if (!gitState.clean) return 'warning';
+
+  return 'healthy';
+}
+
+// =============================================================================
+// DEPENDENCY TRACKING
+// =============================================================================
+
+/**
+ * Build dependency graph from package.json files
+ * @returns {Object} Dependency graph
+ */
+function buildDependencyGraph() {
+  const graph = {
+    timestamp: new Date().toISOString(),
+    nodes: {},
+    edges: [],
+    external: {},
+  };
+
+  const workspacesDir = '/workspaces';
+  if (!fs.existsSync(workspacesDir)) return graph;
+
+  const repos = fs.readdirSync(workspacesDir);
+
+  // First pass: collect all internal packages
+  const internalPackages = new Map(); // package name -> repo name
+
+  for (const repoName of repos) {
+    const repoPath = path.join(workspacesDir, repoName);
+    if (!fs.statSync(repoPath).isDirectory()) continue;
+
+    const pkgInfo = getPackageInfo(repoPath);
+    if (pkgInfo?.name) {
+      internalPackages.set(pkgInfo.name, repoName);
+      graph.nodes[repoName] = {
+        package: pkgInfo.name,
+        version: pkgInfo.version,
+        type: detectProjectType(repoPath),
+      };
+    }
+
+    // Also check for monorepo packages
+    const packagesDir = path.join(repoPath, 'packages');
+    if (fs.existsSync(packagesDir)) {
+      try {
+        const subPkgs = fs.readdirSync(packagesDir);
+        for (const subPkg of subPkgs) {
+          const subPkgPath = path.join(packagesDir, subPkg);
+          if (fs.statSync(subPkgPath).isDirectory()) {
+            const subPkgInfo = getPackageInfo(subPkgPath);
+            if (subPkgInfo?.name) {
+              internalPackages.set(subPkgInfo.name, `${repoName}/${subPkg}`);
+            }
+          }
+        }
+      } catch (e) { /* ignore */ }
+    }
+  }
+
+  // Second pass: find dependencies
+  for (const repoName of repos) {
+    const repoPath = path.join(workspacesDir, repoName);
+    if (!fs.statSync(repoPath).isDirectory()) continue;
+
+    const pkgInfo = getPackageInfo(repoPath);
+    if (!pkgInfo) continue;
+
+    const allDeps = [...(pkgInfo.dependencies || []), ...(pkgInfo.devDependencies || [])];
+
+    for (const dep of allDeps) {
+      if (internalPackages.has(dep)) {
+        // Internal dependency
+        graph.edges.push({
+          from: repoName,
+          to: internalPackages.get(dep),
+          type: 'internal',
+        });
+      } else if (dep.startsWith('@cynic/') || dep.startsWith('@asdf/')) {
+        // Ecosystem package (might be internal)
+        graph.edges.push({
+          from: repoName,
+          to: dep,
+          type: 'ecosystem',
+        });
+      }
+    }
+  }
+
+  // Add known API dependencies
+  for (const [from, deps] of Object.entries(KNOWN_DEPENDENCIES)) {
+    for (const to of deps) {
+      // Check if edge doesn't already exist
+      const exists = graph.edges.some(e => e.from === from && e.to === to);
+      if (!exists) {
+        graph.edges.push({ from, to, type: 'api' });
+      }
+    }
+  }
+
+  return graph;
+}
+
+/**
+ * Detect dependency conflicts or drift
+ */
+function detectDependencyIssues(graph) {
+  const issues = [];
+
+  // Check for circular dependencies
+  const visited = new Set();
+  const stack = new Set();
+
+  function hasCycle(node, path = []) {
+    if (stack.has(node)) {
+      issues.push({
+        type: 'circular',
+        severity: 'warning',
+        message: `Circular dependency detected: ${[...path, node].join(' → ')}`,
+        nodes: [...path, node],
+      });
+      return true;
+    }
+    if (visited.has(node)) return false;
+
+    visited.add(node);
+    stack.add(node);
+
+    const edges = graph.edges.filter(e => e.from === node);
+    for (const edge of edges) {
+      hasCycle(edge.to, [...path, node]);
+    }
+
+    stack.delete(node);
+    return false;
+  }
+
+  for (const node of Object.keys(graph.nodes)) {
+    hasCycle(node);
+  }
+
+  return issues;
+}
+
+// =============================================================================
+// ALERT SYSTEM
+// =============================================================================
+
+/**
+ * Load current alerts
+ */
+function loadAlerts() {
+  const alertsPath = getAlertsPath();
+  if (fs.existsSync(alertsPath)) {
+    try {
+      const data = JSON.parse(fs.readFileSync(alertsPath, 'utf-8'));
+      // Filter out expired alerts
+      const now = Date.now();
+      data.alerts = (data.alerts || []).filter(a =>
+        now - new Date(a.timestamp).getTime() < ALERT_TTL_MS
+      );
+      return data;
+    } catch (e) {
+      return { alerts: [] };
+    }
+  }
+  return { alerts: [] };
+}
+
+/**
+ * Save alerts
+ */
+function saveAlerts(data) {
+  const alertsPath = getAlertsPath();
+  // Keep only recent alerts
+  data.alerts = (data.alerts || []).slice(-MAX_ALERTS);
+  data.lastUpdated = new Date().toISOString();
+  fs.writeFileSync(alertsPath, JSON.stringify(data, null, 2));
+}
+
+/**
+ * Add a new alert
+ */
+function addAlert(alert) {
+  const data = loadAlerts();
+
+  // Check for duplicate (same type + repo within last 5 minutes)
+  const isDuplicate = data.alerts.some(a =>
+    a.type === alert.type &&
+    a.repo === alert.repo &&
+    Date.now() - new Date(a.timestamp).getTime() < 300000
+  );
+
+  if (!isDuplicate) {
+    data.alerts.push({
+      id: `alert_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      ...alert,
+      timestamp: new Date().toISOString(),
+      acknowledged: false,
+    });
+    saveAlerts(data);
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Generate alerts from ecosystem status
+ */
+function generateAlerts(status) {
+  const alerts = [];
+
+  for (const [repoName, repo] of Object.entries(status.repos)) {
+    // Critical health
+    if (repo.health === 'critical') {
+      alerts.push({
+        type: 'health_critical',
+        severity: 'critical',
+        repo: repoName,
+        message: `${repoName} is in critical state`,
+        details: repo.git,
+      });
+    }
+
+    // Uncommitted changes in critical repos
+    if (repo.critical && repo.git && !repo.git.clean) {
+      alerts.push({
+        type: 'uncommitted_changes',
+        severity: repo.git.modified > 10 ? 'warning' : 'info',
+        repo: repoName,
+        message: `${repoName} has ${repo.git.modified} modified, ${repo.git.untracked} untracked files`,
+      });
+    }
+
+    // Behind remote
+    if (repo.git?.behind > 0) {
+      alerts.push({
+        type: 'behind_remote',
+        severity: repo.git.behind > 5 ? 'warning' : 'info',
+        repo: repoName,
+        message: `${repoName} is ${repo.git.behind} commits behind remote`,
+      });
+    }
+
+    // Non-main branch on critical repos
+    if (repo.critical && repo.git?.branch && repo.git.branch !== 'main') {
+      alerts.push({
+        type: 'non_main_branch',
+        severity: 'info',
+        repo: repoName,
+        message: `${repoName} is on branch '${repo.git.branch}' (not main)`,
+      });
+    }
+  }
+
+  return alerts;
+}
+
+// =============================================================================
+// STATUS PERSISTENCE
+// =============================================================================
+
+/**
+ * Save ecosystem status
+ */
+function saveStatus(status) {
+  const statusPath = getStatusPath();
+  fs.writeFileSync(statusPath, JSON.stringify(status, null, 2));
+}
+
+/**
+ * Load last ecosystem status
+ */
+function loadStatus() {
+  const statusPath = getStatusPath();
+  if (fs.existsSync(statusPath)) {
+    try {
+      return JSON.parse(fs.readFileSync(statusPath, 'utf-8'));
+    } catch (e) {
+      return null;
+    }
+  }
+  return null;
+}
+
+/**
+ * Save dependency graph
+ */
+function saveDependencyGraph(graph) {
+  const depsPath = getDepsPath();
+  fs.writeFileSync(depsPath, JSON.stringify(graph, null, 2));
+}
+
+/**
+ * Load dependency graph
+ */
+function loadDependencyGraph() {
+  const depsPath = getDepsPath();
+  if (fs.existsSync(depsPath)) {
+    try {
+      return JSON.parse(fs.readFileSync(depsPath, 'utf-8'));
+    } catch (e) {
+      return null;
+    }
+  }
+  return null;
+}
+
+// =============================================================================
+// COCKPIT API
+// =============================================================================
+
+/**
+ * Full cockpit scan - updates status, deps, and alerts
+ * @returns {Object} Cockpit state
+ */
+function fullScan() {
+  // Scan ecosystem
+  const status = scanEcosystem();
+  saveStatus(status);
+
+  // Build dependency graph
+  const deps = buildDependencyGraph();
+  const depIssues = detectDependencyIssues(deps);
+  saveDependencyGraph(deps);
+
+  // Generate and save alerts
+  const newAlerts = generateAlerts(status);
+  for (const alert of newAlerts) {
+    addAlert(alert);
+  }
+
+  // Add dependency issues as alerts
+  for (const issue of depIssues) {
+    addAlert({
+      type: 'dependency_issue',
+      severity: issue.severity,
+      repo: issue.nodes?.[0] || 'ecosystem',
+      message: issue.message,
+    });
+  }
+
+  return {
+    status,
+    dependencies: deps,
+    alerts: loadAlerts(),
+  };
+}
+
+/**
+ * Get current cockpit state (without scanning)
+ */
+function getCockpitState() {
+  return {
+    status: loadStatus(),
+    dependencies: loadDependencyGraph(),
+    alerts: loadAlerts(),
+  };
+}
+
+/**
+ * Format cockpit status for display
+ */
+function formatCockpitStatus(state) {
+  const lines = [];
+
+  lines.push('╔══════════════════════════════════════════════════════════════╗');
+  lines.push('║                    🛩️  CYNIC COCKPIT                          ║');
+  lines.push('╠══════════════════════════════════════════════════════════════╣');
+
+  if (!state.status) {
+    lines.push('║  ⚠️  No scan data. Run fullScan() first.                     ║');
+    lines.push('╚══════════════════════════════════════════════════════════════╝');
+    return lines.join('\n');
+  }
+
+  const s = state.status.summary;
+  lines.push(`║  Repos: ${s.total} total │ ✅ ${s.healthy} │ ⚠️ ${s.warnings} │ 🔴 ${s.critical}`.padEnd(65) + '║');
+  lines.push('╠══════════════════════════════════════════════════════════════╣');
+
+  // Repo list
+  for (const [name, repo] of Object.entries(state.status.repos)) {
+    const icon = repo.health === 'healthy' ? '✅' : repo.health === 'warning' ? '⚠️' : '🔴';
+    const branch = repo.git?.branch || '?';
+    const changes = repo.git?.clean ? '' : ` (${repo.git?.modified || 0}M/${repo.git?.untracked || 0}U)`;
+    const line = `║  ${icon} ${name.padEnd(20)} ${branch.padEnd(15)}${changes}`;
+    lines.push(line.padEnd(65) + '║');
+  }
+
+  // Alerts
+  const alerts = state.alerts?.alerts || [];
+  const activeAlerts = alerts.filter(a => !a.acknowledged);
+  if (activeAlerts.length > 0) {
+    lines.push('╠══════════════════════════════════════════════════════════════╣');
+    lines.push('║  ALERTS:'.padEnd(65) + '║');
+    for (const alert of activeAlerts.slice(0, 5)) {
+      const severity = alert.severity === 'critical' ? '🔴' : alert.severity === 'warning' ? '⚠️' : 'ℹ️';
+      const line = `║  ${severity} ${alert.message.slice(0, 55)}`;
+      lines.push(line.padEnd(65) + '║');
+    }
+    if (activeAlerts.length > 5) {
+      lines.push(`║  ... and ${activeAlerts.length - 5} more alerts`.padEnd(65) + '║');
+    }
+  }
+
+  lines.push('╠══════════════════════════════════════════════════════════════╣');
+  const scanTime = state.status.timestamp ? new Date(state.status.timestamp).toLocaleTimeString() : 'never';
+  lines.push(`║  Last scan: ${scanTime}`.padEnd(65) + '║');
+  lines.push('╚══════════════════════════════════════════════════════════════╝');
+
+  return lines.join('\n');
+}
+
+// =============================================================================
+// EXPORTS
+// =============================================================================
+
+module.exports = {
+  // Constants
+  COCKPIT_VERSION,
+  SCAN_INTERVAL_MS,
+  ECOSYSTEM_REPOS,
+  KNOWN_DEPENDENCIES,
+
+  // Scanning
+  scanEcosystem,
+  scanRepo,
+  fullScan,
+
+  // Dependencies
+  buildDependencyGraph,
+  detectDependencyIssues,
+  loadDependencyGraph,
+  saveDependencyGraph,
+
+  // Alerts
+  loadAlerts,
+  addAlert,
+  generateAlerts,
+
+  // Status
+  loadStatus,
+  saveStatus,
+  getCockpitState,
+
+  // Formatting
+  formatCockpitStatus,
+
+  // Paths
+  getCockpitDir,
+};

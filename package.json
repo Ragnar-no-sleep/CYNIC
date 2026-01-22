@@ -10,7 +10,12 @@
   "scripts": {
     "test": "node --test",
     "lint": "eslint .",
-    "build": "echo 'No build step - pure JavaScript'"
+    "build": "echo 'No build step - pure JavaScript'",
+    "cockpit": "node scripts/daemon/cockpit-daemon.cjs once",
+    "cockpit:start": "node scripts/daemon/cockpit-daemon.cjs start",
+    "cockpit:stop": "node scripts/daemon/cockpit-daemon.cjs stop",
+    "cockpit:status": "node scripts/daemon/cockpit-daemon.cjs status",
+    "cockpit:logs": "node scripts/daemon/cockpit-daemon.cjs logs"
   },
   "repository": {
     "type": "git",

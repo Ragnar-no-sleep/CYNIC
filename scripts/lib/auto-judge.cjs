@@ -10,6 +10,9 @@
  * - Behavioral anomalies (unusual tool patterns)
  * - Security concerns (from guard observations)
  *
+ * Now integrated with adaptive-learn.cjs for BURN-based continuous learning.
+ * Thresholds adapt from observations instead of magic numbers.
+ *
  * @module @cynic/auto-judge
  */
 
@@ -18,6 +21,15 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+
+// Load adaptive learning system
+const adaptiveLearnPath = path.join(__dirname, 'adaptive-learn.cjs');
+let adaptiveLearn = null;
+try {
+  adaptiveLearn = require(adaptiveLearnPath);
+} catch (e) {
+  // Adaptive learning not available - will use static thresholds
+}
 
 // =============================================================================
 // CONSTANTS (φ-aligned)
@@ -28,11 +40,44 @@ const PHI_INV = 0.618033988749895;   // 61.8% max confidence
 const PHI_INV_2 = 0.381966011250105; // 38.2%
 const PHI_INV_3 = 0.236067977499790; // 23.6%
 
-// Auto-judgment thresholds
-const ERROR_THRESHOLD = 3;           // Judge after 3 similar errors
-const SUCCESS_STREAK = 5;            // Judge positive after 5 successes
+// Static fallbacks (used when adaptive learning unavailable)
+const STATIC_ERROR_THRESHOLD = 3;
+const STATIC_SUCCESS_STREAK = 5;
+const STATIC_CODE_CHANGE_THRESHOLD = 3;
+
+// φ-derived thresholds (always static)
 const ANOMALY_THRESHOLD = PHI_INV_2; // 38.2% deviation triggers judgment
 const JUDGMENT_COOLDOWN_MS = 30000;  // 30s between auto-judgments
+
+/**
+ * Get adaptive threshold or fall back to static
+ * @param {string} category - Threshold category
+ * @param {string} key - Threshold key
+ * @param {number} fallback - Static fallback value
+ * @returns {number} The threshold value
+ */
+function getAdaptiveThreshold(category, key, fallback) {
+  if (adaptiveLearn) {
+    const adaptive = adaptiveLearn.getThreshold(category, key);
+    if (adaptive !== undefined && adaptive !== null) {
+      return adaptive;
+    }
+  }
+  return fallback;
+}
+
+// Adaptive threshold getters
+function getErrorThreshold() {
+  return getAdaptiveThreshold('error', 'count', STATIC_ERROR_THRESHOLD);
+}
+
+function getSuccessStreak() {
+  return getAdaptiveThreshold('success', 'count', STATIC_SUCCESS_STREAK);
+}
+
+function getCodeChangeThreshold() {
+  return getAdaptiveThreshold('codeChange', 'rapidCount', STATIC_CODE_CHANGE_THRESHOLD);
+}
 
 // Observation categories
 const ObservationType = {
@@ -156,22 +201,28 @@ function checkForAutoJudgment(state, currentObs) {
       o.signature === currentObs.signature
     );
 
-    if (similarErrors.length >= ERROR_THRESHOLD) {
+    const errorThreshold = getErrorThreshold();
+    if (similarErrors.length >= errorThreshold) {
+      // Record observation for adaptive learning
+      feedAdaptiveLearning('error', 'count', similarErrors.length);
+
       return createJudgment({
         trigger: 'error_pattern',
         verdict: 'GROWL',
         subject: currentObs.signature,
-        reason: `Erreur répétée ${similarErrors.length}x: ${currentObs.description}`,
+        reason: `Erreur répétée ${similarErrors.length}x (seuil: ${errorThreshold}): ${currentObs.description}`,
         confidence: Math.min(PHI_INV, similarErrors.length * PHI_INV_3),
         observations: similarErrors.map(o => o.id),
         recommendation: 'Investiguer la cause racine. Pattern d\'erreur détecté.',
+        adaptiveThreshold: errorThreshold,
       });
     }
   }
 
   // === TRIGGER 2: Success Streak ===
   const recentSuccesses = recent.filter(o => o.type === ObservationType.SUCCESS);
-  if (recentSuccesses.length >= SUCCESS_STREAK) {
+  const successStreak = getSuccessStreak();
+  if (recentSuccesses.length >= successStreak) {
     // Check if we haven't already judged this streak
     const lastSuccessJudgment = state.judgments.find(j =>
       j.trigger === 'success_streak' &&
@@ -179,14 +230,18 @@ function checkForAutoJudgment(state, currentObs) {
     );
 
     if (!lastSuccessJudgment) {
+      // Record observation for adaptive learning
+      feedAdaptiveLearning('success', 'count', recentSuccesses.length);
+
       return createJudgment({
         trigger: 'success_streak',
         verdict: 'WAG',
         subject: 'session_progress',
-        reason: `Série de ${recentSuccesses.length} opérations réussies`,
+        reason: `Série de ${recentSuccesses.length} opérations réussies (seuil: ${successStreak})`,
         confidence: PHI_INV_2,
-        observations: recentSuccesses.slice(-SUCCESS_STREAK).map(o => o.id),
+        observations: recentSuccesses.slice(-successStreak).map(o => o.id),
         recommendation: 'Bon momentum. Continuer sur cette lancée.',
+        adaptiveThreshold: successStreak,
       });
     }
   }
@@ -210,15 +265,20 @@ function checkForAutoJudgment(state, currentObs) {
 
     // Too many rapid changes to same file
     const fileChanges = recentChanges.filter(o => o.file === currentObs.file);
-    if (fileChanges.length >= 3) {
+    const codeChangeThreshold = getCodeChangeThreshold();
+    if (fileChanges.length >= codeChangeThreshold) {
+      // Record observation for adaptive learning
+      feedAdaptiveLearning('codeChange', 'rapidCount', fileChanges.length);
+
       return createJudgment({
         trigger: 'rapid_changes',
         verdict: 'BARK',
         subject: currentObs.file,
-        reason: `${fileChanges.length} modifications rapides sur ${path.basename(currentObs.file)}`,
+        reason: `${fileChanges.length} modifications rapides sur ${path.basename(currentObs.file)} (seuil: ${codeChangeThreshold})`,
         confidence: PHI_INV_2,
         observations: fileChanges.map(o => o.id),
         recommendation: 'Beaucoup de changements. Prendre du recul et vérifier la cohérence?',
+        adaptiveThreshold: codeChangeThreshold,
       });
     }
   }
@@ -398,6 +458,102 @@ function reset() {
 }
 
 // =============================================================================
+// ADAPTIVE LEARNING INTEGRATION
+// =============================================================================
+
+/**
+ * Feed observation data to adaptive learning system
+ * This allows thresholds to evolve based on actual patterns
+ */
+function feedAdaptiveLearning(type, context, value) {
+  if (!adaptiveLearn) return;
+
+  try {
+    adaptiveLearn.recordObservation({
+      type,
+      context,
+      value,
+      metadata: {
+        source: 'auto-judge',
+        sessionId: process.env.CYNIC_SESSION_ID || 'unknown',
+      },
+    });
+  } catch (e) {
+    // Silently ignore - learning is optional enhancement
+  }
+}
+
+/**
+ * Provide feedback on a judgment (for calibration)
+ * Call this when user confirms or rejects an auto-judgment
+ * @param {string} judgmentId - The judgment being rated
+ * @param {boolean} wasCorrect - Was the judgment accurate?
+ * @param {string} [correction] - What should have happened instead?
+ */
+function provideFeedback(judgmentId, wasCorrect, correction = null) {
+  if (!adaptiveLearn) {
+    return { success: false, reason: 'Adaptive learning not available' };
+  }
+
+  // Find the judgment
+  const state = loadState();
+  const judgment = state.judgments.find(j => j.id === judgmentId);
+
+  if (!judgment) {
+    return { success: false, reason: 'Judgment not found' };
+  }
+
+  try {
+    adaptiveLearn.recordFeedback({
+      type: judgment.trigger,
+      detectionId: judgmentId,
+      correct: wasCorrect,
+      correction,
+    });
+
+    return {
+      success: true,
+      message: wasCorrect
+        ? 'Feedback recorded: judgment confirmed ✓'
+        : 'Feedback recorded: threshold will adjust',
+    };
+  } catch (e) {
+    return { success: false, reason: e.message };
+  }
+}
+
+/**
+ * Get current adaptive learning stats
+ */
+function getAdaptiveStats() {
+  if (!adaptiveLearn) {
+    return { available: false };
+  }
+
+  return {
+    available: true,
+    thresholds: {
+      error: getErrorThreshold(),
+      success: getSuccessStreak(),
+      codeChange: getCodeChangeThreshold(),
+    },
+    calibration: adaptiveLearn.getCalibrationStats(),
+    learningStats: adaptiveLearn.loadStats(),
+  };
+}
+
+/**
+ * Trigger a BURN cycle to clean old learning data
+ */
+function triggerBurn() {
+  if (!adaptiveLearn) {
+    return { success: false, reason: 'Adaptive learning not available' };
+  }
+
+  return adaptiveLearn.burnCycle();
+}
+
+// =============================================================================
 // EXPORTS
 // =============================================================================
 
@@ -418,11 +574,19 @@ module.exports = {
   formatJudgment,
   reset,
 
+  // Adaptive learning integration
+  provideFeedback,
+  getAdaptiveStats,
+  triggerBurn,
+  getErrorThreshold,
+  getSuccessStreak,
+  getCodeChangeThreshold,
+
   // Types
   ObservationType,
 
-  // Constants
+  // Constants (deprecated - use get*Threshold() functions instead)
   PHI_INV,
-  ERROR_THRESHOLD,
-  SUCCESS_STREAK,
+  ERROR_THRESHOLD: STATIC_ERROR_THRESHOLD,
+  SUCCESS_STREAK: STATIC_SUCCESS_STREAK,
 };

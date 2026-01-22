@@ -9,6 +9,8 @@
  * - Retry storms (same failing command)
  * - Busy waiting (sleep + check loops)
  *
+ * Now integrated with adaptive-learn.cjs for BURN-based threshold learning.
+ *
  * @module @cynic/circuit-breaker
  */
 
@@ -18,6 +20,15 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
+// Load adaptive learning system
+const adaptiveLearnPath = path.join(__dirname, 'adaptive-learn.cjs');
+let adaptiveLearn = null;
+try {
+  adaptiveLearn = require(adaptiveLearnPath);
+} catch (e) {
+  // Adaptive learning not available - will use static thresholds
+}
+
 // =============================================================================
 // CONSTANTS (φ-aligned)
 // =============================================================================
@@ -25,11 +36,58 @@ const os = require('os');
 const PHI = 1.618033988749895;
 const PHI_INV = 0.618033988749895; // 61.8%
 
-// Circuit breaker thresholds
-const MAX_IDENTICAL_CALLS = 3;           // Block after 3 identical calls
-const MAX_SIMILAR_CALLS = 5;             // Block after 5 similar calls
+// Static fallback thresholds (used when adaptive learning unavailable)
+const STATIC_MAX_IDENTICAL = 3;
+const STATIC_MAX_SIMILAR = 5;
+const STATIC_POLLING_THRESHOLD = 2;
 const LOOP_WINDOW_MS = 60000;            // 1 minute window
 const SIMILARITY_THRESHOLD = PHI_INV;    // 61.8% similarity triggers detection
+
+/**
+ * Get adaptive threshold or fall back to static
+ */
+function getAdaptiveThreshold(key, fallback) {
+  if (adaptiveLearn) {
+    const adaptive = adaptiveLearn.getThreshold('loop', key);
+    if (adaptive !== undefined && adaptive !== null) {
+      return adaptive;
+    }
+  }
+  return fallback;
+}
+
+// Adaptive threshold getters
+function getMaxIdenticalCalls() {
+  return getAdaptiveThreshold('identical', STATIC_MAX_IDENTICAL);
+}
+
+function getMaxSimilarCalls() {
+  return getAdaptiveThreshold('similar', STATIC_MAX_SIMILAR);
+}
+
+function getPollingThreshold() {
+  return getAdaptiveThreshold('polling', STATIC_POLLING_THRESHOLD);
+}
+
+/**
+ * Feed observation to adaptive learning system
+ */
+function feedAdaptiveLearning(loopType, count) {
+  if (!adaptiveLearn) return;
+
+  try {
+    adaptiveLearn.recordObservation({
+      type: 'loop',
+      context: loopType,
+      value: count,
+      metadata: {
+        source: 'circuit-breaker',
+      },
+    });
+  } catch (e) {
+    // Silently ignore - learning is optional
+  }
+}
 
 // Patterns that suggest polling/waiting behavior
 const POLLING_PATTERNS = [
@@ -168,12 +226,17 @@ function checkAndRecord(toolName, toolInput) {
     c.toolName === toolName && c.normalized === normalized
   );
 
-  if (identicalCalls.length >= MAX_IDENTICAL_CALLS) {
+  const maxIdentical = getMaxIdenticalCalls();
+  if (identicalCalls.length >= maxIdentical) {
+    // Feed adaptive learning
+    feedAdaptiveLearning('identical', identicalCalls.length + 1);
+
     const loop = {
       type: 'identical',
       toolName,
       pattern: normalized.slice(0, 100),
       count: identicalCalls.length + 1,
+      threshold: maxIdentical,
       timestamp: now,
     };
     state.loops.push(loop);
@@ -184,9 +247,10 @@ function checkAndRecord(toolName, toolInput) {
 
     return {
       shouldBlock: true,
-      reason: `Boucle identique détectée: ${identicalCalls.length + 1}x en ${Math.round(LOOP_WINDOW_MS/1000)}s`,
+      reason: `Boucle identique détectée: ${identicalCalls.length + 1}x en ${Math.round(LOOP_WINDOW_MS/1000)}s (seuil: ${maxIdentical})`,
       loopType: 'identical',
       suggestion: getSuggestion('identical', toolName, toolInput),
+      adaptiveThreshold: maxIdentical,
     };
   }
 
@@ -197,13 +261,18 @@ function checkAndRecord(toolName, toolInput) {
     return similarity >= SIMILARITY_THRESHOLD;
   });
 
-  if (similarCalls.length >= MAX_SIMILAR_CALLS) {
+  const maxSimilar = getMaxSimilarCalls();
+  if (similarCalls.length >= maxSimilar) {
+    // Feed adaptive learning
+    feedAdaptiveLearning('similar', similarCalls.length + 1);
+
     const loop = {
       type: 'similar',
       toolName,
       pattern: normalized.slice(0, 100),
       count: similarCalls.length + 1,
       similarity: SIMILARITY_THRESHOLD,
+      threshold: maxSimilar,
       timestamp: now,
     };
     state.loops.push(loop);
@@ -214,23 +283,28 @@ function checkAndRecord(toolName, toolInput) {
 
     return {
       shouldBlock: true,
-      reason: `Boucle similaire détectée: ${similarCalls.length + 1}x appels ${toolName} similaires`,
+      reason: `Boucle similaire détectée: ${similarCalls.length + 1}x appels ${toolName} similaires (seuil: ${maxSimilar})`,
       loopType: 'similar',
       suggestion: getSuggestion('similar', toolName, toolInput),
+      adaptiveThreshold: maxSimilar,
     };
   }
 
   // === CHECK 3: Polling pattern with no progress ===
   if (call.isPolling) {
     const pollingCalls = recentCalls.filter(c => c.isPolling && c.toolName === toolName);
+    const pollingThreshold = getPollingThreshold();
 
-    // Lower threshold for polling (2 calls)
-    if (pollingCalls.length >= 2) {
+    if (pollingCalls.length >= pollingThreshold) {
+      // Feed adaptive learning
+      feedAdaptiveLearning('polling', pollingCalls.length + 1);
+
       const loop = {
         type: 'polling',
         toolName,
         pattern: normalized.slice(0, 100),
         count: pollingCalls.length + 1,
+        threshold: pollingThreshold,
         timestamp: now,
       };
       state.loops.push(loop);
@@ -241,9 +315,10 @@ function checkAndRecord(toolName, toolInput) {
 
       return {
         shouldBlock: true,
-        reason: `Polling répétitif détecté: ${pollingCalls.length + 1}x vérifications`,
+        reason: `Polling répétitif détecté: ${pollingCalls.length + 1}x vérifications (seuil: ${pollingThreshold})`,
         loopType: 'polling',
         suggestion: getSuggestion('polling', toolName, toolInput),
+        adaptiveThreshold: pollingThreshold,
       };
     }
   }
@@ -319,13 +394,52 @@ function getStats() {
 // EXPORTS
 // =============================================================================
 
+/**
+ * Provide feedback on a circuit breaker decision
+ * @param {string} loopType - Type of loop (identical, similar, polling)
+ * @param {boolean} wasCorrect - Was blocking correct?
+ */
+function provideFeedback(loopType, wasCorrect) {
+  if (!adaptiveLearn) {
+    return { success: false, reason: 'Adaptive learning not available' };
+  }
+
+  try {
+    adaptiveLearn.recordFeedback({
+      type: 'loop',
+      detectionId: `loop_${loopType}_${Date.now()}`,
+      correct: wasCorrect,
+    });
+    return { success: true };
+  } catch (e) {
+    return { success: false, reason: e.message };
+  }
+}
+
+/**
+ * Get current adaptive thresholds
+ */
+function getAdaptiveStats() {
+  return {
+    maxIdentical: getMaxIdenticalCalls(),
+    maxSimilar: getMaxSimilarCalls(),
+    polling: getPollingThreshold(),
+    adaptive: adaptiveLearn !== null,
+  };
+}
+
 module.exports = {
   checkAndRecord,
   reset,
   getStats,
-  // Constants for testing
-  MAX_IDENTICAL_CALLS,
-  MAX_SIMILAR_CALLS,
+  provideFeedback,
+  getAdaptiveStats,
+  getMaxIdenticalCalls,
+  getMaxSimilarCalls,
+  getPollingThreshold,
+  // Constants (deprecated - use get* functions)
+  MAX_IDENTICAL_CALLS: STATIC_MAX_IDENTICAL,
+  MAX_SIMILAR_CALLS: STATIC_MAX_SIMILAR,
   LOOP_WINDOW_MS,
   SIMILARITY_THRESHOLD,
 };
