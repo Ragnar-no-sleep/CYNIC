@@ -10,6 +10,7 @@
 - Phase 32: Philosophy of Science (scientific method, explanation, theory change)
 - Phase 33: Metaphysics II (identity, causation, time)
 - Phase 34: Philosophy of Religion (theism, evil, faith & reason)
+- Phase 35: Meta-Philosophy (method, progress, integration)
 
 ## PLANNED PHASES
 
