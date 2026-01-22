@@ -45,6 +45,15 @@ try {
   // Consciousness not available - continue without
 }
 
+// Load harmony analyzer for real-time φ violation detection
+const harmonyPath = path.join(__dirname, '..', 'lib', 'harmony-analyzer.cjs');
+let harmonyAnalyzer = null;
+try {
+  harmonyAnalyzer = require(harmonyPath);
+} catch (e) {
+  // Harmony analyzer not available - continue without
+}
+
 // =============================================================================
 // PATTERN DETECTION
 // =============================================================================
@@ -470,6 +479,72 @@ async function main() {
       const content = toolInput.content || toolInput.new_string || '';
       const linesChanged = (content.match(/\n/g) || []).length + 1;
       autoJudge.observeCodeChange(filePath, toolName.toLowerCase(), linesChanged);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // HARMONY ANALYZER: Real-time φ violation detection
+    // "Le chien veille sur l'harmonie"
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (harmonyAnalyzer && (toolName === 'Write' || toolName === 'Edit') && !isError) {
+      const filePath = toolInput.file_path || toolInput.filePath || '';
+
+      // Only analyze code files
+      const ext = path.extname(filePath).toLowerCase();
+      const codeExtensions = ['.js', '.cjs', '.mjs', '.ts', '.tsx', '.jsx', '.py', '.rs', '.go', '.sol'];
+
+      if (codeExtensions.includes(ext)) {
+        // Run analysis asynchronously to not block
+        setImmediate(() => {
+          try {
+            const gaps = harmonyAnalyzer.analyzeFile(filePath);
+
+            // Filter high/medium severity gaps
+            const significantGaps = gaps.filter(g =>
+              g.severity === 'high' || g.severity === 'medium'
+            );
+
+            if (significantGaps.length > 0 && consciousness) {
+              // Group by principle
+              const byPrinciple = {};
+              for (const gap of significantGaps) {
+                byPrinciple[gap.principle] = (byPrinciple[gap.principle] || 0) + 1;
+              }
+
+              // Record as insight if enough gaps
+              if (significantGaps.length >= 3) {
+                const principles = Object.entries(byPrinciple)
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([p, n]) => `${p}:${n}`)
+                  .join(', ');
+
+                consciousness.recordInsight({
+                  type: 'harmony_violation',
+                  title: `φ gaps in ${path.basename(filePath)}`,
+                  message: `Found ${significantGaps.length} harmony gaps (${principles})`,
+                  data: {
+                    file: filePath,
+                    gapCount: significantGaps.length,
+                    byPrinciple,
+                    topGap: significantGaps[0]?.message,
+                  },
+                  priority: significantGaps.some(g => g.severity === 'high') ? 'high' : 'medium',
+                });
+              }
+
+              // Record specific patterns for learning
+              for (const gap of significantGaps.slice(0, 3)) {
+                consciousness.observeHumanPattern('harmonyGaps', {
+                  principle: gap.principle,
+                  severity: gap.severity,
+                  file: path.basename(filePath),
+                });
+              }
+            }
+          } catch (e) {
+            // Harmony analysis failed - continue without
+          }
+        });
+      }
     }
 
     // ═══════════════════════════════════════════════════════════════════════════

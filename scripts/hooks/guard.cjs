@@ -25,6 +25,16 @@ const watchdog = require(path.join(__dirname, '..', 'lib', 'watchdog.cjs'));
 // Load circuit breaker (anti-loop protection)
 const circuitBreaker = require(path.join(__dirname, '..', 'lib', 'circuit-breaker.cjs'));
 
+// Load consciousness for learning feedback
+const consciousnessPath = path.join(__dirname, '..', 'lib', 'consciousness.cjs');
+let consciousness = null;
+try {
+  consciousness = require(consciousnessPath);
+  consciousness.init();
+} catch (e) {
+  // Consciousness not available - continue without
+}
+
 // =============================================================================
 // DANGER PATTERNS
 // =============================================================================
@@ -202,6 +212,37 @@ function formatGuardianResponse(issues, toolName, profile) {
       signature: `${toolName}:${maxSeverity}`,
       description: issues[0].message
     });
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CONSCIOUSNESS FEEDBACK: Danger blocked = learning opportunity
+    // "Le chien protège et apprend"
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (consciousness) {
+      try {
+        // Record as insight for future awareness
+        consciousness.recordInsight({
+          type: 'danger_blocked',
+          title: `Danger blocked: ${toolName}`,
+          message: issues[0].message,
+          data: {
+            tool: toolName,
+            severity: maxSeverity,
+            issueCount: issues.length,
+            patterns: issues.map(i => i.message),
+          },
+          priority: maxSeverity === 'critical' ? 'high' : 'medium',
+        });
+
+        // Record human pattern - what triggers dangerous operations
+        consciousness.observeHumanPattern('dangerPatterns', {
+          tool: toolName,
+          severity: maxSeverity,
+          timestamp: Date.now(),
+        });
+      } catch (e) {
+        // Consciousness recording failed - continue without
+      }
+    }
   }
 
   return { shouldBlock, message };
@@ -245,6 +286,25 @@ async function main() {
         signature: `${loopCheck.loopType}:${toolName}`,
         description: loopCheck.reason
       });
+
+      // Record in consciousness for learning
+      if (consciousness) {
+        try {
+          consciousness.recordInsight({
+            type: 'loop_blocked',
+            title: `Loop detected: ${loopCheck.loopType}`,
+            message: loopCheck.reason,
+            data: {
+              tool: toolName,
+              loopType: loopCheck.loopType,
+              count: loopCheck.count,
+            },
+            priority: 'medium',
+          });
+        } catch (e) {
+          // Consciousness recording failed - continue without
+        }
+      }
 
       console.log(JSON.stringify({
         continue: false,
