@@ -11,6 +11,7 @@
 - Phase 33: Metaphysics II (identity, causation, time)
 - Phase 34: Philosophy of Religion (theism, evil, faith & reason)
 - Phase 35: Meta-Philosophy (method, progress, integration)
+- Phase 36: Applied Ethics (bioethics, environmental, tech ethics)
 
 ## PLANNED PHASES
 
