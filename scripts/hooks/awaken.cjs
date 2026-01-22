@@ -93,6 +93,37 @@ async function main() {
       // Silently fail - local profile is fallback
     }
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CONSCIOUSNESS SYNC: Load learning loop from PostgreSQL
+    // "Le chien se souvient. L'apprentissage traverse les machines."
+    // ═══════════════════════════════════════════════════════════════════════════
+    let consciousnessImport = null;
+    if (consciousness) {
+      try {
+        const remoteConsciousness = await consciousness.loadFromDB(user.userId);
+        if (remoteConsciousness) {
+          // Get local consciousness snapshot
+          const localSnapshot = consciousness.getConsciousnessSnapshot();
+
+          // Merge remote with local
+          const merged = consciousness.mergeWithRemote(remoteConsciousness, localSnapshot);
+
+          // Update local files with merged data (will be used during session)
+          if (merged.humanGrowth) {
+            consciousness.updateHumanGrowth(merged.humanGrowth);
+          }
+
+          consciousnessImport = {
+            success: true,
+            totalObservations: remoteConsciousness.meta?.totalObservations || 0,
+            insightsCount: remoteConsciousness.meta?.insightsCount || 0,
+          };
+        }
+      } catch (e) {
+        // Silently fail - local consciousness is fallback
+      }
+    }
+
     // Update profile with current identity info and increment session
     let profile = cynic.updateUserProfile(localProfile, {
       identity: {

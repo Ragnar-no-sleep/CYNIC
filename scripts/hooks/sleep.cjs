@@ -20,6 +20,15 @@ const path = require('path');
 const libPath = path.join(__dirname, '..', 'lib', 'cynic-core.cjs');
 const cynic = require(libPath);
 
+// Load consciousness for cross-session sync
+const consciousnessPath = path.join(__dirname, '..', 'lib', 'consciousness.cjs');
+let consciousness = null;
+try {
+  consciousness = require(consciousnessPath);
+} catch (e) {
+  // Consciousness not available - continue without
+}
+
 // =============================================================================
 // SESSION FINALIZATION
 // =============================================================================
@@ -79,6 +88,7 @@ function formatSleepMessage(profile, summary) {
   // Storage info
   lines.push('── STORAGE ────────────────────────────────────────────────');
   lines.push(`   💾 Profile: PostgreSQL (cross-session)`);
+  lines.push(`   🧠 Consciousness: PostgreSQL (learning loop persisted)`);
   lines.push(`   📚 Learnings: PostgreSQL (auto-persisted)`);
   lines.push(`   ⛓️  Judgments: PoJ Chain`);
   lines.push('');
@@ -133,6 +143,21 @@ async function main() {
       }
     } catch (e) {
       // Silently fail - profile is still saved locally
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CONSCIOUSNESS SYNC: Persist learning loop to PostgreSQL
+    // "Le chien apprend. L'apprentissage persiste."
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (consciousness) {
+      try {
+        const consciousnessSync = await consciousness.syncToDB(user.userId);
+        if (consciousnessSync) {
+          // Consciousness synced - learning will persist across machines
+        }
+      } catch (e) {
+        // Silently fail - local files remain as backup
+      }
     }
 
     // Send SessionEnd to MCP server (this triggers brain_session_end internally)

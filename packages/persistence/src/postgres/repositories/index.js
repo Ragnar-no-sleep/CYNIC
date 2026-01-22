@@ -27,3 +27,6 @@ export { TriggerRepository } from './triggers.js';
 
 // Phase 13: Discovery System
 export { DiscoveryRepository } from './discovery.js';
+
+// Phase 14: Consciousness Persistence
+export { ConsciousnessRepository } from './consciousness.js';

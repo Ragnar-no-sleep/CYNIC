@@ -660,6 +660,277 @@ function deepMerge(target, source) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// CROSS-SESSION PERSISTENCE
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Get a snapshot of all consciousness data for sync
+ * @returns {Object} Complete consciousness state
+ */
+function getConsciousnessSnapshot() {
+  const humanGrowth = getHumanGrowth();
+  const capabilityMap = getCapabilityMap();
+  const insights = loadJsonl(INSIGHTS_FILE, 50);
+  const resonance = loadJsonl(RESONANCE_FILE, 100);
+
+  // Calculate total observations
+  let observations = 0;
+  if (capabilityMap.tools) {
+    for (const tool of Object.values(capabilityMap.tools)) {
+      observations += tool.uses || 0;
+    }
+  }
+
+  return {
+    humanGrowth,
+    capabilityMap,
+    insights,
+    resonancePatterns: {
+      entries: resonance,
+      flowStates: resonance.filter(r => r.type === 'flow').length,
+      lastResonance: resonance[resonance.length - 1]?.timestamp || null,
+    },
+    observations,
+    timestamp: Date.now(),
+  };
+}
+
+/**
+ * Sync consciousness data to PostgreSQL
+ * Called at session end via sleep.cjs
+ *
+ * @param {string} userId - User ID
+ * @returns {Promise<Object|null>} Sync result or null on error
+ */
+async function syncToDB(userId) {
+  try {
+    // Get current snapshot
+    const snapshot = getConsciousnessSnapshot();
+
+    // Try to use persistence package via brain API
+    const brainUrl = process.env.ASDF_BRAIN_URL || 'https://asdf-brain.onrender.com';
+    const response = await fetch(`${brainUrl}/api/consciousness/sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId,
+        ...snapshot,
+      }),
+    });
+
+    if (!response.ok) {
+      // Fallback: try direct PostgreSQL if available
+      return await syncToDBDirect(userId, snapshot);
+    }
+
+    const result = await response.json();
+    return result;
+  } catch (error) {
+    // Try direct DB as fallback
+    try {
+      return await syncToDBDirect(userId, getConsciousnessSnapshot());
+    } catch (e) {
+      // Both failed - return null, local files remain as backup
+      return null;
+    }
+  }
+}
+
+/**
+ * Direct PostgreSQL sync (when brain API unavailable)
+ * @private
+ */
+async function syncToDBDirect(userId, snapshot) {
+  try {
+    // Dynamic import of persistence
+    const { Pool } = await import('pg');
+    const pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+    });
+
+    // Get or create user UUID
+    let userUUID = userId;
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(userId)) {
+      const { rows } = await pool.query(
+        `INSERT INTO users (username, e_score)
+         VALUES ($1, 0.5)
+         ON CONFLICT (username) DO UPDATE SET updated_at = NOW()
+         RETURNING id`,
+        [userId]
+      );
+      userUUID = rows[0].id;
+    }
+
+    // Call sync function
+    const { rows } = await pool.query(
+      `SELECT sync_consciousness($1, $2, $3, $4, $5, $6) as result`,
+      [
+        userUUID,
+        JSON.stringify(snapshot.humanGrowth || {}),
+        JSON.stringify(snapshot.capabilityMap || {}),
+        JSON.stringify(snapshot.insights || []),
+        JSON.stringify(snapshot.resonancePatterns || {}),
+        snapshot.observations || 0,
+      ]
+    );
+
+    await pool.end();
+    return rows[0]?.result || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * Load consciousness data from PostgreSQL
+ * Called at session start via awaken.cjs
+ *
+ * @param {string} userId - User ID
+ * @returns {Promise<Object|null>} Consciousness data or null if not found
+ */
+async function loadFromDB(userId) {
+  try {
+    // Try brain API first
+    const brainUrl = process.env.ASDF_BRAIN_URL || 'https://asdf-brain.onrender.com';
+    const response = await fetch(`${brainUrl}/api/consciousness/load/${encodeURIComponent(userId)}`);
+
+    if (response.ok) {
+      return await response.json();
+    }
+
+    // Fallback to direct DB
+    return await loadFromDBDirect(userId);
+  } catch (error) {
+    try {
+      return await loadFromDBDirect(userId);
+    } catch (e) {
+      return null;
+    }
+  }
+}
+
+/**
+ * Direct PostgreSQL load (when brain API unavailable)
+ * @private
+ */
+async function loadFromDBDirect(userId) {
+  try {
+    const { Pool } = await import('pg');
+    const pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+    });
+
+    // Find user UUID
+    let userUUID = userId;
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(userId)) {
+      const { rows } = await pool.query(
+        'SELECT id FROM users WHERE username = $1',
+        [userId]
+      );
+      if (!rows[0]) {
+        await pool.end();
+        return null;
+      }
+      userUUID = rows[0].id;
+    }
+
+    const { rows } = await pool.query(
+      'SELECT load_consciousness($1) as consciousness',
+      [userUUID]
+    );
+
+    await pool.end();
+    return rows[0]?.consciousness || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * Merge remote consciousness data with local
+ * Remote is source of truth for accumulated stats
+ * Local has current session data
+ *
+ * @param {Object} remote - Data from PostgreSQL
+ * @param {Object} local - Data from local files
+ * @returns {Object} Merged consciousness
+ */
+function mergeWithRemote(remote, local) {
+  if (!remote) return local;
+  if (!local) return remote;
+
+  // Merge human growth
+  const humanGrowth = deepMerge(remote.humanGrowth || {}, local.humanGrowth || {});
+
+  // Merge skills (keep higher observations)
+  if (remote.humanGrowth?.skills && local.humanGrowth?.skills) {
+    humanGrowth.skills = {};
+    const allSkills = new Set([
+      ...Object.keys(remote.humanGrowth.skills),
+      ...Object.keys(local.humanGrowth.skills),
+    ]);
+    for (const skill of allSkills) {
+      const remoteSkill = remote.humanGrowth.skills[skill];
+      const localSkill = local.humanGrowth.skills[skill];
+      if (!remoteSkill) {
+        humanGrowth.skills[skill] = localSkill;
+      } else if (!localSkill) {
+        humanGrowth.skills[skill] = remoteSkill;
+      } else {
+        // Keep the one with more observations
+        humanGrowth.skills[skill] = remoteSkill.observations > localSkill.observations
+          ? remoteSkill
+          : localSkill;
+      }
+    }
+  }
+
+  // Merge capability map (sum usage)
+  const capabilityMap = { ...local.capabilityMap };
+  if (remote.capabilityMap?.tools) {
+    capabilityMap.tools = capabilityMap.tools || {};
+    for (const [tool, stats] of Object.entries(remote.capabilityMap.tools)) {
+      if (!capabilityMap.tools[tool]) {
+        capabilityMap.tools[tool] = stats;
+      } else {
+        capabilityMap.tools[tool] = {
+          uses: (capabilityMap.tools[tool].uses || 0) + (stats.uses || 0),
+          successes: (capabilityMap.tools[tool].successes || 0) + (stats.successes || 0),
+          failures: (capabilityMap.tools[tool].failures || 0) + (stats.failures || 0),
+          avgDuration: ((capabilityMap.tools[tool].avgDuration || 0) + (stats.avgDuration || 0)) / 2,
+          lastUsed: Math.max(
+            capabilityMap.tools[tool].lastUsed || 0,
+            stats.lastUsed || 0
+          ),
+        };
+      }
+    }
+  }
+
+  // Merge insights (unique by id, most recent 50)
+  const insightsMap = new Map();
+  for (const insight of (remote.insights || [])) {
+    insightsMap.set(insight.id, insight);
+  }
+  for (const insight of (local.insights || [])) {
+    insightsMap.set(insight.id, insight);
+  }
+  const insights = Array.from(insightsMap.values())
+    .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+    .slice(0, 50);
+
+  return {
+    humanGrowth,
+    capabilityMap,
+    insights,
+    resonancePatterns: deepMerge(remote.resonancePatterns || {}, local.resonancePatterns || {}),
+    meta: remote.meta || {},
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // PUBLIC API
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -700,6 +971,12 @@ module.exports = {
 
   // Display
   printConsciousnessReport,
+
+  // Cross-session persistence
+  syncToDB,
+  loadFromDB,
+  mergeWithRemote,
+  getConsciousnessSnapshot,
 
   // Constants
   PHI,
