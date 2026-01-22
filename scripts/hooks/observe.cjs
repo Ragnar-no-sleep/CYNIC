@@ -64,6 +64,45 @@ try {
   // Signal collector not available - continue without
 }
 
+// Load cognitive biases detector
+const biasesPath = path.join(__dirname, '..', 'lib', 'cognitive-biases.cjs');
+let cognitiveBiases = null;
+try {
+  cognitiveBiases = require(biasesPath);
+  cognitiveBiases.init();
+} catch (e) {
+  // Cognitive biases not available - continue without
+}
+
+// Load topology tracker for rabbit hole detection
+const topologyPath = path.join(__dirname, '..', 'lib', 'topology-tracker.cjs');
+let topologyTracker = null;
+try {
+  topologyTracker = require(topologyPath);
+  topologyTracker.init();
+} catch (e) {
+  // Topology tracker not available - continue without
+}
+
+// Load intervention engine for adaptive nudges
+const interventionPath = path.join(__dirname, '..', 'lib', 'intervention-engine.cjs');
+let interventionEngine = null;
+try {
+  interventionEngine = require(interventionPath);
+  interventionEngine.init();
+} catch (e) {
+  // Intervention engine not available - continue without
+}
+
+// Load psychology module for state access
+const psychologyPath = path.join(__dirname, '..', 'lib', 'human-psychology.cjs');
+let psychology = null;
+try {
+  psychology = require(psychologyPath);
+} catch (e) {
+  // Psychology not available - continue without
+}
+
 // =============================================================================
 // PATTERN DETECTION
 // =============================================================================
@@ -514,6 +553,65 @@ async function main() {
       }
     }
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // COGNITIVE BIASES: Track actions and detect biases
+    // "Le chien voit ce que l'humain refuse de voir"
+    // ═══════════════════════════════════════════════════════════════════════════
+    let detectedBiases = [];
+    if (cognitiveBiases) {
+      try {
+        // Record the action
+        const filePath = toolInput.file_path || toolInput.filePath || null;
+        cognitiveBiases.recordAction(toolName, {
+          file: filePath,
+          error: isError,
+          errorType: isError ? detectErrorType(typeof toolOutput === 'string' ? toolOutput : '') : null,
+        });
+
+        // Run bias detection periodically (every 5 actions)
+        const stats = cognitiveBiases.getStats();
+        if (stats.actionHistorySize % 5 === 0) {
+          detectedBiases = cognitiveBiases.detectBiases();
+        }
+      } catch (e) {
+        // Bias detection failed - continue without
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // TOPOLOGY TRACKER: Track task depth for rabbit hole detection
+    // "Le chien garde le chemin"
+    // ═══════════════════════════════════════════════════════════════════════════
+    let topologyState = null;
+    if (topologyTracker) {
+      try {
+        topologyState = topologyTracker.getState();
+      } catch (e) {
+        // Topology tracking failed - continue without
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // INTERVENTION ENGINE: Evaluate and trigger adaptive nudges
+    // "Le chien sait quand parler et quand se taire"
+    // ═══════════════════════════════════════════════════════════════════════════
+    let intervention = null;
+    if (interventionEngine) {
+      try {
+        // Get psychology state if available
+        const psychologyState = psychology ? psychology.getState() : null;
+
+        // Evaluate intervention
+        intervention = interventionEngine.evaluate({
+          psychology: psychologyState,
+          biases: detectedBiases,
+          topology: topologyState,
+        });
+      } catch (e) {
+        // Intervention evaluation failed - continue without
+      }
+    }
+
     // ==========================================================================
     // AUTONOMOUS JUDGMENT SYSTEM
     // ==========================================================================
@@ -638,6 +736,15 @@ async function main() {
           });
         }
       }
+    }
+
+    // If intervention was triggered, output it (priority over auto-judgment)
+    if (intervention?.message) {
+      console.log(JSON.stringify({
+        continue: true,
+        message: intervention.message,
+      }));
+      return;
     }
 
     // If auto-judgment was triggered, output it
