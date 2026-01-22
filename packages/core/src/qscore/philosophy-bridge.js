@@ -352,28 +352,60 @@ export function getRelevantPhases(topic) {
   const t = topic.toLowerCase();
   const relevant = [];
 
-  // Keywords to phase mappings
+  // Keywords to phase mappings (expanded for better matching)
   const keywordMap = {
-    '27': ['beauty', 'art', 'aesthetic', 'taste', 'value'],
-    '28': ['mind', 'conscious', 'mental', 'thought', 'intentional'],
-    '29': ['meaning', 'language', 'reference', 'speech', 'semantic'],
-    '30': ['action', 'free', 'will', 'intention', 'agency'],
-    '31': ['justice', 'rights', 'political', 'social', 'democracy'],
-    '32': ['science', 'theory', 'experiment', 'method', 'empirical'],
-    '33': ['identity', 'causation', 'time', 'being', 'existence'],
-    '34': ['god', 'faith', 'religion', 'divine', 'evil'],
-    '35': ['philosophy', 'method', 'progress', 'meta', 'discipline'],
-    '36': ['bioethics', 'environment', 'tech', 'applied', 'practical'],
-    '37': ['buddhis', 'dao', 'zen', 'vedanta', 'eastern'],
-    '38': ['phenomenolog', 'existential', 'critical', 'hermeneutic', 'continental'],
-    '39': ['modal', 'decision', 'game', 'formal', 'logic'],
-    '40': ['synthesis', 'integration', 'complete', 'unified', 'cynic'],
-    '41': ['math', 'number', 'proof', 'axiom', 'set'],
-    '42': ['pragma', 'process', 'inquiry', 'dewey', 'whitehead'],
-    '43': ['african', 'ubuntu', 'islamic', 'latin', 'liberation'],
-    '44': ['law', 'legal', 'econom', 'market', 'juris'],
-    '45': ['embodied', 'perception', 'emotion', 'cognitive', 'feeling']
+    '27': ['beauty', 'art', 'aesthetic', 'taste', 'value', 'sublime', 'ugly', 'artistic', 'creative'],
+    '28': ['mind', 'conscious', 'mental', 'thought', 'intentional', 'qualia', 'brain', 'soul', 'dualism', 'physicalism'],
+    '29': ['meaning', 'language', 'reference', 'speech', 'semantic', 'truth', 'proposition', 'sentence', 'word', 'symbol', 'sign'],
+    '30': ['action', 'free', 'will', 'intention', 'agency', 'responsibility', 'determinism', 'choice', 'decision'],
+    '31': ['justice', 'rights', 'political', 'social', 'democracy', 'liberty', 'equality', 'state', 'government', 'power'],
+    '32': ['science', 'theory', 'experiment', 'method', 'empirical', 'evidence', 'hypothesis', 'verify', 'falsify', 'observation'],
+    '33': ['identity', 'causation', 'time', 'being', 'existence', 'reality', 'substance', 'property', 'relation', 'change', 'persistence'],
+    '34': ['god', 'faith', 'religion', 'divine', 'evil', 'theism', 'atheism', 'afterlife', 'prayer', 'miracle', 'sacred'],
+    '35': ['philosophy', 'method', 'progress', 'meta', 'discipline', 'intuition', 'analysis', 'argument'],
+    '36': ['bioethics', 'environment', 'tech', 'applied', 'practical', 'medical', 'climate', 'ai ethics', 'animal'],
+    '37': ['buddhis', 'dao', 'zen', 'vedanta', 'eastern', 'karma', 'nirvana', 'enlighten', 'meditation', 'mindful', 'atman'],
+    '38': ['phenomenolog', 'existential', 'critical', 'hermeneutic', 'continental', 'heidegger', 'sartre', 'husserl', 'dasein', 'anxiety', 'authentic'],
+    '39': ['modal', 'decision', 'game', 'formal', 'logic', 'valid', 'possible', 'necessary', 'rational', 'utility'],
+    '40': ['synthesis', 'integration', 'complete', 'unified', 'cynic', 'wholeness'],
+    '41': ['math', 'number', 'proof', 'axiom', 'set', 'theorem', 'geometry', 'infinity', 'platonism'],
+    '42': ['pragma', 'process', 'inquiry', 'dewey', 'whitehead', 'peirce', 'james', 'experience', 'practical'],
+    '43': ['african', 'ubuntu', 'islamic', 'latin', 'liberation', 'decolonial', 'freire', 'dussel'],
+    '44': ['law', 'legal', 'econom', 'market', 'juris', 'property', 'contract', 'efficiency', 'welfare'],
+    '45': ['embodied', 'perception', 'emotion', 'cognitive', 'feeling', 'body', 'sense', 'affect', 'mood'],
+    // Cross-cutting terms that match multiple phases
+    'epistemology': ['know', 'belief', 'justif', 'certain', 'doubt', 'skeptic', 'truth'],
+    'ethics': ['moral', 'ethic', 'good', 'bad', 'virtue', 'duty', 'ought', 'should', 'right', 'wrong']
   };
+
+  // Special cross-cutting keywords that engage multiple phases
+  const crossCuttingKeywords = {
+    'truth': ['29', '32', '35', '42'], // Language, Science, Meta-Philosophy, Pragmatism
+    'know': ['29', '32', '35'],        // Language, Science, Meta-Philosophy
+    'belief': ['28', '29', '34'],      // Mind, Language, Religion
+    'moral': ['30', '31', '36'],       // Action, Political, Applied Ethics
+    'ethic': ['30', '31', '36'],       // Action, Political, Applied Ethics
+    'good': ['27', '30', '36'],        // Aesthetics, Action, Applied Ethics
+    'virtue': ['30', '37', '43'],      // Action, Eastern, Global
+    'real': ['33', '32', '38'],        // Metaphysics, Science, Continental
+    'exist': ['33', '38', '34']        // Metaphysics, Continental, Religion
+  };
+
+  // Check cross-cutting keywords first
+  for (const [keyword, phases] of Object.entries(crossCuttingKeywords)) {
+    if (t.includes(keyword)) {
+      for (const phase of phases) {
+        const phaseData = PHASE_MAP[phase];
+        if (phaseData && !relevant.find(r => r.phase === phase)) {
+          relevant.push({
+            phase,
+            ...phaseData,
+            matchedKeyword: keyword
+          });
+        }
+      }
+    }
+  }
 
   for (const [phase, keywords] of Object.entries(keywordMap)) {
     for (const keyword of keywords) {
