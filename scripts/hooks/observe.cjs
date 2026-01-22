@@ -35,6 +35,16 @@ try {
   // Contributor discovery not available - continue without
 }
 
+// Load consciousness for learning loop
+const consciousnessPath = path.join(__dirname, '..', 'lib', 'consciousness.cjs');
+let consciousness = null;
+try {
+  consciousness = require(consciousnessPath);
+  consciousness.init();
+} catch (e) {
+  // Consciousness not available - continue without
+}
+
 // =============================================================================
 // PATTERN DETECTION
 // =============================================================================
@@ -376,6 +386,53 @@ async function main() {
     // Update user profile stats
     const updates = updateUserToolStats(profile, toolName, isError);
     cynic.updateUserProfile(profile, updates);
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CONSCIOUSNESS: Track tool usage and detect human skills
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (consciousness) {
+      try {
+        // Record tool usage in capability map
+        consciousness.recordToolUsage(toolName, !isError, 0);
+
+        // Detect human skills based on tool usage patterns
+        if (toolName === 'Write' || toolName === 'Edit') {
+          const filePath = toolInput.file_path || toolInput.filePath || '';
+          const ext = path.extname(filePath).slice(1);
+
+          // Map extensions to skills
+          const skillMap = {
+            'ts': 'typescript', 'tsx': 'typescript',
+            'js': 'javascript', 'jsx': 'javascript',
+            'py': 'python',
+            'rs': 'rust',
+            'go': 'go',
+            'sol': 'solidity',
+            'css': 'css', 'scss': 'css',
+            'html': 'html',
+            'json': 'json-config',
+            'yaml': 'yaml-config', 'yml': 'yaml-config',
+            'md': 'documentation',
+            'sql': 'sql',
+          };
+
+          if (skillMap[ext]) {
+            consciousness.observeHumanSkill(skillMap[ext], { type: 'code_edit' });
+          }
+        }
+
+        // Detect git skills
+        if (toolName === 'Bash' && toolInput.command?.startsWith('git ')) {
+          consciousness.observeHumanSkill('git', { type: 'command' });
+        }
+
+        // Record working hour pattern
+        const hour = new Date().getHours();
+        consciousness.observeHumanPattern('lastActiveHour', hour);
+      } catch (e) {
+        // Consciousness tracking failed - continue without
+      }
+    }
 
     // Send to MCP server (non-blocking)
     cynic.sendHookToCollectiveSync('PostToolUse', {

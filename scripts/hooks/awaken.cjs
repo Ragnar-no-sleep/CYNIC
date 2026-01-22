@@ -37,6 +37,16 @@ try {
   // Contributor discovery not available - continue without
 }
 
+// Load consciousness for learning loop
+const consciousnessPath = path.join(__dirname, '..', 'lib', 'consciousness.cjs');
+let consciousness = null;
+try {
+  consciousness = require(consciousnessPath);
+  consciousness.init();
+} catch (e) {
+  // Consciousness not available - continue without
+}
+
 /**
  * Main handler for SessionStart
  */
@@ -139,6 +149,36 @@ async function main() {
           lines.splice(insertIdx, 0, ...alertLines, '');
           message = lines.join('\n');
         }
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CONSCIOUSNESS: Inject learning loop context
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (consciousness) {
+      try {
+        const ctx = consciousness.generateSessionStartContext();
+
+        // Add insights if any
+        if (ctx.insights && ctx.insights.length > 0) {
+          const insightLines = ['', '── INSIGHTS ───────────────────────────────────────────────'];
+          for (const insight of ctx.insights) {
+            insightLines.push(`   💡 ${insight.title}`);
+          }
+          const lines = message.split('\n');
+          const insertIdx = lines.findIndex(l => l.includes('CYNIC is AWAKE'));
+          if (insertIdx > 0) {
+            lines.splice(insertIdx, 0, ...insightLines, '');
+            message = lines.join('\n');
+          }
+        }
+
+        // Track recent project in consciousness
+        if (ecosystem.currentProject) {
+          consciousness.updateRecentContext('lastProjects', ecosystem.currentProject.name);
+        }
+      } catch (e) {
+        // Consciousness injection failed - continue without
       }
     }
 
