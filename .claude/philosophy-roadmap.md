@@ -8,13 +8,9 @@
 - Phase 30: Philosophy of Action (action theory, free will, practical reason)
 - Phase 31: Social & Political Philosophy (justice, social contract, rights)
 - Phase 32: Philosophy of Science (scientific method, explanation, theory change)
+- Phase 33: Metaphysics II (identity, causation, time)
 
 ## PLANNED PHASES
-
-### Phase 33: Metaphysics II
-- 33A: Identity Engine (Leibniz, Ship of Theseus)
-- 33B: Causation Engine (Hume, counterfactual)
-- 33C: Time Engine (A-theory, B-theory, McTaggart)
 
 ### Phase 34: Philosophy of Religion
 - 34A: Theism Engine (ontological, cosmological arguments)
