@@ -59,7 +59,7 @@ const E_SCORE_TIERS = {
 /**
  * In-memory graph structure
  */
-let graph = {
+const graph = {
   version: 1,
   createdAt: Date.now(),
   updatedAt: Date.now(),
@@ -337,7 +337,7 @@ function populateContributions(contributorsData) {
 
     // Add contribution edges to repos
     for (const [repo, commits] of Object.entries(info.repos || {})) {
-      let repoNode = getNodeByKey('project', repo);
+      const repoNode = getNodeByKey('project', repo);
 
       // Only add edges to ecosystem repos
       if (!repoNode) continue;

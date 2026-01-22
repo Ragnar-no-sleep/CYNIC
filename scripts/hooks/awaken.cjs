@@ -57,6 +57,26 @@ try {
   // Proactive advisor not available - continue without
 }
 
+// Load signal collector for break detection
+const signalCollectorPath = path.join(__dirname, '..', 'lib', 'signal-collector.cjs');
+let signalCollector = null;
+try {
+  signalCollector = require(signalCollectorPath);
+  signalCollector.init();
+} catch (e) {
+  // Signal collector not available - continue without
+}
+
+// Load psychology module for state access
+const psychologyPath = path.join(__dirname, '..', 'lib', 'human-psychology.cjs');
+let psychology = null;
+try {
+  psychology = require(psychologyPath);
+  psychology.init();
+} catch (e) {
+  // Psychology not available - continue without
+}
+
 /**
  * Main handler for SessionStart
  */
@@ -122,6 +142,15 @@ async function main() {
       } catch (e) {
         // Silently fail - local consciousness is fallback
       }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // BREAK DETECTION: Check gap since last session for psychology module
+    // "Le repos fait partie du travail"
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (signalCollector && localProfile.updatedAt) {
+      const gapMs = Date.now() - localProfile.updatedAt;
+      signalCollector.collectBreak(gapMs);
     }
 
     // Update profile with current identity info and increment session
@@ -220,6 +249,38 @@ async function main() {
         }
       } catch (e) {
         // Consciousness injection failed - continue without
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PSYCHOLOGICAL STATE: Show current state if tracked
+    // "Comprendre l'humain pour mieux l'aider"
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (psychology) {
+      try {
+        const psySummary = psychology.getSummary();
+        if (psySummary.confidence > 0.2) { // Only show if some confidence
+          const stateLines = ['', '── ÉTAT ───────────────────────────────────────────────────'];
+          stateLines.push(`   ${psySummary.emoji} ${psySummary.overallState.toUpperCase()}`);
+          stateLines.push(`   énergie: ${Math.round(psySummary.energy.value * 100)}% ${psySummary.energy.trend === 'rising' ? '↑' : psySummary.energy.trend === 'falling' ? '↓' : '→'}`);
+          stateLines.push(`   focus: ${Math.round(psySummary.focus.value * 100)}% ${psySummary.focus.trend === 'rising' ? '↑' : psySummary.focus.trend === 'falling' ? '↓' : '→'}`);
+
+          if (psySummary.composites.burnoutRisk) {
+            stateLines.push(`   ⚠️ Burnout risk detected - consider a break`);
+          }
+          if (psySummary.composites.flow) {
+            stateLines.push(`   ✨ Flow state - don't interrupt!`);
+          }
+
+          const lines = message.split('\n');
+          const insertIdx = lines.findIndex(l => l.includes('CYNIC is AWAKE'));
+          if (insertIdx > 0) {
+            lines.splice(insertIdx, 0, ...stateLines, '');
+            message = lines.join('\n');
+          }
+        }
+      } catch (e) {
+        // Psychology injection failed - continue without
       }
     }
 

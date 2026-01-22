@@ -116,7 +116,7 @@ function isRunning() {
     return pid;
   } catch (e) {
     // Process doesn't exist, clean up stale PID file
-    try { fs.unlinkSync(PID_FILE); } catch (e) {}
+    try { fs.unlinkSync(PID_FILE); } catch { /* ignore */ }
     return false;
   }
 }
@@ -126,7 +126,7 @@ function writePid() {
 }
 
 function removePid() {
-  try { fs.unlinkSync(PID_FILE); } catch (e) {}
+  try { fs.unlinkSync(PID_FILE); } catch { /* ignore */ }
 }
 
 function startDaemon() {
@@ -185,7 +185,7 @@ function stopDaemon() {
       if (attempts > 10) {
         clearInterval(checkInterval);
         // Force kill
-        try { process.kill(pid, 'SIGKILL'); } catch (e) {}
+        try { process.kill(pid, 'SIGKILL'); } catch { /* ignore */ }
         removePid();
         console.log('Daemon force killed');
         process.exit(0);
@@ -398,11 +398,12 @@ switch (command) {
     }
     break;
 
-  case 'config':
+  case 'config': {
     // Show/edit config
     const config = loadConfig();
     console.log(JSON.stringify(config, null, 2));
     break;
+  }
 
   default:
     console.log(`

@@ -54,6 +54,16 @@ try {
   // Harmony analyzer not available - continue without
 }
 
+// Load signal collector for psychological state tracking
+const signalCollectorPath = path.join(__dirname, '..', 'lib', 'signal-collector.cjs');
+let signalCollector = null;
+try {
+  signalCollector = require(signalCollectorPath);
+  signalCollector.init();
+} catch (e) {
+  // Signal collector not available - continue without
+}
+
 // =============================================================================
 // PATTERN DETECTION
 // =============================================================================
@@ -455,6 +465,54 @@ async function main() {
     // Process through Auto-Judgment Triggers (non-blocking)
     // This enables automatic judgments on errors, commits, decisions, etc.
     processTriggerEvent(toolName, toolInput, toolOutput, isError);
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SIGNAL COLLECTOR: Feed psychological state tracking
+    // "Observer pour comprendre, comprendre pour aider"
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (signalCollector) {
+      try {
+        // Collect tool action signal
+        signalCollector.collectToolAction(toolName, toolInput, !isError, toolOutput);
+
+        // Collect git-specific signals
+        if (toolName === 'Bash' && toolInput.command?.startsWith('git ')) {
+          const gitCmd = toolInput.command.split(' ')[1];
+          const gitActionMap = {
+            'commit': 'commit',
+            'push': 'push',
+            'pull': 'pull',
+            'merge': isError ? 'merge_conflict' : 'merge_success',
+            'revert': 'revert',
+          };
+          if (gitActionMap[gitCmd]) {
+            signalCollector.collectGitAction(gitActionMap[gitCmd], {
+              command: toolInput.command,
+            });
+          }
+        }
+
+        // Collect semantic signals for code changes
+        if ((toolName === 'Write' || toolName === 'Edit') && !isError) {
+          const filePath = toolInput.file_path || toolInput.filePath || '';
+          const content = toolInput.content || toolInput.new_string || '';
+          const linesChanged = (content.match(/\n/g) || []).length + 1;
+
+          // Detect patterns in code changes
+          if (content.includes('test') || filePath.includes('test')) {
+            signalCollector.collectSemanticSignal('test_added', { file: filePath, lines: linesChanged });
+          }
+          if (content.includes('/**') || content.includes('///') || content.includes('"""')) {
+            signalCollector.collectSemanticSignal('documentation', { file: filePath });
+          }
+          if (linesChanged > 50 && toolName === 'Write') {
+            signalCollector.collectSemanticSignal('new_abstraction', { file: filePath, lines: linesChanged });
+          }
+        }
+      } catch (e) {
+        // Signal collection failed - continue without
+      }
+    }
 
     // ==========================================================================
     // AUTONOMOUS JUDGMENT SYSTEM
