@@ -9,6 +9,7 @@
 - Phase 31: Social & Political Philosophy (justice, social contract, rights)
 - Phase 32: Philosophy of Science (scientific method, explanation, theory change)
 - Phase 33: Metaphysics II (identity, causation, time)
+- Phase 34: Philosophy of Religion (theism, evil, faith & reason)
 
 ## PLANNED PHASES
 
