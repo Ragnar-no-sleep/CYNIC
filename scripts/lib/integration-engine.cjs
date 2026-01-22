@@ -87,7 +87,37 @@ function registerEngines() {
   
   // Phase 35: Meta-Philosophy
   state.engines.set('meta', { phase: 35, domain: 'Meta', subengines: ['method', 'progress', 'integration'] });
-  
+
+  // Phase 36: Applied Ethics
+  state.engines.set('applied-ethics', { phase: 36, domain: 'Applied Ethics', subengines: ['bioethics', 'environmental', 'tech-ethics'] });
+
+  // Phase 37: Eastern Philosophy
+  state.engines.set('eastern', { phase: 37, domain: 'Eastern', subengines: ['buddhist', 'daoist', 'vedanta'] });
+
+  // Phase 38: Continental Philosophy
+  state.engines.set('continental', { phase: 38, domain: 'Continental', subengines: ['phenomenology', 'existentialism', 'critical-theory'] });
+
+  // Phase 39: Formal Philosophy
+  state.engines.set('formal', { phase: 39, domain: 'Formal', subengines: ['modal-logic', 'decision-theory', 'game-theory'] });
+
+  // Phase 40: CYNIC Synthesis
+  state.engines.set('synthesis', { phase: 40, domain: 'Synthesis', subengines: ['philosophical-judgment', 'cross-domain', 'phi-complete'] });
+
+  // Phase 41: Philosophy of Mathematics
+  state.engines.set('mathematics', { phase: 41, domain: 'Mathematics', subengines: ['foundations', 'ontology', 'practice'] });
+
+  // Phase 42: Pragmatism & Process
+  state.engines.set('pragmatism', { phase: 42, domain: 'Pragmatism', subengines: ['peirce', 'james', 'dewey', 'whitehead'] });
+
+  // Phase 43: Global Philosophy
+  state.engines.set('global', { phase: 43, domain: 'Global', subengines: ['african', 'islamic', 'latin-american'] });
+
+  // Phase 44: Philosophy of Law & Economics
+  state.engines.set('law-economics', { phase: 44, domain: 'Law & Economics', subengines: ['jurisprudence', 'economic-philosophy', 'law-economics'] });
+
+  // Phase 45: Cognitive Philosophy
+  state.engines.set('cognitive', { phase: 45, domain: 'Cognitive', subengines: ['embodied', 'perception', 'emotion'] });
+
   state.stats.enginesRegistered = state.engines.size;
 }
 
@@ -125,9 +155,62 @@ function mapConnections() {
     
     // Meta connections
     { from: 'meta', to: 'mind', relation: 'Intuitions are mental states', strength: PHI_INV_2 },
-    { from: 'meta', to: 'language', relation: 'Conceptual analysis is linguistic', strength: PHI_INV_2 }
+    { from: 'meta', to: 'language', relation: 'Conceptual analysis is linguistic', strength: PHI_INV_2 },
+
+    // Applied Ethics connections (Phase 36)
+    { from: 'applied-ethics', to: 'science', relation: 'Bioethics applies to scientific research', strength: PHI_INV },
+    { from: 'applied-ethics', to: 'political', relation: 'Environmental ethics informs policy', strength: PHI_INV },
+    { from: 'applied-ethics', to: 'action', relation: 'Applied ethics guides practical decisions', strength: PHI_INV },
+
+    // Eastern connections (Phase 37)
+    { from: 'eastern', to: 'mind', relation: 'Buddhist philosophy of consciousness', strength: PHI_INV },
+    { from: 'eastern', to: 'metaphysics', relation: 'Daoist ontology, Vedanta metaphysics', strength: PHI_INV },
+    { from: 'eastern', to: 'aesthetics', relation: 'Zen aesthetics, rasa theory', strength: PHI_INV_2 },
+    { from: 'eastern', to: 'action', relation: 'Wu wei, karma, dharma', strength: PHI_INV },
+
+    // Continental connections (Phase 38)
+    { from: 'continental', to: 'mind', relation: 'Phenomenology of consciousness', strength: PHI_INV },
+    { from: 'continental', to: 'language', relation: 'Hermeneutics, deconstruction', strength: PHI_INV_2 },
+    { from: 'continental', to: 'political', relation: 'Critical theory, power analysis', strength: PHI_INV },
+    { from: 'continental', to: 'aesthetics', relation: 'Phenomenology of art', strength: PHI_INV_2 },
+
+    // Formal connections (Phase 39)
+    { from: 'formal', to: 'language', relation: 'Modal semantics, formal pragmatics', strength: PHI_INV },
+    { from: 'formal', to: 'metaphysics', relation: 'Modal metaphysics, possible worlds', strength: PHI_INV },
+    { from: 'formal', to: 'action', relation: 'Decision theory, rational choice', strength: PHI_INV },
+    { from: 'formal', to: 'political', relation: 'Social choice theory, game theory', strength: PHI_INV_2 },
+
+    // Synthesis connections (Phase 40)
+    { from: 'synthesis', to: 'meta', relation: 'Integration is meta-philosophical', strength: PHI_INV },
+    { from: 'synthesis', to: 'formal', relation: 'φ-complete uses formal methods', strength: PHI_INV_2 },
+
+    // Mathematics connections (Phase 41)
+    { from: 'mathematics', to: 'formal', relation: 'Logic grounds mathematics', strength: PHI_INV },
+    { from: 'mathematics', to: 'metaphysics', relation: 'Mathematical ontology', strength: PHI_INV },
+    { from: 'mathematics', to: 'science', relation: 'Mathematics in scientific explanation', strength: PHI_INV },
+
+    // Pragmatism connections (Phase 42)
+    { from: 'pragmatism', to: 'action', relation: 'Practical reason, inquiry', strength: PHI_INV },
+    { from: 'pragmatism', to: 'science', relation: 'Scientific method as inquiry', strength: PHI_INV },
+    { from: 'pragmatism', to: 'meta', relation: 'Pragmatic conception of philosophy', strength: PHI_INV_2 },
+
+    // Global connections (Phase 43)
+    { from: 'global', to: 'political', relation: 'Ubuntu, liberation philosophy', strength: PHI_INV },
+    { from: 'global', to: 'eastern', relation: 'Non-Western traditions connect', strength: PHI_INV },
+    { from: 'global', to: 'religion', relation: 'Islamic philosophy, African spirituality', strength: PHI_INV_2 },
+
+    // Law-Economics connections (Phase 44)
+    { from: 'law-economics', to: 'political', relation: 'Justice, rights, property', strength: PHI_INV },
+    { from: 'law-economics', to: 'action', relation: 'Rational choice, incentives', strength: PHI_INV },
+    { from: 'law-economics', to: 'formal', relation: 'Economic modeling, game theory', strength: PHI_INV_2 },
+
+    // Cognitive connections (Phase 45)
+    { from: 'cognitive', to: 'mind', relation: 'Embodied cognition extends mind', strength: PHI_INV },
+    { from: 'cognitive', to: 'continental', relation: 'Phenomenology of perception', strength: PHI_INV },
+    { from: 'cognitive', to: 'action', relation: 'Emotion in practical reason', strength: PHI_INV_2 },
+    { from: 'cognitive', to: 'aesthetics', relation: 'Aesthetic experience, emotional response', strength: PHI_INV_2 }
   ];
-  
+
   state.stats.connectionsFound = state.connections.length;
 }
 
@@ -296,7 +379,16 @@ function getCynicPerspective() {
       science: 'Structural realism with humility',
       metaphysics: 'Naturalized metaphysics',
       religion: 'Agnostic with epistemic humility',
-      aesthetics: 'Moderate realism about beauty'
+      aesthetics: 'Moderate realism about beauty',
+      appliedEthics: 'Context-sensitive principilism',
+      eastern: 'Complementary wisdom traditions',
+      continental: 'Phenomenological insights within analytic rigor',
+      formal: 'Tools for precision, not replacement for intuition',
+      mathematics: 'Structuralism with nominalist sympathies',
+      pragmatism: 'Inquiry-centered epistemology',
+      global: 'Pluralist recognition of diverse traditions',
+      lawEconomics: 'Efficiency balanced with justice',
+      cognitive: 'Embodied mind, enactive perception'
     },
     confidence: PHI_INV,
     cynicSelfReflection: '*sniff* Even CYNIC\'s perspective is φ-bounded. The dog doubts itself.'
@@ -324,12 +416,16 @@ function getPhilosophicalMap() {
     })),
     totalEngines: engines.length,
     totalConnections: connections.length,
-    coverageAssessment: 'Comprehensive Western analytic philosophy coverage',
-    gaps: [
-      'Eastern philosophy (planned Phase 37)',
-      'Continental philosophy (planned Phase 38)',
-      'Formal methods depth (planned Phase 39)'
-    ]
+    coverageAssessment: 'φ-COMPLETE: All 19 phases integrated',
+    coverage: {
+      western: 'Analytic, Continental, Pragmatist traditions',
+      eastern: 'Buddhist, Daoist, Vedanta traditions',
+      global: 'African, Islamic, Latin American traditions',
+      formal: 'Modal logic, decision theory, game theory, mathematics',
+      applied: 'Bioethics, environmental, tech ethics, law, economics',
+      cognitive: 'Embodied cognition, perception, emotion'
+    },
+    status: 'COMPLETE - No gaps remaining'
   };
 }
 
@@ -345,13 +441,17 @@ function formatStatus() {
 │  Connections Found: ${String(state.stats.connectionsFound).padStart(3)}                              │
 │  Syntheses: ${String(state.stats.synthesesPerformed).padStart(3)}                                     │
 ├─────────────────────────────────────────────────────────┤
-│  Domains Covered:                                       │
-│    27: Aesthetics   30: Action     33: Metaphysics     │
-│    28: Mind         31: Political  34: Religion        │
-│    29: Language     32: Science    35: Meta            │
+│  Domains Covered (19 Phases):                           │
+│    27: Aesthetics   33: Metaphysics  39: Formal        │
+│    28: Mind         34: Religion     40: Synthesis     │
+│    29: Language     35: Meta         41: Mathematics   │
+│    30: Action       36: Applied      42: Pragmatism    │
+│    31: Political    37: Eastern      43: Global        │
+│    32: Science      38: Continental  44: Law-Econ      │
+│                                      45: Cognitive     │
 ├─────────────────────────────────────────────────────────┤
 │  φ-bounded: max ${(PHI_INV * 100).toFixed(1)}% confidence                      │
-│  *tail wag* All philosophy is connected                 │
+│  *tail wag* All 19 phases integrated                    │
 └─────────────────────────────────────────────────────────┘`.trim();
 }
 
