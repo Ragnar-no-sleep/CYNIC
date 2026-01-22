@@ -47,6 +47,16 @@ try {
   // Consciousness not available - continue without
 }
 
+// Load proactive advisor for intelligent suggestions
+const advisorPath = path.join(__dirname, '..', 'lib', 'proactive-advisor.cjs');
+let proactiveAdvisor = null;
+try {
+  proactiveAdvisor = require(advisorPath);
+  proactiveAdvisor.init();
+} catch (e) {
+  // Proactive advisor not available - continue without
+}
+
 /**
  * Main handler for SessionStart
  */
@@ -179,6 +189,25 @@ async function main() {
         }
       } catch (e) {
         // Consciousness injection failed - continue without
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PROACTIVE ADVISOR: Intelligent suggestions
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (proactiveAdvisor && proactiveAdvisor.shouldInjectNow()) {
+      try {
+        const injection = proactiveAdvisor.generateSessionInjection();
+        if (injection) {
+          const lines = message.split('\n');
+          const insertIdx = lines.findIndex(l => l.includes('CYNIC is AWAKE'));
+          if (insertIdx > 0) {
+            lines.splice(insertIdx, 0, injection, '');
+            message = lines.join('\n');
+          }
+        }
+      } catch (e) {
+        // Proactive injection failed - continue without
       }
     }
 
