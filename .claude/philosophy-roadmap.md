@@ -19,9 +19,9 @@
 - Phase 41: Philosophy of Mathematics (foundations, ontology, practice)
 - Phase 42: Pragmatism & Process (Peirce, James, Dewey, Whitehead)
 - Phase 43: Global Philosophy (African, Islamic, Latin American)
+- Phase 44: Philosophy of Law & Economics (jurisprudence, economic philosophy)
 
 ## UPCOMING PHASES
-- Phase 44: Philosophy of Law & Economics (jurisprudence, economic philosophy)
 - Phase 45: Cognitive Philosophy (embodied cognition, perception, emotion)
 
 ## STATUS: EXTENDED ROADMAP
