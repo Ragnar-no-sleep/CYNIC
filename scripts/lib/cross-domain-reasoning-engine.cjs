@@ -176,6 +176,46 @@ function registerDomains() {
     phase: 'Phase 38'
   });
 
+  state.domains.set('mathematics', {
+    name: 'Philosophy of Mathematics',
+    core: 'Foundations, ontology, practice',
+    questions: ['What are numbers?', 'Why does math work?', 'Is math discovered or invented?'],
+    engines: ['math-foundations-engine', 'math-ontology-engine', 'math-practice-engine'],
+    phase: 'Phase 41'
+  });
+
+  state.domains.set('pragmatism', {
+    name: 'Pragmatism & Process',
+    core: 'Inquiry, experience, process',
+    questions: ['What works?', 'What is inquiry?', 'Is reality processual?'],
+    engines: ['pragmatism-engine', 'process-philosophy-engine', 'american-philosophy-engine'],
+    phase: 'Phase 42'
+  });
+
+  state.domains.set('global', {
+    name: 'Global Philosophy',
+    core: 'African, Islamic, Latin American traditions',
+    questions: ['What is ubuntu?', 'How do diverse traditions dialogue?', 'What is liberation?'],
+    engines: ['african-philosophy-engine', 'islamic-philosophy-engine', 'latin-american-engine'],
+    phase: 'Phase 43'
+  });
+
+  state.domains.set('law-economics', {
+    name: 'Philosophy of Law & Economics',
+    core: 'Jurisprudence, economic philosophy, efficiency',
+    questions: ['What is law?', 'What is economic value?', 'How do law and economics interact?'],
+    engines: ['philosophy-of-law-engine', 'philosophy-of-economics-engine', 'law-economics-engine'],
+    phase: 'Phase 44'
+  });
+
+  state.domains.set('cognitive', {
+    name: 'Cognitive Philosophy',
+    core: 'Embodied cognition, perception, emotion',
+    questions: ['Is cognition embodied?', 'What is perception?', 'What are emotions?'],
+    engines: ['embodied-cognition-engine', 'philosophy-of-perception-engine', 'philosophy-of-emotion-engine'],
+    phase: 'Phase 45'
+  });
+
   state.stats.domainsRegistered = state.domains.size;
 }
 
@@ -291,6 +331,151 @@ function registerConnections() {
     synthesis: 'Bayesian decision theory unifies'
   });
 
+  // Phase 41-45 connections
+  state.connections.set('mathematics-logic', {
+    domains: ['mathematics', 'logic'],
+    connections: [
+      'Foundations: Logic as foundation of math',
+      'Proof: Formal proof theory',
+      'Set theory: Mathematical logic',
+      'Gödel: Incompleteness and limits'
+    ],
+    tension: 'Can logic ground all of mathematics?',
+    synthesis: 'Multiple foundations coexist: logicism, formalism, intuitionism'
+  });
+
+  state.connections.set('mathematics-metaphysics', {
+    domains: ['mathematics', 'metaphysics'],
+    connections: [
+      'Ontology: Do numbers exist?',
+      'Platonism vs nominalism: Abstract objects',
+      'Structure: Structuralism in math and reality',
+      'Modality: Mathematical necessity'
+    ],
+    tension: 'If numbers exist, how do we access them?',
+    synthesis: 'Structuralism: math describes structures, not objects'
+  });
+
+  state.connections.set('pragmatism-science', {
+    domains: ['pragmatism', 'science'],
+    connections: [
+      'Inquiry: Scientific method as inquiry',
+      'Verification: Pragmatic theory of truth',
+      'Fallibilism: All beliefs revisable',
+      'Instrumentalism: Theories as tools'
+    ],
+    tension: 'Is truth what works, or does what works reveal truth?',
+    synthesis: 'Pragmatic realism: truth emerges through inquiry'
+  });
+
+  state.connections.set('pragmatism-action', {
+    domains: ['pragmatism', 'action'],
+    connections: [
+      'Practical reason: Thinking for action',
+      'Habits: Peirce on belief as habit',
+      'Consequences: Actions judged by results',
+      'Growth: Dewey on democratic action'
+    ],
+    tension: 'How much should consequences guide action?',
+    synthesis: 'Intelligent action: inquiry guiding practice'
+  });
+
+  state.connections.set('global-political', {
+    domains: ['global', 'political'],
+    connections: [
+      'Ubuntu: I am because we are',
+      'Liberation: Freire, Dussel on oppression',
+      'Decolonization: Epistemological justice',
+      'Communitarianism: African vs Western individual'
+    ],
+    tension: 'Universal vs culturally-specific political philosophy',
+    synthesis: 'Pluralistic universalism respecting difference'
+  });
+
+  state.connections.set('global-ethics', {
+    domains: ['global', 'ethics'],
+    connections: [
+      'Ubuntu ethics: Relational morality',
+      'Islamic ethics: Divine command, virtue, law',
+      'Liberation ethics: Preferential option for oppressed',
+      'Indigenous ethics: Land, ancestors, community'
+    ],
+    tension: 'Can ethics be both universal and culturally grounded?',
+    synthesis: 'Overlapping consensus across traditions'
+  });
+
+  state.connections.set('law-economics-political', {
+    domains: ['law-economics', 'political'],
+    connections: [
+      'Justice: Efficiency vs fairness',
+      'Rights: Property and distribution',
+      'Institutions: Rules of the game',
+      'Coase: Transaction costs and law'
+    ],
+    tension: 'Should law maximize efficiency or justice?',
+    synthesis: 'Law and economics with equity constraints'
+  });
+
+  state.connections.set('law-economics-ethics', {
+    domains: ['law-economics', 'ethics'],
+    connections: [
+      'Value: Economic vs intrinsic',
+      'Market limits: What money cant buy',
+      'Incentives: Do they corrupt?',
+      'Distributive justice: Economic equality'
+    ],
+    tension: 'Does economic analysis reduce ethics to preferences?',
+    synthesis: 'Capabilities approach integrates both'
+  });
+
+  state.connections.set('cognitive-mind', {
+    domains: ['cognitive', 'mind'],
+    connections: [
+      'Embodiment: Mind is bodily',
+      'Extended mind: Cognition beyond brain',
+      '4E cognition: Embodied, embedded, enacted, extended',
+      'Consciousness: Phenomenal and access'
+    ],
+    tension: 'How far does mind extend beyond the brain?',
+    synthesis: 'Enactivism: mind emerges in action'
+  });
+
+  state.connections.set('cognitive-action', {
+    domains: ['cognitive', 'action'],
+    connections: [
+      'Emotion: Role in practical reason',
+      'Perception: Affordances for action',
+      'Motor intentionality: Body knows how',
+      'Somatic markers: Damasio on decision'
+    ],
+    tension: 'Is emotion rational or does it distort reason?',
+    synthesis: 'Emotions as necessary for practical rationality'
+  });
+
+  state.connections.set('cognitive-aesthetics', {
+    domains: ['cognitive', 'aesthetics'],
+    connections: [
+      'Aesthetic experience: Embodied response',
+      'Emotion in art: Feeling and meaning',
+      'Perception: Seeing beauty',
+      'Empathy: Feeling with artwork'
+    ],
+    tension: 'Is beauty in the object or the perceiver?',
+    synthesis: 'Relational aesthetics: beauty in encounter'
+  });
+
+  state.connections.set('eastern-cognitive', {
+    domains: ['eastern', 'cognitive'],
+    connections: [
+      'Mindfulness: Attention and awareness',
+      'Embodiment: Body in meditation',
+      'Non-self: Buddhist cognitive science',
+      'Phenomenology: First-person methods'
+    ],
+    tension: 'Can meditation data inform cognitive science?',
+    synthesis: 'Contemplative science bridges traditions'
+  });
+
   state.stats.connectionsRegistered = state.connections.size;
 }
 
@@ -361,6 +546,72 @@ function registerAnalogies() {
     },
     insight: 'Wittgenstein\'s language games',
     limitation: 'Language is more fluid than games'
+  });
+
+  // New analogies for phases 41-45
+  state.analogies.set('music-mathematics', {
+    source: 'Music',
+    target: 'Mathematics',
+    mapping: {
+      harmony: 'Mathematical structure',
+      composition: 'Proof construction',
+      improvisation: 'Mathematical creativity',
+      performance: 'Mathematical practice'
+    },
+    insight: 'Both reveal deep patterns through practice',
+    limitation: 'Math lacks musical temporal unfolding'
+  });
+
+  state.analogies.set('ecosystem-society', {
+    source: 'Ecology',
+    target: 'Global philosophy (ubuntu)',
+    mapping: {
+      interconnection: 'Ubuntu relationality',
+      diversity: 'Cultural plurality',
+      sustainability: 'Intergenerational justice',
+      niche: 'Role in community'
+    },
+    insight: 'Ubuntu sees society as living ecosystem',
+    limitation: 'Society has intentional agents'
+  });
+
+  state.analogies.set('tool-cognition', {
+    source: 'Tool use',
+    target: 'Embodied cognition',
+    mapping: {
+      tool: 'Cognitive scaffold',
+      extension: 'Extended mind',
+      skill: 'Embodied knowledge',
+      affordance: 'Action possibility'
+    },
+    insight: 'Mind extends through tools into world',
+    limitation: 'Not all cognition is tool-like'
+  });
+
+  state.analogies.set('river-process', {
+    source: 'River',
+    target: 'Process philosophy',
+    mapping: {
+      flow: 'Becoming',
+      banks: 'Temporary stability',
+      source: 'Origin',
+      delta: 'Creative advance'
+    },
+    insight: 'Reality flows; permanence is illusion',
+    limitation: 'Some things persist more than rivers suggest'
+  });
+
+  state.analogies.set('contract-law', {
+    source: 'Contract',
+    target: 'Philosophy of law',
+    mapping: {
+      agreement: 'Social contract',
+      terms: 'Legal rules',
+      breach: 'Violation',
+      enforcement: 'Sanctions'
+    },
+    insight: 'Law as mutual agreement for cooperation',
+    limitation: 'Not all law is contractual'
   });
 
   state.stats.analogiesRegistered = state.analogies.size;
