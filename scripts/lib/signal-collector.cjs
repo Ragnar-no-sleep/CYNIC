@@ -78,10 +78,17 @@ const collectorState = {
   failureStreak: 0,
   recentTools: [],
   recentFiles: [],
+  recentIntervals: [], // For time entropy
   signalBuffer: [],
   stats: {
     totalSignals: 0,
     signalsByType: {},
+  },
+  entropy: {
+    tool: 0,
+    file: 0,
+    time: 0,
+    combined: 0,
   },
 };
 
@@ -206,6 +213,183 @@ function generateContextSignals(currentTool, currentFile) {
 }
 
 // =============================================================================
+// ENTROPY CALCULATION (Phase 6A - Physics Integration)
+// =============================================================================
+
+/**
+ * Calculate Shannon entropy from a frequency distribution
+ * H = -Σ p(x) * log₂(p(x))
+ * @param {Object} frequencies - Map of item -> count
+ * @returns {number} Entropy in bits
+ */
+function shannonEntropy(frequencies) {
+  const total = Object.values(frequencies).reduce((a, b) => a + b, 0);
+  if (total === 0) return 0;
+
+  let entropy = 0;
+  for (const count of Object.values(frequencies)) {
+    if (count > 0) {
+      const p = count / total;
+      entropy -= p * Math.log2(p);
+    }
+  }
+  return entropy;
+}
+
+/**
+ * Calculate normalized entropy (0-1 scale)
+ * @param {number} entropy - Raw entropy
+ * @param {number} maxEntropy - Maximum possible entropy (log₂(n))
+ * @returns {number} Normalized entropy 0-1
+ */
+function normalizeEntropy(entropy, maxEntropy) {
+  if (maxEntropy === 0) return 0;
+  return Math.min(1, entropy / maxEntropy);
+}
+
+/**
+ * Calculate tool entropy - diversity of tools used
+ * High entropy = exploration mode, low entropy = focused work
+ * @returns {number} Normalized tool entropy 0-1
+ */
+function calculateToolEntropy() {
+  const frequencies = {};
+  for (const tool of collectorState.recentTools) {
+    frequencies[tool] = (frequencies[tool] || 0) + 1;
+  }
+
+  const entropy = shannonEntropy(frequencies);
+  const uniqueTools = Object.keys(frequencies).length;
+  const maxEntropy = uniqueTools > 0 ? Math.log2(uniqueTools) : 0;
+
+  return normalizeEntropy(entropy, maxEntropy);
+}
+
+/**
+ * Calculate file entropy - diversity of files/directories accessed
+ * High entropy = jumping around, low entropy = focused on few files
+ * @returns {number} Normalized file entropy 0-1
+ */
+function calculateFileEntropy() {
+  const frequencies = {};
+  for (const file of collectorState.recentFiles) {
+    // Use directory for broader grouping
+    const dir = path.dirname(file);
+    frequencies[dir] = (frequencies[dir] || 0) + 1;
+  }
+
+  const entropy = shannonEntropy(frequencies);
+  const uniqueDirs = Object.keys(frequencies).length;
+  const maxEntropy = uniqueDirs > 0 ? Math.log2(uniqueDirs) : 0;
+
+  return normalizeEntropy(entropy, maxEntropy);
+}
+
+/**
+ * Calculate time entropy - variability in action intervals
+ * High entropy = erratic timing, low entropy = steady rhythm
+ * Uses coefficient of variation as proxy for time "disorder"
+ * @returns {number} Normalized time entropy 0-1
+ */
+function calculateTimeEntropy() {
+  const intervals = collectorState.recentIntervals;
+  if (intervals.length < 2) return 0;
+
+  // Calculate mean
+  const mean = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+  if (mean === 0) return 0;
+
+  // Calculate standard deviation
+  const variance = intervals.reduce((sum, x) => sum + Math.pow(x - mean, 2), 0) / intervals.length;
+  const stdDev = Math.sqrt(variance);
+
+  // Coefficient of variation (CV) as entropy proxy
+  // CV = stdDev / mean, typically 0-2 range
+  const cv = stdDev / mean;
+
+  // Normalize to 0-1 using φ scaling
+  // CV of 1 (stdDev = mean) maps to ~0.618
+  return Math.min(1, cv * PHI_INV);
+}
+
+/**
+ * Calculate combined session entropy
+ * Weighted by φ ratios: tool (φ⁻¹), file (φ⁻²), time (φ⁻³)
+ * @returns {Object} Entropy breakdown and combined score
+ */
+function calculateSessionEntropy() {
+  const toolEntropy = calculateToolEntropy();
+  const fileEntropy = calculateFileEntropy();
+  const timeEntropy = calculateTimeEntropy();
+
+  // φ-weighted combination
+  // Tool diversity most important (immediate cognitive load)
+  // File diversity second (navigation complexity)
+  // Time variability third (rhythm disruption)
+  const weights = {
+    tool: PHI_INV,      // 0.618
+    file: PHI_INV_2,    // 0.382
+    time: PHI_INV_3,    // 0.236
+  };
+
+  const totalWeight = weights.tool + weights.file + weights.time;
+  const combined = (
+    toolEntropy * weights.tool +
+    fileEntropy * weights.file +
+    timeEntropy * weights.time
+  ) / totalWeight;
+
+  // Update state
+  collectorState.entropy = {
+    tool: toolEntropy,
+    file: fileEntropy,
+    time: timeEntropy,
+    combined,
+  };
+
+  // Interpret the entropy level
+  let interpretation;
+  if (combined < PHI_INV_3) {
+    interpretation = 'FOCUSED';      // < 23.6% - deep work mode
+  } else if (combined < PHI_INV_2) {
+    interpretation = 'PRODUCTIVE';   // 23.6-38.2% - balanced
+  } else if (combined < PHI_INV) {
+    interpretation = 'EXPLORING';    // 38.2-61.8% - healthy exploration
+  } else {
+    interpretation = 'CHAOTIC';      // > 61.8% - needs focus
+  }
+
+  return {
+    tool: toolEntropy,
+    file: fileEntropy,
+    time: timeEntropy,
+    combined,
+    interpretation,
+    // φ thresholds for display
+    thresholds: {
+      focused: PHI_INV_3,    // 0.236
+      productive: PHI_INV_2, // 0.382
+      exploring: PHI_INV,    // 0.618
+    },
+  };
+}
+
+/**
+ * Get entropy emoji for display
+ * @param {string} interpretation - Entropy interpretation
+ * @returns {string} Emoji
+ */
+function getEntropyEmoji(interpretation) {
+  const emojis = {
+    FOCUSED: '🎯',
+    PRODUCTIVE: '⚡',
+    EXPLORING: '🔍',
+    CHAOTIC: '🌀',
+  };
+  return emojis[interpretation] || '📊';
+}
+
+// =============================================================================
 // SIGNAL ROUTING
 // =============================================================================
 
@@ -283,11 +467,19 @@ function init() {
  * @param {boolean} success - Whether the action succeeded
  * @param {Object} result - Action result (optional)
  */
-function collectToolAction(toolName, toolInput, success, result = null) {
+function collectToolAction(toolName, toolInput, success, _result = null) {
   const now = Date.now();
   const interval = collectorState.lastActionTime
     ? now - collectorState.lastActionTime
     : 0;
+
+  // Track interval for time entropy (Phase 6A)
+  if (interval > 0) {
+    collectorState.recentIntervals.push(interval);
+    if (collectorState.recentIntervals.length > 20) {
+      collectorState.recentIntervals.shift();
+    }
+  }
 
   // Generate timing signals
   const timingSignals = generateTimingSignals(interval);
@@ -469,6 +661,11 @@ module.exports = {
   collectGitAction,
   collectBreak,
   collectSemanticSignal,
+
+  // Entropy (Phase 6A)
+  calculateSessionEntropy,
+  getEntropyEmoji,
+  shannonEntropy,
 
   // For testing
   routeSignal,

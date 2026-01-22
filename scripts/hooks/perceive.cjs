@@ -19,6 +19,16 @@ const path = require('path');
 const libPath = path.join(__dirname, '..', 'lib', 'cynic-core.cjs');
 const cynic = require(libPath);
 
+// Load Elenchus engine for Socratic questioning (Phase 6B)
+const elenchusPath = path.join(__dirname, '..', 'lib', 'elenchus-engine.cjs');
+let elenchus = null;
+try {
+  elenchus = require(elenchusPath);
+  elenchus.init();
+} catch (e) {
+  // Elenchus not available - continue without
+}
+
 // =============================================================================
 // INTENT DETECTION
 // =============================================================================
@@ -218,6 +228,42 @@ async function main() {
 
     // Generate context based on intents
     const injections = [];
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // ELENCHUS: Socratic questioning (Phase 6B)
+    // "Ἔλεγχος - l'art de questionner pour révéler la vérité"
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (elenchus && prompt.length > 30) {
+      try {
+        // Check if this looks like an assertion (not a question)
+        const isAssertion = !prompt.trim().endsWith('?') &&
+                          !prompt.toLowerCase().startsWith('what') &&
+                          !prompt.toLowerCase().startsWith('how') &&
+                          !prompt.toLowerCase().startsWith('why') &&
+                          !prompt.toLowerCase().startsWith('quoi') &&
+                          !prompt.toLowerCase().startsWith('comment') &&
+                          !prompt.toLowerCase().startsWith('pourquoi');
+
+        if (isAssertion) {
+          const questionResult = elenchus.processAssertion(prompt);
+
+          if (questionResult.shouldAsk) {
+            const formattedQuestion = elenchus.formatQuestion(questionResult);
+            if (formattedQuestion) {
+              injections.push(`── SOCRATIC ───────────────────────────────────────────────\n   ${formattedQuestion}\n   (${questionResult.questionsRemaining} questions restantes)`);
+            }
+          }
+        } else if (elenchus.shouldUseMaieutics(prompt)) {
+          // For questions, use maieutic mode - guide to discovery
+          const maieutic = elenchus.generateMaieuticQuestion(prompt);
+          if (maieutic && Math.random() < 0.382) { // φ⁻² chance
+            injections.push(`── MAIEUTIC ───────────────────────────────────────────────\n   💡 ${maieutic}`);
+          }
+        }
+      } catch (e) {
+        // Elenchus processing failed - continue without
+      }
+    }
 
     for (const { action } of intents) {
       let context = null;

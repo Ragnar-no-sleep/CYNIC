@@ -764,6 +764,28 @@ async function main() {
       }
     }
 
+    // Check session entropy (Phase 6A - Physics integration)
+    // "L'entropie révèle le chaos" - High entropy = chaotic session
+    if (signalCollector) {
+      try {
+        const entropy = signalCollector.calculateSessionEntropy();
+        // Only warn when entropy exceeds φ⁻¹ (61.8%) - truly chaotic
+        if (entropy.combined > 0.618 && entropy.interpretation === 'CHAOTIC') {
+          const emoji = signalCollector.getEntropyEmoji(entropy.interpretation);
+          const toolBar = '█'.repeat(Math.round(entropy.tool * 10)) + '░'.repeat(10 - Math.round(entropy.tool * 10));
+          const fileBar = '█'.repeat(Math.round(entropy.file * 10)) + '░'.repeat(10 - Math.round(entropy.file * 10));
+          const timeBar = '█'.repeat(Math.round(entropy.time * 10)) + '░'.repeat(10 - Math.round(entropy.time * 10));
+          console.log(JSON.stringify({
+            continue: true,
+            message: `\n── SESSION ENTROPY ────────────────────────────────────────\n   ${emoji} ${entropy.interpretation} (${Math.round(entropy.combined * 100)}%)\n   Tools: [${toolBar}] ${Math.round(entropy.tool * 100)}%\n   Files: [${fileBar}] ${Math.round(entropy.file * 100)}%\n   Time:  [${timeBar}] ${Math.round(entropy.time * 100)}%\n   💡 Consider focusing on fewer files/tools\n`,
+          }));
+          return;
+        }
+      } catch (e) {
+        // Entropy calculation failed - continue without
+      }
+    }
+
     // If rabbit hole detected but no intervention, show informative warning
     // "Le chien garde le chemin"
     if (topologyState?.rabbitHole) {

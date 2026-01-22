@@ -19,6 +19,14 @@ const os = require('os');
 const phiMath = require('./phi-math.cjs');
 const { PHI, PHI_INV, PHI_INV_2, PHI_INV_3 } = phiMath;
 
+// Import signal collector for entropy (Phase 6A)
+let signalCollector = null;
+try {
+  signalCollector = require('./signal-collector.cjs');
+} catch (e) {
+  // Signal collector not available - entropy will be null
+}
+
 // =============================================================================
 // CONSTANTS (φ-derived, no magic numbers)
 // =============================================================================
@@ -430,6 +438,16 @@ function getSummary() {
     emoji = '*yawn*';
   }
 
+  // Get entropy from signal collector (Phase 6A)
+  let entropy = null;
+  if (signalCollector) {
+    try {
+      entropy = signalCollector.calculateSessionEntropy();
+    } catch (e) {
+      // Entropy calculation failed - leave as null
+    }
+  }
+
   return {
     overallState,
     emoji,
@@ -439,6 +457,7 @@ function getSummary() {
     sessionMinutes: Math.round(state.temporal.sessionDuration / (1000 * 60)),
     composites: c,
     confidence: Math.max(d.energy.confidence, d.focus.confidence, d.frustration.confidence),
+    entropy, // Phase 6A: session entropy metric
   };
 }
 
