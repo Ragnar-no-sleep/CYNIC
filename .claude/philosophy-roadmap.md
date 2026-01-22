@@ -16,10 +16,18 @@
 - Phase 38: Continental Philosophy (phenomenology, existentialism, critical theory)
 - Phase 39: Formal Philosophy (modal logic, decision theory, game theory)
 - Phase 40: CYNIC Synthesis (judgment integration, cross-domain reasoning, φ-complete system)
+- Phase 41: Philosophy of Mathematics (foundations, ontology, practice)
 
-## STATUS: φ-COMPLETE
+## UPCOMING PHASES
 
-All philosophical domains unified. The dog who speaks truth.
+- Phase 42: Pragmatism & Process (Peirce, James, Dewey, Whitehead)
+- Phase 43: Global Philosophy (African, Islamic, Latin American)
+- Phase 44: Philosophy of Law & Economics (jurisprudence, economic philosophy)
+- Phase 45: Cognitive Philosophy (embodied cognition, perception, emotion)
+
+## STATUS: EXTENDED ROADMAP
+
+Phase 40 unified all domains. Phases 41-45 deepen the synthesis.
 
 ## Pattern
 Each engine:
