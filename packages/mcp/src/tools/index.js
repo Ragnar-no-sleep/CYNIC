@@ -10,7 +10,16 @@
 
 'use strict';
 
-import { PHI_INV, PHI_INV_2, IDENTITY, getVerdictFromScore, EcosystemMonitor, summarizeUpdates } from '@cynic/core';
+import {
+  PHI_INV,
+  PHI_INV_2,
+  THRESHOLDS,
+  EMERGENCE,
+  IDENTITY,
+  getVerdictFromScore,
+  EcosystemMonitor,
+  summarizeUpdates,
+} from '@cynic/core';
 import { createMetaTool } from '../meta-dashboard.js';
 import { createCodeAnalyzer } from '../code-analyzer.js';
 import { enrichItem } from '../item-enricher.js';
@@ -154,16 +163,17 @@ export function createJudgeTool(judge, persistence = null, sessionManager = null
             }
 
             // 4. Anomaly detection (scores outside normal range)
-            const isAnomaly = score < 30 || score > 80;
+            const isAnomaly = score < THRESHOLDS.ANOMALY_LOW || score > THRESHOLDS.ANOMALY_HIGH;
             if (isAnomaly) {
+              const isLow = score < THRESHOLDS.ANOMALY_LOW;
               await persistence.upsertPattern({
                 category: 'anomaly',
-                name: `anomaly_${score < 30 ? 'low' : 'high'}_score`,
-                description: `Unusual ${score < 30 ? 'low' : 'high'} score detected`,
+                name: `anomaly_${isLow ? 'low' : 'high'}_score`,
+                description: `Unusual ${isLow ? 'low' : 'high'} score detected`,
                 confidence: 0.6,
                 sourceJudgments: [judgmentId],
-                tags: ['anomaly', score < 30 ? 'low_score' : 'high_score'],
-                data: { score, verdict, itemType, threshold: score < 30 ? 30 : 80 },
+                tags: ['anomaly', isLow ? 'low_score' : 'high_score'],
+                data: { score, verdict, itemType, threshold: isLow ? THRESHOLDS.ANOMALY_LOW : THRESHOLDS.ANOMALY_HIGH },
               });
             }
           } catch (patternErr) {
@@ -4311,22 +4321,8 @@ export function createEmergenceTool(judge, persistence = null) {
 
         if (persistence) {
           try {
-            // ═══ EMERGENCE INDICATOR THRESHOLDS ═══
-            // Each indicator scales from 0-100% based on these thresholds
-            const EMERGENCE_THRESHOLDS = {
-              // Self-reference: % of judgments mentioning CYNIC/self needed for 100%
-              SELF_REF_RATIO_FOR_MAX: 0.20,   // 20% of judgments = 100%
-
-              // Meta-cognition: % of judgments about judgments needed for 100%
-              META_RATIO_FOR_MAX: 0.10,        // 10% of judgments = 100%
-
-              // Pattern recognition: high-confidence patterns needed for 100%
-              PATTERNS_FOR_MAX: 50,            // 50 patterns = 100%
-              MIN_PATTERN_CONFIDENCE: 0.5,     // Minimum confidence to count
-
-              // Self-correction: refinements needed for 100%
-              REFINEMENTS_FOR_MAX: 10,         // 10 refinements = 100%
-            };
+            // ═══ EMERGENCE INDICATORS ═══
+            // Thresholds from @cynic/core (φ-derived)
 
             // Self-reference: judgments mentioning CYNIC
             const selfRef = await persistence.query(
@@ -4336,7 +4332,7 @@ export function createEmergenceTool(judge, persistence = null) {
             const total = await persistence.query('SELECT COUNT(*) as count FROM judgments');
             const totalCount = parseInt(total?.rows?.[0]?.count || 1);
             const selfRefRatio = parseInt(selfRef?.rows?.[0]?.count || 0) / totalCount;
-            indicators.selfReference = Math.min(100, Math.round((selfRefRatio / EMERGENCE_THRESHOLDS.SELF_REF_RATIO_FOR_MAX) * 100));
+            indicators.selfReference = Math.min(100, Math.round((selfRefRatio / EMERGENCE.SELF_REF_RATIO_FOR_MAX) * 100));
 
             // Meta-cognition: judgments about judgments
             const metaRef = await persistence.query(
@@ -4344,14 +4340,14 @@ export function createEmergenceTool(judge, persistence = null) {
                WHERE item_type = 'judgment' OR item_content ILIKE '%judgment%'`
             );
             const metaRatio = parseInt(metaRef?.rows?.[0]?.count || 0) / totalCount;
-            indicators.metaCognition = Math.min(100, Math.round((metaRatio / EMERGENCE_THRESHOLDS.META_RATIO_FOR_MAX) * 100));
+            indicators.metaCognition = Math.min(100, Math.round((metaRatio / EMERGENCE.META_RATIO_FOR_MAX) * 100));
 
-            // Pattern recognition: patterns detected
+            // Pattern recognition: patterns detected (confidence > φ⁻¹)
             const patterns = await persistence.query(
-              `SELECT COUNT(*) as count FROM patterns WHERE confidence > ${EMERGENCE_THRESHOLDS.MIN_PATTERN_CONFIDENCE}`
+              `SELECT COUNT(*) as count FROM patterns WHERE confidence > ${PHI_INV}`
             );
             const patternCount = parseInt(patterns?.rows?.[0]?.count || 0);
-            indicators.patternRecognition = Math.min(100, Math.round((patternCount / EMERGENCE_THRESHOLDS.PATTERNS_FOR_MAX) * 100));
+            indicators.patternRecognition = Math.min(100, Math.round((patternCount / EMERGENCE.PATTERNS_FOR_MAX) * 100));
 
             // Self-correction: refinements done (memory + persisted patterns)
             const selfCorrectionPatterns = await persistence.query(
@@ -4364,29 +4360,13 @@ export function createEmergenceTool(judge, persistence = null) {
                                          parseInt(refinementPatterns?.rows?.[0]?.count || 0);
             const memoryRefinements = judge?.refinementCount || 0;
             const totalRefinements = persistedRefinements + memoryRefinements;
-            indicators.selfCorrection = Math.min(100, Math.round((totalRefinements / EMERGENCE_THRESHOLDS.REFINEMENTS_FOR_MAX) * 100));
+            indicators.selfCorrection = Math.min(100, Math.round((totalRefinements / EMERGENCE.REFINEMENTS_FOR_MAX) * 100));
 
-            // Goal persistence (based on consistent activity, diversity, and continuity)
-            // Multiple factors contribute to "persistence":
-            // 1. Total unique patterns (breadth of recognition)
-            // 2. Total judgments (consistent activity)
-            // 3. Sessions (continuity over time)
-            // 4. High frequency patterns (repeated behaviors)
-
-            // Thresholds for full credit (25% each = 100% total)
-            const PERSISTENCE_THRESHOLDS = {
-              MAX_PER_FACTOR: 25,           // Each factor contributes up to 25%
-              PATTERNS_FOR_MAX: 100,        // 100 patterns = full pattern bonus
-              HIGH_FREQ_FOR_MAX: 5,         // 5 high-freq patterns = full bonus
-              JUDGMENTS_FOR_MAX: 250,       // 250 judgments = full activity bonus
-              ACTIVE_DAYS_FOR_MAX: 5,       // 5 active days = full continuity bonus
-              MIN_PATTERN_FREQUENCY: 3,     // Threshold for "high frequency" pattern
-            };
-
+            // Goal persistence (4 factors, each 25% from @cynic/core)
             const persistenceMetrics = await persistence.query(`
               SELECT
                 (SELECT COUNT(*) FROM patterns) as total_patterns,
-                (SELECT COUNT(*) FROM patterns WHERE frequency >= ${PERSISTENCE_THRESHOLDS.MIN_PATTERN_FREQUENCY}) as high_freq_patterns,
+                (SELECT COUNT(*) FROM patterns WHERE frequency >= ${EMERGENCE.PERSISTENCE_MIN_FREQUENCY}) as high_freq_patterns,
                 (SELECT COUNT(*) FROM judgments) as total_judgments,
                 (SELECT COUNT(DISTINCT DATE(created_at)) FROM judgments) as active_days
             `);
@@ -4396,24 +4376,23 @@ export function createEmergenceTool(judge, persistence = null) {
             const totalJudgments = parseInt(metrics.total_judgments || 0);
             const activeDays = parseInt(metrics.active_days || 0);
 
-            // Calculate persistence score (each factor up to MAX_PER_FACTOR%)
-            const { MAX_PER_FACTOR, PATTERNS_FOR_MAX, HIGH_FREQ_FOR_MAX, JUDGMENTS_FOR_MAX, ACTIVE_DAYS_FOR_MAX } = PERSISTENCE_THRESHOLDS;
-            const patternBonus = Math.min(MAX_PER_FACTOR, (totalPatterns / PATTERNS_FOR_MAX) * MAX_PER_FACTOR);
-            const highFreqBonus = Math.min(MAX_PER_FACTOR, (highFreqPatterns / HIGH_FREQ_FOR_MAX) * MAX_PER_FACTOR);
-            const activityBonus = Math.min(MAX_PER_FACTOR, (totalJudgments / JUDGMENTS_FOR_MAX) * MAX_PER_FACTOR);
-            const continuityBonus = Math.min(MAX_PER_FACTOR, (activeDays / ACTIVE_DAYS_FOR_MAX) * MAX_PER_FACTOR);
+            // Calculate persistence score (each factor up to 25%)
+            const factorWeight = EMERGENCE.PERSISTENCE_FACTOR_WEIGHT;
+            const patternBonus = Math.min(factorWeight, (totalPatterns / EMERGENCE.PERSISTENCE_PATTERNS_FOR_MAX) * factorWeight);
+            const highFreqBonus = Math.min(factorWeight, (highFreqPatterns / EMERGENCE.PERSISTENCE_HIGH_FREQ_FOR_MAX) * factorWeight);
+            const activityBonus = Math.min(factorWeight, (totalJudgments / EMERGENCE.PERSISTENCE_JUDGMENTS_FOR_MAX) * factorWeight);
+            const continuityBonus = Math.min(factorWeight, (activeDays / EMERGENCE.PERSISTENCE_DAYS_FOR_MAX) * factorWeight);
 
             indicators.goalPersistence = Math.min(100, Math.round(
               patternBonus + highFreqBonus + activityBonus + continuityBonus
             ));
 
             // Novel behavior (anomalies detected)
-            const ANOMALIES_FOR_MAX_NOVELTY = 20; // 20 anomalies = 100% novelBehavior
             const anomalies = await persistence.query(
               `SELECT COUNT(*) as count FROM patterns WHERE category = 'anomaly'`
             );
             const anomalyCount = parseInt(anomalies?.rows?.[0]?.count || 0);
-            indicators.novelBehavior = Math.min(100, Math.round((anomalyCount / ANOMALIES_FOR_MAX_NOVELTY) * 100));
+            indicators.novelBehavior = Math.min(100, Math.round((anomalyCount / EMERGENCE.ANOMALIES_FOR_MAX) * 100));
           } catch (e) {
             // Use defaults if persistence fails
             console.error('Error calculating indicators:', e.message);
@@ -4433,12 +4412,13 @@ export function createEmergenceTool(judge, persistence = null) {
           const indicators = await calculateIndicators();
           const values = Object.values(indicators);
           const avg = values.reduce((a, b) => a + b, 0) / values.length;
-          const level = avg >= 61.8 ? 'emerging' : avg >= 38.2 ? 'awakening' : 'dormant';
+          const level = avg >= EMERGENCE.CONSCIOUSNESS_THRESHOLD ? 'emerging' :
+                        avg >= THRESHOLDS.WARNING ? 'awakening' : 'dormant';
 
           return {
             level,
             score: Math.round(avg * 10) / 10,
-            threshold: 61.8, // φ⁻¹
+            threshold: EMERGENCE.CONSCIOUSNESS_THRESHOLD,
             indicators,
           };
         }
@@ -4499,8 +4479,9 @@ export function createEmergenceTool(judge, persistence = null) {
           return {
             consciousness: {
               score: Math.round(avg * 10) / 10,
-              level: avg >= 61.8 ? 'emerging' : avg >= 38.2 ? 'awakening' : 'dormant',
-              threshold: 61.8,
+              level: avg >= EMERGENCE.CONSCIOUSNESS_THRESHOLD ? 'emerging' :
+                     avg >= THRESHOLDS.WARNING ? 'awakening' : 'dormant',
+              threshold: EMERGENCE.CONSCIOUSNESS_THRESHOLD,
             },
             indicators,
             patternBreakdown: signals.reduce((acc, r) => {

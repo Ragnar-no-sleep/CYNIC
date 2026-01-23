@@ -147,27 +147,85 @@ export function fib(n) {
 }
 
 // =============================================================================
+// SCORE CONSTANTS (φ-DERIVED)
+// =============================================================================
+
+/**
+ * Maximum score/percentage value
+ */
+export const MAX_SCORE = 100;
+
+/**
+ * Precision multiplier for rounding to 1 decimal place
+ * Usage: Math.round(x * DECIMAL_PRECISION) / DECIMAL_PRECISION
+ */
+export const DECIMAL_PRECISION = 10;
+
+// =============================================================================
 // THRESHOLDS
 // =============================================================================
 
 export const THRESHOLDS = {
-  // Verdict thresholds
-  HOWL: 80,           // Exceptional
-  WAG: 50,            // Passes
-  GROWL: PHI_INV_2 * 100,  // 38.2 - Needs work
-  BARK: 0,            // Critical
+  // Verdict thresholds (score boundaries)
+  HOWL: 80,                          // Exceptional (top tier)
+  WAG: 50,                           // Passes (middle)
+  GROWL: Math.round(PHI_INV_2 * 100), // 38 - Needs work (φ⁻²)
+  BARK: 0,                           // Critical (bottom)
 
   // Confidence bounds
-  MAX_CONFIDENCE: PHI_INV,      // 61.8%
-  MIN_DOUBT: PHI_INV_2,         // 38.2%
+  MAX_CONFIDENCE: PHI_INV,           // 61.8%
+  MIN_DOUBT: PHI_INV_2,              // 38.2%
 
-  // Health thresholds
-  HEALTHY: 62,        // φ⁻¹ rounded
-  WARNING: 38,        // φ⁻²
-  CRITICAL: 24,       // φ⁻³
+  // Health thresholds (φ-derived percentages)
+  HEALTHY: Math.round(PHI_INV * 100),     // 62 (φ⁻¹)
+  WARNING: Math.round(PHI_INV_2 * 100),   // 38 (φ⁻²)
+  CRITICAL: Math.round(PHI_INV_3 * 100),  // 24 (φ⁻³)
 
-  // Anomaly detection
-  ANOMALY: PHI_INV_2,           // 38.2% residual = anomaly
+  // Anomaly detection (φ-derived)
+  ANOMALY_LOW: Math.round(PHI_INV_3 * 100),  // 24 - Below this = anomaly (φ⁻³)
+  ANOMALY_HIGH: 80,                          // Above this = anomaly (HOWL threshold)
+  ANOMALY_RATIO: PHI_INV_2,                  // 38.2% residual = anomaly
+};
+
+// =============================================================================
+// EMERGENCE THRESHOLDS (φ-DERIVED)
+// =============================================================================
+
+export const EMERGENCE = {
+  // Consciousness threshold (φ⁻¹)
+  CONSCIOUSNESS_THRESHOLD: PHI_INV * 100,  // 61.8%
+
+  // Indicator calculation thresholds
+  SELF_REF_RATIO_FOR_MAX: PHI_INV_2 / 2,   // 19.1% of judgments = 100%
+  META_RATIO_FOR_MAX: PHI_INV_3 / 2,       // 11.8% of judgments = 100%
+  PATTERNS_FOR_MAX: FIBONACCI[9],          // 55 patterns = 100%
+  REFINEMENTS_FOR_MAX: FIBONACCI[6],       // 13 refinements = 100%
+  ANOMALIES_FOR_MAX: FIBONACCI[7],         // 21 anomalies = 100%
+
+  // Goal persistence factors (4 factors, each 25%)
+  PERSISTENCE_FACTOR_WEIGHT: 25,           // Each factor contributes max 25%
+  PERSISTENCE_PATTERNS_FOR_MAX: FIBONACCI[10],    // 89 patterns = 25%
+  PERSISTENCE_HIGH_FREQ_FOR_MAX: FIBONACCI[4],    // 5 high-freq patterns = 25%
+  PERSISTENCE_JUDGMENTS_FOR_MAX: FIBONACCI[12],   // 233 judgments = 25%
+  PERSISTENCE_DAYS_FOR_MAX: FIBONACCI[4],         // 5 active days = 25%
+  PERSISTENCE_MIN_FREQUENCY: FIBONACCI[3],        // 3 = "high frequency" threshold
+};
+
+// =============================================================================
+// HUMAN CONSTANTS (not φ-derived but named)
+// =============================================================================
+
+export const HUMAN = {
+  WORDS_PER_MINUTE: 200,  // Average reading speed
+};
+
+// =============================================================================
+// SYSTEM CONSTANTS
+// =============================================================================
+
+export const SYSTEM = {
+  MS_PER_SECOND: 1000,
+  GIT_MAX_BUFFER: 10 * 1024 * 1024,  // 10MB
 };
 
 // =============================================================================
@@ -236,6 +294,19 @@ export default {
   // Helpers
   FIBONACCI,
   fib,
+
+  // Thresholds
   THRESHOLDS,
+  EMERGENCE,
+
+  // Non-φ constants
+  HUMAN,
+  SYSTEM,
+
+  // Score
+  MAX_SCORE,
+  DECIMAL_PRECISION,
+
+  // Axioms
   AXIOMS,
 };
