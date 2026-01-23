@@ -733,7 +733,11 @@ export class CollectivePack {
           }
         }
       } catch (err) {
-        console.error(`[Collective] graphIntegration error: ${err.message}`);
+        // Non-critical: graph integration is for analytics only
+        // Debug level to avoid log spam - core functionality unaffected
+        if (process.env.CYNIC_DEBUG) {
+          console.debug(`[Collective] graphIntegration: ${err.message}`);
+        }
       }
     }
 
