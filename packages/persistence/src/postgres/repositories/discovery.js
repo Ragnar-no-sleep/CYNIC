@@ -5,12 +5,16 @@
  *
  * "The pack finds all dens" - κυνικός
  *
+ * Implements: BaseRepository, Searchable
+ *
  * @module @cynic/persistence/repositories/discovery
  */
 
 'use strict';
 
 import crypto from 'crypto';
+import { getPool } from '../client.js';
+import { BaseRepository } from '../../interfaces/IRepository.js';
 
 /**
  * Generate discovery ID
@@ -28,13 +32,28 @@ function generateId(type, identifier) {
 
 /**
  * Discovery Repository
+ *
+ * LSP compliant - implements standard repository interface.
+ * Note: Uses this.db (via BaseRepository) for consistency.
+ *
+ * @extends BaseRepository
  */
-export class DiscoveryRepository {
+export class DiscoveryRepository extends BaseRepository {
   /**
-   * @param {import('pg').Pool} pool - PostgreSQL pool
+   * @param {import('pg').Pool} [pool] - PostgreSQL pool
    */
-  constructor(pool) {
-    this.pool = pool;
+  constructor(pool = null) {
+    super(pool || getPool());
+    // Alias for backward compatibility
+    this.pool = this.db;
+  }
+
+  /**
+   * Supports full-text search via ILIKE
+   * @returns {boolean}
+   */
+  supportsFTS() {
+    return true;
   }
 
   // ============================================
@@ -499,6 +518,150 @@ export class DiscoveryRepository {
     `);
 
     return result.rows[0];
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BaseRepository Interface Methods (LSP compliance)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Create discovery item (dispatch by type)
+   * @param {Object} data - Item data with type field
+   * @returns {Promise<Object>}
+   */
+  async create(data) {
+    const type = data.type || data.targetType;
+    switch (type) {
+      case 'mcp_server':
+        return this.upsertMcpServer(data);
+      case 'plugin':
+        return this.upsertPlugin(data);
+      case 'node':
+        return this.upsertNode(data);
+      default:
+        throw new Error(`Unknown discovery type: ${type}`);
+    }
+  }
+
+  /**
+   * Find discovery item by ID (dispatch by ID prefix)
+   * @param {string} id - Item ID (mcp_xxx, plugin_xxx, node_xxx)
+   * @returns {Promise<Object|null>}
+   */
+  async findById(id) {
+    if (id.startsWith('mcp_')) {
+      return this.getMcpServer(id);
+    } else if (id.startsWith('plugin_')) {
+      return this.getPlugin(id);
+    } else if (id.startsWith('node_')) {
+      return this.getNode(id);
+    }
+    return null;
+  }
+
+  /**
+   * List discovery items with pagination
+   * @param {Object} [options={}] - Query options
+   * @returns {Promise<Object[]>}
+   */
+  async list(options = {}) {
+    const { type, limit = 10, offset = 0 } = options;
+
+    if (type === 'mcp_server') {
+      return this.getMcpServers({ ...options, limit });
+    } else if (type === 'plugin') {
+      return this.getPlugins({ ...options, limit });
+    } else if (type === 'node') {
+      return this.getNodes({ ...options, limit });
+    }
+
+    // Return all types combined
+    const [servers, plugins, nodes] = await Promise.all([
+      this.getMcpServers({ limit: Math.ceil(limit / 3) }),
+      this.getPlugins({ limit: Math.ceil(limit / 3) }),
+      this.getNodes({ limit: Math.ceil(limit / 3) }),
+    ]);
+
+    return [...servers, ...plugins, ...nodes].slice(offset, offset + limit);
+  }
+
+  /**
+   * Update discovery item
+   * @param {string} id - Item ID
+   * @param {Object} data - Update data
+   * @returns {Promise<Object|null>}
+   */
+  async update(id, data) {
+    // Discovery uses upsert pattern - create with updated data
+    const existing = await this.findById(id);
+    if (!existing) return null;
+
+    const merged = { ...existing, ...data };
+
+    if (id.startsWith('mcp_')) {
+      return this.upsertMcpServer(merged);
+    } else if (id.startsWith('plugin_')) {
+      return this.upsertPlugin(merged);
+    } else if (id.startsWith('node_')) {
+      return this.upsertNode(merged);
+    }
+    return null;
+  }
+
+  /**
+   * Delete discovery item (dispatch by ID prefix)
+   * @param {string} id - Item ID
+   * @returns {Promise<boolean>}
+   */
+  async delete(id) {
+    if (id.startsWith('mcp_')) {
+      return this.deleteMcpServer(id);
+    } else if (id.startsWith('plugin_')) {
+      return this.deletePlugin(id);
+    } else if (id.startsWith('node_')) {
+      return this.deleteNode(id);
+    }
+    return false;
+  }
+
+  /**
+   * Search discovery items across all types
+   * @param {string} query - Search query
+   * @param {Object} [options={}] - Search options
+   * @returns {Promise<Object[]>}
+   */
+  async search(query, options = {}) {
+    const { type, limit = 10 } = options;
+    const results = [];
+
+    if (!type || type === 'mcp_server') {
+      const { rows } = await this.pool.query(`
+        SELECT *, 'mcp_server' as type FROM discovered_mcp_servers
+        WHERE server_name ILIKE $1 OR source_repo ILIKE $1
+        LIMIT $2
+      `, [`%${query}%`, limit]);
+      results.push(...rows);
+    }
+
+    if (!type || type === 'plugin') {
+      const { rows } = await this.pool.query(`
+        SELECT *, 'plugin' as type FROM discovered_plugins
+        WHERE plugin_name ILIKE $1 OR description ILIKE $1 OR source_repo ILIKE $1
+        LIMIT $2
+      `, [`%${query}%`, limit]);
+      results.push(...rows);
+    }
+
+    if (!type || type === 'node') {
+      const { rows } = await this.pool.query(`
+        SELECT *, 'node' as type FROM discovered_nodes
+        WHERE node_name ILIKE $1 OR endpoint ILIKE $1
+        LIMIT $2
+      `, [`%${query}%`, limit]);
+      results.push(...rows);
+    }
+
+    return results.slice(0, limit);
   }
 }
 

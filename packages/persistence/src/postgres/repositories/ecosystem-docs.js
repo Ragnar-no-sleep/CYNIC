@@ -5,12 +5,16 @@
  *
  * "The pack remembers all territories" - κυνικός
  *
+ * Implements: BaseRepository, Searchable
+ *
  * @module @cynic/persistence/repositories/ecosystem-docs
  */
 
 'use strict';
 
 import crypto from 'crypto';
+import { getPool } from '../client.js';
+import { BaseRepository } from '../../interfaces/IRepository.js';
 
 /**
  * Hash content using SHA-256
@@ -23,13 +27,27 @@ function hashContent(content) {
 
 /**
  * Ecosystem Docs Repository
+ *
+ * LSP compliant - implements standard repository interface.
+ *
+ * @extends BaseRepository
  */
-export class EcosystemDocsRepository {
+export class EcosystemDocsRepository extends BaseRepository {
   /**
-   * @param {import('pg').Pool} pool - PostgreSQL pool
+   * @param {import('pg').Pool} [pool] - PostgreSQL pool
    */
-  constructor(pool) {
-    this.pool = pool;
+  constructor(pool = null) {
+    super(pool || getPool());
+    // Alias for backward compatibility
+    this.pool = this.db;
+  }
+
+  /**
+   * Supports full-text search via ILIKE
+   * @returns {boolean}
+   */
+  supportsFTS() {
+    return true;
   }
 
   /**
@@ -203,6 +221,103 @@ export class EcosystemDocsRepository {
     `);
 
     return result.rows[0];
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BaseRepository Interface Methods (LSP compliance)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Create a document (alias for upsert)
+   * @param {Object} data - Document data
+   * @returns {Promise<Object>}
+   */
+  async create(data) {
+    return this.upsert(data);
+  }
+
+  /**
+   * Find document by ID
+   * @param {string|number} id - Document ID
+   * @returns {Promise<Object|null>}
+   */
+  async findById(id) {
+    const result = await this.pool.query(
+      `SELECT * FROM ecosystem_docs WHERE id = $1`,
+      [id]
+    );
+    return result.rows[0] || null;
+  }
+
+  /**
+   * List documents with pagination
+   * @param {Object} [options={}] - Query options
+   * @returns {Promise<Object[]>}
+   */
+  async list(options = {}) {
+    const { limit = 10, offset = 0, project, docType } = options;
+
+    let sql = `
+      SELECT id, project, doc_type, file_path, content_hash,
+             length(content) as content_length, digest IS NOT NULL as has_digest,
+             created_at, updated_at
+      FROM ecosystem_docs
+      WHERE 1=1
+    `;
+    const params = [];
+    let paramIndex = 1;
+
+    if (project) {
+      sql += ` AND project = $${paramIndex++}`;
+      params.push(project);
+    }
+
+    if (docType) {
+      sql += ` AND doc_type = $${paramIndex++}`;
+      params.push(docType);
+    }
+
+    sql += ` ORDER BY project, doc_type LIMIT $${paramIndex++} OFFSET $${paramIndex}`;
+    params.push(limit, offset);
+
+    const result = await this.pool.query(sql, params);
+    return result.rows;
+  }
+
+  /**
+   * Update document by ID
+   * @param {string|number} id - Document ID
+   * @param {Object} data - Update data
+   * @returns {Promise<Object|null>}
+   */
+  async update(id, data) {
+    const existing = await this.findById(id);
+    if (!existing) return null;
+
+    // Merge and upsert
+    const merged = {
+      project: data.project || existing.project,
+      docType: data.docType || existing.doc_type,
+      filePath: data.filePath || existing.file_path,
+      content: data.content || existing.content,
+      digest: data.digest || existing.digest,
+      metadata: data.metadata || existing.metadata,
+    };
+
+    return this.upsert(merged);
+  }
+
+  /**
+   * Delete document by ID
+   * @param {string|number} id - Document ID
+   * @returns {Promise<boolean>}
+   */
+  async deleteById(id) {
+    const result = await this.pool.query(
+      `DELETE FROM ecosystem_docs WHERE id = $1`,
+      [id]
+    );
+    return result.rowCount > 0;
   }
 }
 

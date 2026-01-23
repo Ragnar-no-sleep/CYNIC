@@ -9,16 +9,26 @@
  *   - Learning loop calibration (accuracy, patterns)
  *   - Intervention history (effectiveness tracking)
  *
+ * Implements: BaseRepository
+ *
  * @module @cynic/persistence/repositories/psychology
  */
 
 'use strict';
 
 import { getPool } from '../client.js';
+import { BaseRepository } from '../../interfaces/IRepository.js';
 
-export class PsychologyRepository {
+/**
+ * Psychology Repository
+ *
+ * LSP compliant - implements standard repository interface.
+ *
+ * @extends BaseRepository
+ */
+export class PsychologyRepository extends BaseRepository {
   constructor(db = null) {
-    this.db = db || getPool();
+    super(db || getPool());
   }
 
   /**
@@ -339,6 +349,75 @@ export class PsychologyRepository {
     );
 
     return rows[0]?.id || null;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BaseRepository Interface Methods (LSP compliance)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Create psychology entry (via syncPsychology)
+   * @param {Object} data - Psychology data with userId
+   * @returns {Promise<Object>}
+   */
+  async create(data) {
+    return this.syncPsychology(data.userId, data);
+  }
+
+  /**
+   * Find psychology by user ID
+   * @param {string} userId - User ID
+   * @returns {Promise<Object|null>}
+   */
+  async findById(userId) {
+    return this.loadPsychology(userId);
+  }
+
+  /**
+   * List psychology entries with pagination
+   * @param {Object} [options={}] - Query options
+   * @returns {Promise<Object[]>}
+   */
+  async list(options = {}) {
+    const { limit = 10, offset = 0 } = options;
+
+    const { rows } = await this.db.query(`
+      SELECT
+        p.*,
+        u.username
+      FROM user_psychology p
+      JOIN users u ON u.id = p.user_id
+      ORDER BY p.updated_at DESC
+      LIMIT $1 OFFSET $2
+    `, [limit, offset]);
+
+    return rows;
+  }
+
+  /**
+   * Update psychology entry
+   * @param {string} userId - User ID
+   * @param {Object} data - Update data
+   * @returns {Promise<Object|null>}
+   */
+  async update(userId, data) {
+    return this.syncPsychology(userId, data);
+  }
+
+  /**
+   * Delete psychology entry
+   * @param {string} userId - User ID
+   * @returns {Promise<boolean>}
+   */
+  async delete(userId) {
+    const userIdUUID = await this._findUserUUID(userId);
+    if (!userIdUUID) return false;
+
+    const { rowCount } = await this.db.query(
+      'DELETE FROM user_psychology WHERE user_id = $1',
+      [userIdUUID]
+    );
+    return rowCount > 0;
   }
 }
 

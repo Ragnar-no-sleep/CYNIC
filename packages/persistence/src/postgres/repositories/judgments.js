@@ -4,6 +4,8 @@
  * Append-only storage for all CYNIC judgments.
  * Core of the PoJ (Proof of Judgment) system.
  *
+ * Implements: BaseRepository, Searchable
+ *
  * @module @cynic/persistence/repositories/judgments
  */
 
@@ -11,6 +13,7 @@
 
 import crypto from 'crypto';
 import { getPool } from '../client.js';
+import { BaseRepository } from '../../interfaces/IRepository.js';
 
 /**
  * Generate short judgment ID
@@ -28,9 +31,24 @@ function hashContent(content) {
     .digest('hex');
 }
 
-export class JudgmentRepository {
+/**
+ * Judgments Repository
+ *
+ * LSP compliant - implements standard repository interface.
+ *
+ * @extends BaseRepository
+ */
+export class JudgmentRepository extends BaseRepository {
   constructor(db = null) {
-    this.db = db || getPool();
+    super(db || getPool());
+  }
+
+  /**
+   * Supports full-text search via PostgreSQL ILIKE
+   * @returns {boolean}
+   */
+  supportsFTS() {
+    return true;
   }
 
   /**
@@ -236,6 +254,35 @@ export class JudgmentRepository {
 
     const { rows } = await this.db.query(sql, params);
     return parseInt(rows[0].count);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BaseRepository Interface Methods (LSP compliance)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * List judgments with pagination
+   * @param {Object} [options={}] - Query options
+   * @returns {Promise<Object[]>}
+   */
+  async list(options = {}) {
+    return this.search('', options);
+  }
+
+  /**
+   * Update is not supported for append-only judgments
+   * @throws {Error} Judgments are immutable
+   */
+  async update(id, data) {
+    throw new Error('Judgments are append-only and cannot be updated');
+  }
+
+  /**
+   * Delete is not supported for append-only judgments
+   * @throws {Error} Judgments are immutable
+   */
+  async delete(id) {
+    throw new Error('Judgments are append-only and cannot be deleted');
   }
 }
 

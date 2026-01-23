@@ -4,6 +4,8 @@
  * Storage for detected patterns across judgments.
  * Patterns are verified solutions that CYNIC learns from.
  *
+ * Implements: BaseRepository, Searchable
+ *
  * @module @cynic/persistence/repositories/patterns
  */
 
@@ -11,6 +13,7 @@
 
 import crypto from 'crypto';
 import { getPool } from '../client.js';
+import { BaseRepository } from '../../interfaces/IRepository.js';
 
 /**
  * Generate short pattern ID
@@ -19,9 +22,24 @@ function generatePatternId() {
   return 'pat_' + crypto.randomBytes(8).toString('hex');
 }
 
-export class PatternRepository {
+/**
+ * Patterns Repository
+ *
+ * LSP compliant - implements standard repository interface.
+ *
+ * @extends BaseRepository
+ */
+export class PatternRepository extends BaseRepository {
   constructor(db = null) {
-    this.db = db || getPool();
+    super(db || getPool());
+  }
+
+  /**
+   * Supports full-text search via ILIKE
+   * @returns {boolean}
+   */
+  supportsFTS() {
+    return true;
   }
 
   /**
@@ -183,6 +201,104 @@ export class PatternRepository {
       ORDER BY count DESC
     `);
     return rows;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BaseRepository Interface Methods (LSP compliance)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Create a new pattern (alias for upsert)
+   * @param {Object} data - Pattern data
+   * @returns {Promise<Object>}
+   */
+  async create(data) {
+    return this.upsert(data);
+  }
+
+  /**
+   * List patterns with pagination
+   * @param {Object} [options={}] - Query options
+   * @returns {Promise<Object[]>}
+   */
+  async list(options = {}) {
+    const { limit = 10, offset = 0, category } = options;
+
+    let sql = 'SELECT * FROM patterns WHERE 1=1';
+    const params = [];
+    let paramIndex = 1;
+
+    if (category) {
+      sql += ` AND category = $${paramIndex++}`;
+      params.push(category);
+    }
+
+    sql += ` ORDER BY confidence DESC, frequency DESC LIMIT $${paramIndex++} OFFSET $${paramIndex}`;
+    params.push(limit, offset);
+
+    const { rows } = await this.db.query(sql, params);
+    return rows;
+  }
+
+  /**
+   * Update a pattern
+   * @param {string} patternId - Pattern ID
+   * @param {Object} data - Update data
+   * @returns {Promise<Object|null>}
+   */
+  async update(patternId, data) {
+    const updates = [];
+    const params = [patternId];
+    let paramIndex = 2;
+
+    if (data.name !== undefined) {
+      updates.push(`name = $${paramIndex++}`);
+      params.push(data.name);
+    }
+    if (data.description !== undefined) {
+      updates.push(`description = $${paramIndex++}`);
+      params.push(data.description);
+    }
+    if (data.confidence !== undefined) {
+      updates.push(`confidence = $${paramIndex++}`);
+      params.push(data.confidence);
+    }
+    if (data.tags !== undefined) {
+      updates.push(`tags = $${paramIndex++}`);
+      params.push(data.tags);
+    }
+    if (data.data !== undefined) {
+      updates.push(`data = $${paramIndex++}`);
+      params.push(JSON.stringify(data.data));
+    }
+
+    if (updates.length === 0) {
+      return this.findById(patternId);
+    }
+
+    updates.push('updated_at = NOW()');
+
+    const { rows } = await this.db.query(`
+      UPDATE patterns
+      SET ${updates.join(', ')}
+      WHERE pattern_id = $1
+      RETURNING *
+    `, params);
+
+    return rows[0] || null;
+  }
+
+  /**
+   * Delete a pattern
+   * @param {string} patternId - Pattern ID
+   * @returns {Promise<boolean>}
+   */
+  async delete(patternId) {
+    const { rowCount } = await this.db.query(
+      'DELETE FROM patterns WHERE pattern_id = $1',
+      [patternId]
+    );
+    return rowCount > 0;
   }
 }
 

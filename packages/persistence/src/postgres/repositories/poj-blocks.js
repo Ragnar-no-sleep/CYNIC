@@ -6,6 +6,8 @@
  *
  * "The chain remembers what dogs forget" - κυνικός
  *
+ * Implements: BaseRepository
+ *
  * @module @cynic/persistence/repositories/poj-blocks
  */
 
@@ -13,10 +15,19 @@
 
 import crypto from 'crypto';
 import { getPool } from '../client.js';
+import { BaseRepository } from '../../interfaces/IRepository.js';
 
-export class PoJBlockRepository {
+/**
+ * PoJ Blocks Repository
+ *
+ * LSP compliant - implements standard repository interface.
+ * Note: PoJ blocks are append-only (blockchain).
+ *
+ * @extends BaseRepository
+ */
+export class PoJBlockRepository extends BaseRepository {
   constructor(db = null) {
-    this.db = db || getPool();
+    super(db || getPool());
   }
 
   /**
@@ -432,6 +443,80 @@ export class PoJBlockRepository {
       judgment_ids: row.judgment_ids || [],
       timestamp: row.timestamp,
       created_at: row.created_at,
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BaseRepository Interface Methods (LSP compliance)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Find block by ID (block number or hash)
+   * @param {string|number} id - Block number or hash
+   * @returns {Promise<Object|null>}
+   */
+  async findById(id) {
+    if (typeof id === 'number' || /^\d+$/.test(id)) {
+      return this.findByNumber(parseInt(id, 10));
+    }
+    return this.findByHash(id);
+  }
+
+  /**
+   * List blocks with pagination
+   * @param {Object} [options={}] - Query options
+   * @returns {Promise<Object[]>}
+   */
+  async list(options = {}) {
+    const { limit = 10, offset = 0 } = options;
+
+    const { rows } = await this.db.query(`
+      SELECT * FROM poj_blocks
+      ORDER BY block_number DESC
+      LIMIT $1 OFFSET $2
+    `, [limit, offset]);
+
+    return rows.map(r => this._toBlock(r));
+  }
+
+  /**
+   * Update is not supported for append-only blockchain
+   * @throws {Error} PoJ blocks are immutable
+   */
+  async update(id, data) {
+    throw new Error('PoJ blocks are append-only and cannot be updated');
+  }
+
+  /**
+   * Delete is not supported for append-only blockchain
+   * @throws {Error} PoJ blocks are immutable
+   */
+  async delete(id) {
+    throw new Error('PoJ blocks are append-only and cannot be deleted');
+  }
+
+  /**
+   * Get block statistics
+   * @returns {Promise<Object>}
+   */
+  async getStats() {
+    const { rows } = await this.db.query(`
+      SELECT
+        COUNT(*) as total_blocks,
+        MAX(block_number) as latest_block,
+        SUM(judgment_count) as total_judgments,
+        MIN(timestamp) as first_block_time,
+        MAX(timestamp) as latest_block_time
+      FROM poj_blocks
+    `);
+
+    const stats = rows[0];
+    return {
+      totalBlocks: parseInt(stats.total_blocks) || 0,
+      latestBlock: parseInt(stats.latest_block) || 0,
+      totalJudgments: parseInt(stats.total_judgments) || 0,
+      firstBlockTime: stats.first_block_time,
+      latestBlockTime: stats.latest_block_time,
     };
   }
 }

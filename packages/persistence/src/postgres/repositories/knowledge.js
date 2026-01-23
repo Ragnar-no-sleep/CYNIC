@@ -4,6 +4,8 @@
  * Digested knowledge storage.
  * Extracted insights from conversations, code, and documents.
  *
+ * Implements: BaseRepository, Searchable
+ *
  * @module @cynic/persistence/repositories/knowledge
  */
 
@@ -11,6 +13,7 @@
 
 import crypto from 'crypto';
 import { getPool } from '../client.js';
+import { BaseRepository } from '../../interfaces/IRepository.js';
 
 /**
  * Generate short knowledge ID
@@ -19,9 +22,24 @@ function generateKnowledgeId() {
   return 'kno_' + crypto.randomBytes(8).toString('hex');
 }
 
-export class KnowledgeRepository {
+/**
+ * Knowledge Repository
+ *
+ * LSP compliant - implements standard repository interface with FTS support.
+ *
+ * @extends BaseRepository
+ */
+export class KnowledgeRepository extends BaseRepository {
   constructor(db = null) {
-    this.db = db || getPool();
+    super(db || getPool());
+  }
+
+  /**
+   * Supports PostgreSQL full-text search
+   * @returns {boolean}
+   */
+  supportsFTS() {
+    return true;
   }
 
   /**
@@ -223,6 +241,108 @@ export class KnowledgeRepository {
       ORDER BY count DESC
     `);
     return rows;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BaseRepository Interface Methods (LSP compliance)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * List knowledge entries with pagination
+   * @param {Object} [options={}] - Query options
+   * @returns {Promise<Object[]>}
+   */
+  async list(options = {}) {
+    const { limit = 10, offset = 0, sourceType, category } = options;
+
+    let sql = 'SELECT * FROM knowledge WHERE 1=1';
+    const params = [];
+    let paramIndex = 1;
+
+    if (sourceType) {
+      sql += ` AND source_type = $${paramIndex++}`;
+      params.push(sourceType);
+    }
+
+    if (category) {
+      sql += ` AND category = $${paramIndex++}`;
+      params.push(category);
+    }
+
+    sql += ` ORDER BY created_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex}`;
+    params.push(limit, offset);
+
+    const { rows } = await this.db.query(sql, params);
+    return rows;
+  }
+
+  /**
+   * Update a knowledge entry
+   * @param {string} knowledgeId - Knowledge ID
+   * @param {Object} data - Update data
+   * @returns {Promise<Object|null>}
+   */
+  async update(knowledgeId, data) {
+    const updates = [];
+    const params = [knowledgeId];
+    let paramIndex = 2;
+
+    if (data.summary !== undefined) {
+      updates.push(`summary = $${paramIndex++}`);
+      params.push(data.summary);
+    }
+    if (data.content !== undefined) {
+      updates.push(`content = $${paramIndex++}`);
+      params.push(data.content);
+    }
+    if (data.insights !== undefined) {
+      updates.push(`insights = $${paramIndex++}`);
+      params.push(JSON.stringify(data.insights));
+    }
+    if (data.patterns !== undefined) {
+      updates.push(`patterns = $${paramIndex++}`);
+      params.push(JSON.stringify(data.patterns));
+    }
+    if (data.category !== undefined) {
+      updates.push(`category = $${paramIndex++}`);
+      params.push(data.category);
+    }
+    if (data.tags !== undefined) {
+      updates.push(`tags = $${paramIndex++}`);
+      params.push(data.tags);
+    }
+    if (data.qScore !== undefined) {
+      updates.push(`q_score = $${paramIndex++}`);
+      params.push(data.qScore);
+    }
+
+    if (updates.length === 0) {
+      return this.findById(knowledgeId);
+    }
+
+    updates.push('updated_at = NOW()');
+
+    const { rows } = await this.db.query(`
+      UPDATE knowledge
+      SET ${updates.join(', ')}
+      WHERE knowledge_id = $1
+      RETURNING *
+    `, params);
+
+    return rows[0] || null;
+  }
+
+  /**
+   * Delete a knowledge entry
+   * @param {string} knowledgeId - Knowledge ID
+   * @returns {Promise<boolean>}
+   */
+  async delete(knowledgeId) {
+    const { rowCount } = await this.db.query(
+      'DELETE FROM knowledge WHERE knowledge_id = $1',
+      [knowledgeId]
+    );
+    return rowCount > 0;
   }
 }
 

@@ -9,16 +9,26 @@
  * - trigger_executions: Execution history
  * - trigger_events: Recent events for pattern matching
  *
+ * Implements: BaseRepository
+ *
  * @module @cynic/persistence/repositories/triggers
  */
 
 'use strict';
 
 import { getPool } from '../client.js';
+import { BaseRepository } from '../../interfaces/IRepository.js';
 
-export class TriggerRepository {
+/**
+ * Trigger Repository
+ *
+ * LSP compliant - implements standard repository interface.
+ *
+ * @extends BaseRepository
+ */
+export class TriggerRepository extends BaseRepository {
   constructor(db = null) {
-    this.db = db || getPool();
+    super(db || getPool());
   }
 
   // ===========================================================================
@@ -500,6 +510,64 @@ export class TriggerRepository {
       matchedTriggers: row.matched_triggers,
       createdAt: row.created_at,
       expiresAt: row.expires_at,
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BaseRepository Interface Methods (LSP compliance)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * List triggers with pagination
+   * @param {Object} [options={}] - Query options
+   * @returns {Promise<Object[]>}
+   */
+  async list(options = {}) {
+    const { limit = 10, offset = 0, enabled, triggerType } = options;
+
+    let sql = 'SELECT * FROM triggers_registry WHERE 1=1';
+    const params = [];
+    let paramIndex = 1;
+
+    if (enabled !== undefined) {
+      sql += ` AND enabled = $${paramIndex++}`;
+      params.push(enabled);
+    }
+
+    if (triggerType) {
+      sql += ` AND trigger_type = $${paramIndex++}`;
+      params.push(triggerType);
+    }
+
+    sql += ` ORDER BY priority DESC, created_at ASC LIMIT $${paramIndex++} OFFSET $${paramIndex}`;
+    params.push(limit, offset);
+
+    const { rows } = await this.db.query(sql, params);
+    return rows.map(r => this._mapTrigger(r));
+  }
+
+  /**
+   * Get trigger statistics
+   * @returns {Promise<Object>}
+   */
+  async getStats() {
+    const { rows } = await this.db.query(`
+      SELECT
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE enabled = TRUE) as enabled,
+        COUNT(DISTINCT trigger_type) as types,
+        SUM(activation_count) as total_activations,
+        (SELECT COUNT(*) FROM trigger_executions WHERE executed_at > NOW() - INTERVAL '24 hours') as executions_24h
+      FROM triggers_registry
+    `);
+
+    const stats = rows[0];
+    return {
+      total: parseInt(stats.total),
+      enabled: parseInt(stats.enabled),
+      types: parseInt(stats.types),
+      totalActivations: parseInt(stats.total_activations) || 0,
+      executions24h: parseInt(stats.executions_24h) || 0,
     };
   }
 }

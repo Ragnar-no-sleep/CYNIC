@@ -3,16 +3,26 @@
  *
  * Persistent session storage (backup to Redis ephemeral).
  *
+ * Implements: BaseRepository
+ *
  * @module @cynic/persistence/repositories/sessions
  */
 
 'use strict';
 
 import { getPool } from '../client.js';
+import { BaseRepository } from '../../interfaces/IRepository.js';
 
-export class SessionRepository {
+/**
+ * Sessions Repository
+ *
+ * LSP compliant - implements standard repository interface.
+ *
+ * @extends BaseRepository
+ */
+export class SessionRepository extends BaseRepository {
   constructor(db = null) {
-    this.db = db || getPool();
+    super(db || getPool());
   }
 
   /**
@@ -159,6 +169,51 @@ export class SessionRepository {
       totalDigests: parseInt(stats.total_digests) || 0,
       totalFeedback: parseInt(stats.total_feedback) || 0,
     };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BaseRepository Interface Methods (LSP compliance)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * List sessions with pagination
+   * @param {Object} [options={}] - Query options
+   * @returns {Promise<Object[]>}
+   */
+  async list(options = {}) {
+    const { limit = 10, offset = 0, userId, activeOnly = false } = options;
+
+    let sql = 'SELECT * FROM sessions WHERE 1=1';
+    const params = [];
+    let paramIndex = 1;
+
+    if (userId) {
+      sql += ` AND user_id = $${paramIndex++}`;
+      params.push(userId);
+    }
+
+    if (activeOnly) {
+      sql += ' AND expires_at > NOW()';
+    }
+
+    sql += ` ORDER BY last_active_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex}`;
+    params.push(limit, offset);
+
+    const { rows } = await this.db.query(sql, params);
+    return rows;
+  }
+
+  /**
+   * Delete a session
+   * @param {string} sessionId - Session ID
+   * @returns {Promise<boolean>}
+   */
+  async delete(sessionId) {
+    const { rowCount } = await this.db.query(
+      'DELETE FROM sessions WHERE session_id = $1',
+      [sessionId]
+    );
+    return rowCount > 0;
   }
 }
 

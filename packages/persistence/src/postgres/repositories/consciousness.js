@@ -4,16 +4,26 @@
  * Cross-session persistence for consciousness.cjs learning data.
  * "Le chien apprend. Entre les machines, l'apprentissage persiste."
  *
+ * Implements: BaseRepository
+ *
  * @module @cynic/persistence/repositories/consciousness
  */
 
 'use strict';
 
 import { getPool } from '../client.js';
+import { BaseRepository } from '../../interfaces/IRepository.js';
 
-export class ConsciousnessRepository {
+/**
+ * Consciousness Repository
+ *
+ * LSP compliant - implements standard repository interface.
+ *
+ * @extends BaseRepository
+ */
+export class ConsciousnessRepository extends BaseRepository {
   constructor(db = null) {
-    this.db = db || getPool();
+    super(db || getPool());
   }
 
   /**
@@ -215,6 +225,75 @@ export class ConsciousnessRepository {
     );
 
     return rows[0]?.id || null;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BaseRepository Interface Methods (LSP compliance)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Create consciousness entry (via syncConsciousness)
+   * @param {Object} data - { userId, humanGrowth, capabilityMap, insights, resonancePatterns, observations }
+   * @returns {Promise<Object>}
+   */
+  async create(data) {
+    return this.syncConsciousness(data.userId, data);
+  }
+
+  /**
+   * Find consciousness by user ID
+   * @param {string} userId - User ID
+   * @returns {Promise<Object|null>}
+   */
+  async findById(userId) {
+    return this.loadConsciousness(userId);
+  }
+
+  /**
+   * List consciousness entries with pagination
+   * @param {Object} [options={}] - Query options
+   * @returns {Promise<Object[]>}
+   */
+  async list(options = {}) {
+    const { limit = 10, offset = 0 } = options;
+
+    const { rows } = await this.db.query(`
+      SELECT
+        c.*,
+        u.username
+      FROM user_consciousness c
+      JOIN users u ON u.id = c.user_id
+      ORDER BY c.updated_at DESC
+      LIMIT $1 OFFSET $2
+    `, [limit, offset]);
+
+    return rows;
+  }
+
+  /**
+   * Update consciousness entry
+   * @param {string} userId - User ID
+   * @param {Object} data - Update data
+   * @returns {Promise<Object|null>}
+   */
+  async update(userId, data) {
+    return this.syncConsciousness(userId, data);
+  }
+
+  /**
+   * Delete consciousness entry
+   * @param {string} userId - User ID
+   * @returns {Promise<boolean>}
+   */
+  async delete(userId) {
+    const userIdUUID = await this._findUserUUID(userId);
+    if (!userIdUUID) return false;
+
+    const { rowCount } = await this.db.query(
+      'DELETE FROM user_consciousness WHERE user_id = $1',
+      [userIdUUID]
+    );
+    return rowCount > 0;
   }
 }
 

@@ -4,16 +4,26 @@
  * Learning from user corrections.
  * Feedback burns CYNIC's ego - every correction makes it smarter.
  *
+ * Implements: BaseRepository
+ *
  * @module @cynic/persistence/repositories/feedback
  */
 
 'use strict';
 
 import { getPool } from '../client.js';
+import { BaseRepository } from '../../interfaces/IRepository.js';
 
-export class FeedbackRepository {
+/**
+ * Feedback Repository
+ *
+ * LSP compliant - implements standard repository interface.
+ *
+ * @extends BaseRepository
+ */
+export class FeedbackRepository extends BaseRepository {
   constructor(db = null) {
-    this.db = db || getPool();
+    super(db || getPool());
   }
 
   /**
@@ -124,6 +134,110 @@ export class FeedbackRepository {
       ORDER BY incorrect_count DESC
     `);
     return rows;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BaseRepository Interface Methods (LSP compliance)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Find feedback by ID
+   * @param {number} id - Feedback ID
+   * @returns {Promise<Object|null>}
+   */
+  async findById(id) {
+    const { rows } = await this.db.query(
+      'SELECT * FROM feedback WHERE id = $1',
+      [id]
+    );
+    return rows[0] || null;
+  }
+
+  /**
+   * List feedback with pagination
+   * @param {Object} [options={}] - Query options
+   * @returns {Promise<Object[]>}
+   */
+  async list(options = {}) {
+    const { limit = 10, offset = 0, outcome, applied } = options;
+
+    let sql = 'SELECT * FROM feedback WHERE 1=1';
+    const params = [];
+    let paramIndex = 1;
+
+    if (outcome) {
+      sql += ` AND outcome = $${paramIndex++}`;
+      params.push(outcome);
+    }
+
+    if (applied !== undefined) {
+      sql += ` AND applied = $${paramIndex++}`;
+      params.push(applied);
+    }
+
+    sql += ` ORDER BY created_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex}`;
+    params.push(limit, offset);
+
+    const { rows } = await this.db.query(sql, params);
+    return rows;
+  }
+
+  /**
+   * Update feedback
+   * @param {number} id - Feedback ID
+   * @param {Object} data - Update data
+   * @returns {Promise<Object|null>}
+   */
+  async update(id, data) {
+    const updates = [];
+    const params = [id];
+    let paramIndex = 2;
+
+    if (data.outcome !== undefined) {
+      updates.push(`outcome = $${paramIndex++}`);
+      params.push(data.outcome);
+    }
+    if (data.actualScore !== undefined) {
+      updates.push(`actual_score = $${paramIndex++}`);
+      params.push(data.actualScore);
+    }
+    if (data.reason !== undefined) {
+      updates.push(`reason = $${paramIndex++}`);
+      params.push(data.reason);
+    }
+    if (data.applied !== undefined) {
+      updates.push(`applied = $${paramIndex++}`);
+      params.push(data.applied);
+      if (data.applied) {
+        updates.push('applied_at = NOW()');
+      }
+    }
+
+    if (updates.length === 0) {
+      return this.findById(id);
+    }
+
+    const { rows } = await this.db.query(`
+      UPDATE feedback
+      SET ${updates.join(', ')}
+      WHERE id = $1
+      RETURNING *
+    `, params);
+
+    return rows[0] || null;
+  }
+
+  /**
+   * Delete feedback
+   * @param {number} id - Feedback ID
+   * @returns {Promise<boolean>}
+   */
+  async delete(id) {
+    const { rowCount } = await this.db.query(
+      'DELETE FROM feedback WHERE id = $1',
+      [id]
+    );
+    return rowCount > 0;
   }
 }
 
