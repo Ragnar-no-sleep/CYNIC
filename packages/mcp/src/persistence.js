@@ -42,6 +42,7 @@ class MemoryStore {
     this.feedback = [];
     this.knowledge = [];
     this.pojBlocks = [];
+    this.observations = [];
     this.triggersState = null;
   }
 
@@ -96,6 +97,14 @@ class MemoryStore {
     const id = `kn_${Date.now().toString(36)}`;
     const stored = { ...k, knowledge_id: id, created_at: new Date() };
     this.knowledge.push(stored);
+    return stored;
+  }
+
+  async storeObservation(obs) {
+    const stored = { ...obs, created_at: new Date() };
+    this.observations.push(stored);
+    // Keep bounded - observations are high-volume, low-priority
+    if (this.observations.length > 500) this.observations.shift();
     return stored;
   }
 
@@ -948,6 +957,43 @@ export class PersistenceManager {
       }
     }
     return null;
+  }
+
+  /**
+   * Store an observation from agents (The Four Dogs)
+   * Used by base.js, event-bus.js, collective/index.js for decision logging
+   * @param {Object} observation - Observation data
+   * @param {string} observation.type - Observation type (e.g., 'dog_decision')
+   * @param {string} observation.agent - Agent name
+   * @param {string} [observation.trigger] - Event trigger type
+   * @param {string} [observation.tool] - Tool involved
+   * @param {*} [observation.response] - Agent response
+   * @param {*} [observation.action] - Action taken
+   * @param {string} [observation.message] - Message
+   * @param {number} [observation.confidence] - Confidence score
+   * @param {number} [observation.timestamp] - Timestamp
+   * @returns {Promise<Object|null>} Stored observation
+   */
+  async storeObservation(observation) {
+    // Add timestamp if not present
+    const obs = {
+      ...observation,
+      timestamp: observation.timestamp || Date.now(),
+      id: `obs_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+    };
+
+    // Store in fallback if available (file/memory)
+    if (this._fallback?.storeObservation) {
+      try {
+        return await this._fallback.storeObservation(obs);
+      } catch (err) {
+        // Silently ignore - observations are non-critical
+      }
+    }
+
+    // For PostgreSQL: observations are lightweight, just return the object
+    // Future: could add observations table if needed for analytics
+    return obs;
   }
 
   /**
