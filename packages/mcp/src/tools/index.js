@@ -4349,8 +4349,9 @@ export function createEmergenceTool(judge, persistence = null) {
             const highFreqPatterns = await persistence.query(
               `SELECT COUNT(*) as count FROM patterns WHERE frequency >= 3`
             );
-            const persistenceBonus = Math.min(30, parseInt(highFreqPatterns?.rows?.[0]?.count || 0) * 3);
-            indicators.goalPersistence = 50 + persistenceBonus; // Baseline + bonus for repeated patterns
+            // Allow reaching 100%: 30 baseline + up to 70 from patterns (10 patterns @ freq>=3 = 100%)
+            const persistenceBonus = Math.min(70, parseInt(highFreqPatterns?.rows?.[0]?.count || 0) * 7);
+            indicators.goalPersistence = 30 + persistenceBonus;
 
             // Novel behavior (anomalies detected)
             const anomalies = await persistence.query(

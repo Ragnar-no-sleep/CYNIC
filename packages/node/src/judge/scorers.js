@@ -521,14 +521,14 @@ export function scoreIntegrity(item, context = {}) {
 export function scoreAuthenticity(item, context = {}) {
   let score = 50;
   const text = extractText(item);
-  const words = wordCount(text);
+  const words = item.wordCount || wordCount(text);
 
   // ═══ POSITIVE INDICATORS ═══
-  // Marked as original
+  // Enriched authenticity signals (from item-enricher)
   if (item.original === true) score += 15;
   if (item.authentic === true) score += 15;
 
-  // Has author/creator
+  // Has author/creator (enricher adds 'CYNIC' as default)
   if (item.author || item.creator) score += 10;
 
   // Unique identifier
@@ -540,10 +540,13 @@ export function scoreAuthenticity(item, context = {}) {
   // Has personal voice (I, we statements)
   if (/\b(I|we|my|our)\s+(?!==)/i.test(text)) score += 5;
 
+  // Has enriched tags (sign of analysis)
+  if (item.tags && Array.isArray(item.tags) && item.tags.length > 0) score += 5;
+
   // ═══ NEGATIVE INDICATORS ═══
-  // Very short content lacks authenticity
-  if (words < 5) score -= 20;
-  else if (words < 10) score -= 10;
+  // Very short content - reduced penalty (items can be identifiers)
+  if (words < 3) score -= 10;
+  else if (words < 5) score -= 5;
 
   // Generic template phrases
   const genericPatterns = [
@@ -553,15 +556,9 @@ export function scoreAuthenticity(item, context = {}) {
     /limited time/i,
     /act now/i,
     /\[insert\s+\w+\]/i,
-    /TODO|FIXME|XXX/,
   ];
   const genericCount = genericPatterns.filter(p => p.test(text)).length;
   score -= genericCount * 8;
-
-  // No author AND no personal voice = anonymous/impersonal
-  if (!item.author && !item.creator && !/\b(I|we|my|our)\s+/i.test(text)) {
-    score -= 10;
-  }
 
   // Is a copy/fork
   if (item.forkedFrom || item.copiedFrom) score -= 15;
@@ -575,21 +572,28 @@ export function scoreAuthenticity(item, context = {}) {
 export function scoreRelevance(item, context = {}) {
   let score = 50;
   const text = extractText(item);
-  const words = wordCount(text);
+  const words = item.wordCount || wordCount(text);
 
   // ═══ POSITIVE INDICATORS ═══
-  // Has explicit relevance
-  if (item.relevance) score += typeof item.relevance === 'number' ? item.relevance / 2 : 20;
+  // Has explicit relevance (from enricher)
+  if (item.relevance) {
+    score += typeof item.relevance === 'number' ? Math.min(item.relevance / 2, 25) : 20;
+  }
 
-  // Has tags/categories
+  // Has tags/categories (from enricher)
   if (item.tags && Array.isArray(item.tags)) {
-    score += Math.min(item.tags.length * 3, 15);
+    score += Math.min(item.tags.length * 3, 20);
   }
 
   // Context match
   if (context.topic && text.toLowerCase().includes(context.topic.toLowerCase())) {
     score += 15;
   }
+
+  // Domain relevance (crypto/blockchain)
+  const domainTerms = ['token', 'crypto', 'blockchain', 'solana', 'ethereum', 'wallet', 'defi'];
+  const domainMatches = domainTerms.filter(t => text.toLowerCase().includes(t)).length;
+  if (domainMatches > 0) score += Math.min(domainMatches * 5, 15);
 
   // Recent is more relevant
   if (item.createdAt) {
@@ -600,14 +604,9 @@ export function scoreRelevance(item, context = {}) {
   }
 
   // ═══ NEGATIVE INDICATORS ═══
-  // Empty or minimal content = not relevant
-  if (words < 3) score -= 25;
-  else if (words < 10) score -= 10;
-
-  // No context clues at all
-  if (!item.tags && !item.relevance && !context.topic) {
-    score -= 10;
-  }
+  // Empty content - reduced penalty
+  if (words < 2) score -= 15;
+  else if (words < 5) score -= 5;
 
   // Old content loses relevance (> 90 days)
   if (item.createdAt) {
@@ -629,19 +628,19 @@ export function scoreRelevance(item, context = {}) {
  * Score NOVELTY - New or unique contribution
  */
 export function scoreNovelty(item, context = {}) {
-  let score = 40;
+  let score = 50; // Start neutral, not pessimistic
   const text = extractText(item);
-  const words = wordCount(text);
+  const words = item.wordCount || wordCount(text);
 
   // ═══ POSITIVE INDICATORS ═══
-  // New item
+  // New item (from enricher - items are now tagged with createdAt)
   if (item.createdAt && Date.now() - item.createdAt < 86400000) {
-    score += 20;
+    score += 15;
   }
 
-  // Marked as original/new
+  // Marked as original/new (from enricher authenticity detection)
   if (item.original === true || item.isNew === true) {
-    score += 20;
+    score += 15;
   }
 
   // Has unique content
@@ -650,18 +649,21 @@ export function scoreNovelty(item, context = {}) {
   // First of its kind
   if (item.first === true || item.pioneer === true) score += 15;
 
+  // Has hash (unique identifier from enricher)
+  if (item.hash) score += 5;
+
   // ═══ NEGATIVE INDICATORS ═══
   // Old content is not novel (> 30 days)
   if (item.createdAt) {
     const age = Date.now() - item.createdAt;
     const dayAge = age / (1000 * 60 * 60 * 24);
-    if (dayAge > 180) score -= 20;
-    else if (dayAge > 30) score -= 10;
+    if (dayAge > 180) score -= 15;
+    else if (dayAge > 30) score -= 8;
   }
 
   // Copy/fork = not novel
   if (item.forkedFrom || item.copiedFrom || item.duplicate) {
-    score -= 25;
+    score -= 20;
   }
 
   // Template/boilerplate patterns
@@ -675,8 +677,8 @@ export function scoreNovelty(item, context = {}) {
     score -= 15;
   }
 
-  // Very short = likely not novel
-  if (words < 5) score -= 15;
+  // Very short - mild penalty only
+  if (words < 2) score -= 10;
 
   return normalize(score);
 }

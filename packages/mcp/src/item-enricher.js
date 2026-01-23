@@ -243,6 +243,142 @@ function generateHash(text) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// CULTURE SCORING HELPERS
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Extract tags from text (for CULTURE scoring)
+ * @param {string} text
+ * @param {Object} context
+ * @returns {string[]}
+ */
+function extractTags(text, context = {}) {
+  if (!text) return [];
+  const tags = [];
+  const lowerText = text.toLowerCase();
+
+  // Crypto/blockchain terms
+  const cryptoTerms = ['bitcoin', 'ethereum', 'solana', 'defi', 'nft', 'token', 'blockchain', 'web3', 'wallet', 'dex', 'swap', 'stake', 'yield', 'liquidity'];
+  for (const term of cryptoTerms) {
+    if (lowerText.includes(term)) tags.push(term);
+  }
+
+  // Risk indicators (for trust scoring)
+  const riskTerms = ['scam', 'rug', 'honeypot', 'fake', 'fraud', 'ponzi', 'anonymous', 'unaudited'];
+  for (const term of riskTerms) {
+    if (lowerText.includes(term)) tags.push(`risk:${term}`);
+  }
+
+  // Quality indicators
+  const qualityTerms = ['audited', 'verified', 'proven', 'established', 'legitimate', 'trusted', 'secure'];
+  for (const term of qualityTerms) {
+    if (lowerText.includes(term)) tags.push(`quality:${term}`);
+  }
+
+  // Technical terms
+  const techTerms = ['api', 'sdk', 'protocol', 'contract', 'function', 'algorithm'];
+  for (const term of techTerms) {
+    if (lowerText.includes(term)) tags.push(`tech:${term}`);
+  }
+
+  // Add context-based tags
+  if (context.type) tags.push(`type:${context.type}`);
+
+  return [...new Set(tags)];
+}
+
+/**
+ * Detect authenticity signals (for CULTURE scoring)
+ * @param {string} text
+ * @param {Object} item
+ * @param {Object} context
+ * @returns {Object} { original: boolean, authentic: boolean }
+ */
+function detectAuthenticity(text, item, context = {}) {
+  const signals = {
+    original: true,   // Assume original unless proven otherwise
+    authentic: false, // Default skeptical
+  };
+
+  if (!text) return signals;
+  const lowerText = text.toLowerCase();
+
+  // Negative signals for originality
+  const copyIndicators = ['copy', 'fork', 'clone', 'based on', 'inspired by', 'port of'];
+  for (const indicator of copyIndicators) {
+    if (lowerText.includes(indicator)) {
+      signals.original = false;
+      break;
+    }
+  }
+
+  // Positive signals for authenticity
+  let authenticityScore = 0;
+
+  // Has specific details (not vague)
+  if (/\d+/.test(text)) authenticityScore += 1; // Has numbers
+  if (text.length > 50) authenticityScore += 1; // Substantial content
+  if (text.length > 200) authenticityScore += 1; // Detailed content
+
+  // Has technical specifics
+  if (/0x[a-fA-F0-9]+/.test(text)) authenticityScore += 2; // Has addresses/hashes
+  if (/\d{4}[-/]\d{2}[-/]\d{2}/.test(text)) authenticityScore += 1; // Has dates
+
+  // Has provenance
+  if (item.author || item.creator || context.author) authenticityScore += 2;
+  if (item.verified || context.verified) authenticityScore += 3;
+
+  // Quality terms
+  const qualityTerms = ['audited', 'verified', 'proven', 'established', 'track record'];
+  for (const term of qualityTerms) {
+    if (lowerText.includes(term)) authenticityScore += 1;
+  }
+
+  // Risk terms reduce authenticity
+  const riskTerms = ['scam', 'rug', 'honeypot', 'fake', 'fraud', 'anonymous team', 'unknown'];
+  for (const term of riskTerms) {
+    if (lowerText.includes(term)) authenticityScore -= 2;
+  }
+
+  signals.authentic = authenticityScore >= 2;
+  return signals;
+}
+
+/**
+ * Calculate relevance score (for CULTURE scoring)
+ * @param {string} text
+ * @param {Object} context
+ * @returns {number} 0-100
+ */
+function calculateRelevance(text, context = {}) {
+  if (!text) return 30;
+  let score = 50; // Start neutral
+
+  const lowerText = text.toLowerCase();
+
+  // Has context match
+  if (context.topic && lowerText.includes(context.topic.toLowerCase())) {
+    score += 20;
+  }
+
+  // Has crypto/blockchain relevance (our domain)
+  const domainTerms = ['token', 'crypto', 'blockchain', 'solana', 'ethereum', 'defi', 'wallet', 'transaction'];
+  const domainMatches = domainTerms.filter(t => lowerText.includes(t)).length;
+  score += Math.min(domainMatches * 5, 25);
+
+  // Has judgment-relevant content
+  if (/trust|reputation|score|quality|risk|safe|danger/i.test(text)) {
+    score += 15;
+  }
+
+  // Penalties
+  if (text.length < 10) score -= 20;
+  if (!context.topic && domainMatches === 0) score -= 10;
+
+  return Math.max(0, Math.min(100, score));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // MAIN ENRICHER
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -265,6 +401,15 @@ export function enrichItem(item, context = {}) {
   const textAnalysis = analyzeText(text);
   const sources = detectSources(text);
 
+  // Extract tags from text (crypto/token keywords, technical terms)
+  const extractedTags = extractTags(text, context);
+
+  // Detect authenticity indicators
+  const authenticitySignals = detectAuthenticity(text, normalizedItem, context);
+
+  // Calculate relevance score based on context
+  const relevanceScore = calculateRelevance(text, context);
+
   // Build enriched item
   const enriched = {
     // Original data
@@ -281,6 +426,7 @@ export function enrichItem(item, context = {}) {
     // Content analysis
     hash: normalizedItem.hash || generateHash(text),
     textAnalysis,
+    wordCount: textAnalysis?.wordCount || text.split(/\s+/).filter(w => w).length,
 
     // Sources (merge detected + provided)
     sources: [
@@ -293,8 +439,25 @@ export function enrichItem(item, context = {}) {
     verified: normalizedItem.verified ?? context.verified ?? false,
 
     // Author/provenance
-    author: normalizedItem.author || context.author || context.operator || null,
+    author: normalizedItem.author || context.author || context.operator || 'CYNIC',
+    creator: normalizedItem.creator || context.creator || null,
     origin: normalizedItem.origin || context.origin || context.source || null,
+
+    // Tags for CULTURE scoring (extracted + provided)
+    tags: [
+      ...extractedTags,
+      ...(normalizedItem.tags || []),
+      ...(context.tags || []),
+    ].filter(Boolean),
+
+    // Authenticity signals for CULTURE scoring
+    original: normalizedItem.original ?? authenticitySignals.original,
+    authentic: normalizedItem.authentic ?? authenticitySignals.authentic,
+    forkedFrom: normalizedItem.forkedFrom || null,
+    copiedFrom: normalizedItem.copiedFrom || null,
+
+    // Relevance for CULTURE scoring
+    relevance: normalizedItem.relevance ?? relevanceScore,
 
     // Quality indicators (for scorers)
     quality: normalizedItem.quality || null,
