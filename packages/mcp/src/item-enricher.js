@@ -257,28 +257,59 @@ function extractTags(text, context = {}) {
   const tags = [];
   const lowerText = text.toLowerCase();
 
+  // Helper to check word boundary match
+  const hasWord = (word) => new RegExp(`\\b${word}\\b`, 'i').test(text);
+
   // Crypto/blockchain terms
   const cryptoTerms = ['bitcoin', 'ethereum', 'solana', 'defi', 'nft', 'token', 'blockchain', 'web3', 'wallet', 'dex', 'swap', 'stake', 'yield', 'liquidity'];
   for (const term of cryptoTerms) {
-    if (lowerText.includes(term)) tags.push(term);
+    if (hasWord(term)) tags.push(term);
   }
 
-  // Risk indicators (for trust scoring)
-  const riskTerms = ['scam', 'rug', 'honeypot', 'fake', 'fraud', 'ponzi', 'anonymous', 'unaudited'];
+  // Risk indicators (for trust scoring) - check these FIRST
+  const riskTerms = ['scam', 'rug', 'honeypot', 'fake', 'fraud', 'ponzi', 'anonymous', 'unaudited', 'rugpull'];
+  const riskPatterns = [
+    /zero\s*audit/i,
+    /no\s*audit/i,
+    /not\s*audited/i,
+    /never\s*audited/i,
+    /exit\s*scam/i,
+    /rug\s*pull/i,
+    /100%\s*(tax|fee)/i,
+    /anonymous\s*(team|dev)/i,
+    /fake\s*(liquidity|volume|team)/i,
+  ];
+
+  let hasRiskSignals = false;
   for (const term of riskTerms) {
-    if (lowerText.includes(term)) tags.push(`risk:${term}`);
+    if (hasWord(term)) {
+      tags.push(`risk:${term}`);
+      hasRiskSignals = true;
+    }
+  }
+  for (const pattern of riskPatterns) {
+    if (pattern.test(text)) {
+      tags.push(`risk:pattern`);
+      hasRiskSignals = true;
+    }
   }
 
-  // Quality indicators
-  const qualityTerms = ['audited', 'verified', 'proven', 'established', 'legitimate', 'trusted', 'secure'];
-  for (const term of qualityTerms) {
-    if (lowerText.includes(term)) tags.push(`quality:${term}`);
+  // Quality indicators - ONLY if no risk signals present
+  // This prevents "unaudited" from adding quality:audited
+  if (!hasRiskSignals) {
+    const qualityTerms = ['audited', 'verified', 'proven', 'established', 'legitimate', 'trusted', 'secure'];
+    for (const term of qualityTerms) {
+      // Use word boundary and check for negations
+      if (hasWord(term) && !/(un|not?|zero|never|no)\s*\w*\s*$/i.test(text.slice(0, text.toLowerCase().indexOf(term)))) {
+        tags.push(`quality:${term}`);
+      }
+    }
   }
 
   // Technical terms
   const techTerms = ['api', 'sdk', 'protocol', 'contract', 'function', 'algorithm'];
   for (const term of techTerms) {
-    if (lowerText.includes(term)) tags.push(`tech:${term}`);
+    if (hasWord(term)) tags.push(`tech:${term}`);
   }
 
   // Add context-based tags
@@ -328,19 +359,47 @@ function detectAuthenticity(text, item, context = {}) {
   if (item.author || item.creator || context.author) authenticityScore += 2;
   if (item.verified || context.verified) authenticityScore += 3;
 
-  // Quality terms
+  // Quality terms (only count if not negated)
   const qualityTerms = ['audited', 'verified', 'proven', 'established', 'track record'];
   for (const term of qualityTerms) {
-    if (lowerText.includes(term)) authenticityScore += 1;
+    // Check term exists and is not negated (not preceded by "un", "not", "no", "zero", "never")
+    const termIndex = lowerText.indexOf(term);
+    if (termIndex > 0) {
+      const prefix = lowerText.slice(Math.max(0, termIndex - 10), termIndex);
+      if (!/(un|not?|zero|never|no)\s*$/.test(prefix)) {
+        authenticityScore += 1;
+      }
+    } else if (termIndex === 0) {
+      authenticityScore += 1;
+    }
   }
 
-  // Risk terms reduce authenticity
-  const riskTerms = ['scam', 'rug', 'honeypot', 'fake', 'fraud', 'anonymous team', 'unknown'];
+  // Risk terms HEAVILY reduce authenticity
+  const riskTerms = ['scam', 'rug', 'honeypot', 'fake', 'fraud', 'ponzi', 'anonymous team', 'exit scam', 'drain'];
   for (const term of riskTerms) {
-    if (lowerText.includes(term)) authenticityScore -= 2;
+    if (lowerText.includes(term)) authenticityScore -= 5; // Stronger penalty
   }
 
+  // Additional risk patterns
+  const riskPatterns = [
+    /100%\s*(tax|fee)/i,
+    /zero\s*audit/i,
+    /no\s*audit/i,
+    /copy[\s-]*paste/i,
+  ];
+  for (const pattern of riskPatterns) {
+    if (pattern.test(text)) authenticityScore -= 4;
+  }
+
+  // Set authentic to false if too many risk signals
   signals.authentic = authenticityScore >= 2;
+
+  // Force not authentic if heavy risk signals detected
+  if (authenticityScore < -5) {
+    signals.authentic = false;
+    signals.original = false; // Likely a scam copy
+  }
+
   return signals;
 }
 
