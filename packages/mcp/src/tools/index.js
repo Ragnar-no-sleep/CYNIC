@@ -2241,12 +2241,37 @@ export function createPatternsTool(judge, persistence = null) {
     inputSchema: {
       type: 'object',
       properties: {
+        action: { type: 'string', enum: ['list', 'fix_confidence'], description: 'Action: list (default) or fix_confidence (update low confidence patterns)' },
         category: { type: 'string', enum: ['anomaly', 'verdict', 'dimension', 'all'], description: 'Filter by category' },
         limit: { type: 'number', description: 'Maximum patterns (default 10)' },
       },
     },
     handler: async (params) => {
-      const { category = 'all', limit = 10 } = params;
+      const { action = 'list', category = 'all', limit = 10 } = params;
+
+      // Fix low confidence patterns (below φ⁻¹)
+      if (action === 'fix_confidence') {
+        if (!persistence?.query) {
+          return { error: 'No persistence layer available', timestamp: Date.now() };
+        }
+        try {
+          const result = await persistence.query(`
+            UPDATE patterns
+            SET confidence = $1, updated_at = NOW()
+            WHERE confidence < $1
+            RETURNING pattern_id, category, name, confidence
+          `, [PHI_INV]);
+          return {
+            action: 'fix_confidence',
+            updated: result.rows?.length || 0,
+            patterns: result.rows || [],
+            newConfidence: PHI_INV,
+            timestamp: Date.now(),
+          };
+        } catch (e) {
+          return { error: e.message, timestamp: Date.now() };
+        }
+      }
 
       const patterns = [];
 
