@@ -668,15 +668,16 @@ export class MCPServer {
       return;
     }
 
-    // SSE endpoint for MCP streaming (supports both /sse and /mcp paths)
-    // /mcp is the standard MCP SDK path used by Claude Code
-    if (url.pathname === '/sse' || url.pathname === '/mcp') {
+    // SSE endpoint for MCP streaming (supports both /sse and /mcp GET paths)
+    // GET /mcp or /sse → SSE streaming for Claude Desktop
+    if ((url.pathname === '/sse' || url.pathname === '/mcp') && req.method === 'GET') {
       this._handleSseConnection(req, res);
       return;
     }
 
-    // POST endpoint for JSON-RPC messages
-    if (url.pathname === '/message' && req.method === 'POST') {
+    // POST endpoint for JSON-RPC messages (supports both /message and /mcp paths)
+    // POST /mcp or /message → JSON-RPC for Claude Code
+    if ((url.pathname === '/message' || url.pathname === '/mcp') && req.method === 'POST') {
       await this._handleHttpMessage(req, res);
       return;
     }
