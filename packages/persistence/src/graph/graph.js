@@ -391,13 +391,38 @@ export class GraphOverlay extends EventEmitter {
   }
 
   /**
+   * Resolve a node reference to its actual ID
+   * Accepts either a node ID or a key (type:identifier)
+   * @param {string} ref - Node ID or key
+   * @returns {Promise<string|null>} Node ID or null
+   */
+  async resolveNodeId(ref) {
+    // If it looks like a key (type:identifier), resolve it
+    if (ref.includes(':')) {
+      const [type, identifier] = ref.split(':');
+      const node = await this.getNodeByKey(type, identifier);
+      return node?.id || null;
+    }
+    // Otherwise assume it's already an ID
+    return ref;
+  }
+
+  /**
    * Create and add an edge
    */
   async connect(sourceId, targetId, type, attributes = {}) {
+    // Resolve keys to actual node IDs
+    const resolvedSourceId = await this.resolveNodeId(sourceId);
+    const resolvedTargetId = await this.resolveNodeId(targetId);
+
+    if (!resolvedSourceId || !resolvedTargetId) {
+      throw new Error(`Source or target node not found: ${sourceId} -> ${targetId}`);
+    }
+
     const edge = new GraphEdge({
       type,
-      sourceId,
-      targetId,
+      sourceId: resolvedSourceId,
+      targetId: resolvedTargetId,
       attributes,
     });
     await this.addEdge(edge);
