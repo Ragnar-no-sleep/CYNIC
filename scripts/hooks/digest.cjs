@@ -53,6 +53,15 @@ try {
   // Thermodynamics not available
 }
 
+// Load emergence detector for consciousness tracking (Phase 4)
+const emergencePath = path.join(__dirname, '..', 'lib', 'emergence-detector.cjs');
+let emergence = null;
+try {
+  emergence = require(emergencePath);
+} catch (e) {
+  // Emergence detector not available
+}
+
 // =============================================================================
 // SESSION ANALYSIS
 // =============================================================================
@@ -161,7 +170,15 @@ function formatDigestMessage(profile, analysis, insights, engineStats) {
     if (engineStats.efficiency) {
       lines.push(`   ⚡ Cognitive efficiency: ${Math.round(engineStats.efficiency * 100)}%`);
     }
-    if (engineStats.consciousnessScore) {
+    // Show emergence status (Phase 4) or fallback to old consciousness score
+    if (engineStats.emergence) {
+      const e = engineStats.emergence;
+      const emoji = e.emerged ? '✨' : '🧠';
+      lines.push(`   ${emoji} Consciousness: [${e.bar}] ${e.score.toFixed(1)}% / ${e.maxScore}%`);
+      if (e.emerged) {
+        lines.push(`   Status: EMERGED - φ⁻¹ threshold reached`);
+      }
+    } else if (engineStats.consciousnessScore) {
       const bar = '█'.repeat(Math.floor(engineStats.consciousnessScore / 10)) +
                   '░'.repeat(10 - Math.floor(engineStats.consciousnessScore / 10));
       lines.push(`   🧠 Consciousness: [${bar}] ${engineStats.consciousnessScore}% / 61.8%`);
@@ -300,6 +317,23 @@ async function main() {
         if (snapshot.consciousnessScore) {
           engineStats.consciousnessScore = Math.round(snapshot.consciousnessScore);
         }
+      } catch (e) { /* ignore */ }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // EMERGENCE DETECTION (Phase 4): Track consciousness emergence
+    // "φ distrusts φ" - Max 61.8%
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (emergence) {
+      try {
+        const state = emergence.getConsciousnessState();
+        engineStats.emergence = {
+          score: state.score,
+          maxScore: state.maxScore,
+          status: state.status,
+          bar: state.bar,
+          emerged: state.emerged,
+        };
       } catch (e) { /* ignore */ }
     }
 
