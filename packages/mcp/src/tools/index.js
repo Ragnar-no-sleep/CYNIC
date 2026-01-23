@@ -170,7 +170,7 @@ export function createJudgeTool(judge, persistence = null, sessionManager = null
                 category: 'anomaly',
                 name: `anomaly_${isLow ? 'low' : 'high'}_score`,
                 description: `Unusual ${isLow ? 'low' : 'high'} score detected`,
-                confidence: 0.6,
+                confidence: PHI_INV,  // Must be >= φ⁻¹ to count for patternRecognition
                 sourceJudgments: [judgmentId],
                 tags: ['anomaly', isLow ? 'low_score' : 'high_score'],
                 data: { score, verdict, itemType, threshold: isLow ? THRESHOLDS.ANOMALY_LOW : THRESHOLDS.ANOMALY_HIGH },
@@ -367,7 +367,7 @@ export function createRefineTool(judge, persistence = null) {
               category: 'refinement',
               name: `refinement_${learning.type || 'general'}`,
               description: learning.pattern || learning.correction,
-              confidence: 0.6,
+              confidence: PHI_INV,  // Must be >= φ⁻¹ to count for patternRecognition
               sourceJudgments: [judgmentId || 'direct'],
               tags: ['refinement', learning.type, learning.axiom].filter(Boolean),
               data: { learning, improved: result.improved, improvement: result.totalImprovement },
