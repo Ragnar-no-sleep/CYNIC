@@ -108,7 +108,7 @@ function registerConcepts() {
       'Not doing nothing',
       'Not withdrawal from world'
     ],
-    meaning: [
+    aspects: [
       'Action without forcing',
       'Going with the grain',
       'Effortless effectiveness',

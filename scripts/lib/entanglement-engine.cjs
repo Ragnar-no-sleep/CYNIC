@@ -342,7 +342,7 @@ function contextCorrelation(patterns, c1, c2) {
   let both = 0;
   let p1Only = 0;
   let p2Only = 0;
-  let neither = 0;
+  const _neither = 0;
 
   const relevantObs = entanglementState.observations.filter(
     o => o.context === c1 || o.context === c2
