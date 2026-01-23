@@ -177,6 +177,7 @@ export class ConsensusEngine extends EventEmitter {
     }
 
     this.emit('consensus:stopped');
+    this.removeAllListeners();
   }
 
   /**
