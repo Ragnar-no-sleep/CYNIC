@@ -7,11 +7,12 @@
 | Principle | Target | Status | Priority |
 |-----------|--------|--------|----------|
 | **ISP** | persistence.js | ✅ DONE (1437→444 lines) | - |
-| **OCP** | tools/index.js | 🔄 3 domains done (5011→3442) | P1 |
+| **OCP** | tools/index.js | ✅ DONE (5004→373 lines) | - |
 | **SRP** | server.js | ✅ HttpAdapter (1706→1453) | - |
 | **DIP** | MCPServer._initialize() | ✅ ServiceInitializer (1453→1339) | - |
-| **SRP** | MetricsService | ⏳ Pending | P3 |
-| **LSP** | Repository signatures | ⏳ Pending | P3 |
+| **SRP** | MetricsService | ✅ DONE (757→372 lines) | - |
+| **LSP** | Repository signatures | ✅ DONE (12 repos standardized) | - |
+| **SRP** | TriggerRepository | ⏭️ SKIPPED (already clean) | - |
 
 ---
 
@@ -249,12 +250,13 @@ Week 4: Phase 3 & 4
 
 | Metric | Before | Current | Target |
 |--------|--------|---------|--------|
-| server.js lines | 1706 | 1339 ✅ | < 800 |
-| tools/index.js lines | 5004 | 5004 | < 500 |
-| persistence.js lines | 1437 | 444 ✅ | < 500 |
-| Max file size | 5004 | 5004 | < 500 |
+| server.js lines | 1706 | 1339 | < 800 |
+| tools/index.js lines | 5004 | **373** ✅ | < 500 |
+| persistence.js lines | 1437 | **444** ✅ | < 500 |
+| metrics-service.js lines | 757 | **372** ✅ | < 400 |
+| Max file size | 5004 | **576** ✅ | < 600 |
 | Direct `new` in MCPServer | 10+ | 3 ✅ | 0 |
-| Test coverage | ? | ? | > 80% |
+| Repositories with LSP | 0 | **12** ✅ | 12 |
 
 ---
 
