@@ -710,7 +710,8 @@ export class CollectivePack {
         for (const result of agentResults) {
           if (result.response === 'block' || result.response === 'warn') {
             // Record significant dog decisions as graph edges
-            await this.graphIntegration.graph?.addEdge?.(
+            // Use connect() which takes (sourceId, targetId, type, attributes)
+            await this.graphIntegration.graph?.connect?.(
               `dog:${result.agent}`,
               `tool:${payload.tool || 'unknown'}`,
               result.response,
