@@ -599,6 +599,17 @@ export function createConsciousnessMonitor(options = {}) {
   return new ConsciousnessMonitor(options);
 }
 
+/**
+ * @deprecated Use named exports instead of default export.
+ * Default export will be removed in v2.0.
+ *
+ * @example
+ * // Preferred:
+ * import { ConsciousnessMonitor, createConsciousnessMonitor } from '@cynic/emergence';
+ *
+ * // Deprecated:
+ * import ConsciousnessMonitorModule from '@cynic/emergence/consciousness-monitor';
+ */
 export default {
   ConsciousnessMonitor,
   createConsciousnessMonitor,

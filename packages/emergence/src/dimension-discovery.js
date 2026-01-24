@@ -642,6 +642,7 @@ export function createDimensionDiscovery(options = {}) {
   return new DimensionDiscovery(options);
 }
 
+/** @deprecated Use named exports instead. Will be removed in v2.0. */
 export default {
   DimensionDiscovery,
   createDimensionDiscovery,

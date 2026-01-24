@@ -565,6 +565,7 @@ export function createPatternDetector(options = {}) {
   return new PatternDetector(options);
 }
 
+/** @deprecated Use named exports instead. Will be removed in v2.0. */
 export default {
   PatternDetector,
   createPatternDetector,

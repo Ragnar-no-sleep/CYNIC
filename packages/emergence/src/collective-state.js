@@ -648,6 +648,7 @@ export function createCollectiveState(options = {}) {
   return new CollectiveState(options);
 }
 
+/** @deprecated Use named exports instead. Will be removed in v2.0. */
 export default {
   CollectiveState,
   createCollectiveState,
