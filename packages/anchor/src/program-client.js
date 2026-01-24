@@ -11,6 +11,7 @@
 'use strict';
 
 import { CYNIC_PROGRAM, SolanaCluster } from './constants.js';
+import BN from 'bn.js';
 
 /**
  * IDL for the CYNIC Anchor program
@@ -215,7 +216,7 @@ export class CynicProgramClient {
     const [rootPda] = await this.getRootPda(rootBytes);
 
     const signature = await this._program.methods
-      .anchorRoot(Array.from(rootBytes), itemCount, BigInt(blockHeight))
+      .anchorRoot(Array.from(rootBytes), itemCount, new BN(blockHeight))
       .accounts({
         rootEntry: rootPda,
       })
