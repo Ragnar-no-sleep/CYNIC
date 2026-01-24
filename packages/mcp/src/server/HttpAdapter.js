@@ -32,6 +32,11 @@ const MAX_BODY_SIZE = 1024 * 1024; // 1MB max request body
 const REQUEST_TIMEOUT_MS = 30000; // 30 second request timeout
 const MAX_RESPONSE_SIZE = 100 * 1024; // 100KB max response
 
+// Rate limiting constants (φ-aligned)
+const RATE_LIMIT_WINDOW_MS = 61800; // ~61.8 seconds (φ⁻¹ × 100000ms)
+const RATE_LIMIT_MAX_REQUESTS = 100; // Max requests per window
+const RATE_LIMIT_EXEMPT_PATHS = ['/health', '/', '/metrics']; // Public paths
+
 /**
  * HTTP Adapter - Handles all HTTP concerns
  */
@@ -55,6 +60,14 @@ export class HttpAdapter {
     this._server = null;
     this._sseClients = new Set();
     this._activeRequests = new Set();
+
+    // Rate limiting (sliding window per IP)
+    this._rateLimits = new Map(); // IP -> { count, windowStart }
+    this._rateLimitConfig = {
+      windowMs: options.rateLimitWindow || RATE_LIMIT_WINDOW_MS,
+      maxRequests: options.rateLimitMax || RATE_LIMIT_MAX_REQUESTS,
+      enabled: options.rateLimit !== false, // Enabled by default
+    };
 
     // Route handlers (injected)
     this._routes = {
@@ -194,7 +207,13 @@ export class HttpAdapter {
         return;
       }
 
+      // Parse URL once for rate limiting and routing
       const url = new URL(req.url, `http://localhost:${this.port}`);
+
+      // Rate limiting check (skip for exempt paths)
+      if (!this._checkRateLimit(req, res, url.pathname)) {
+        return; // Rate limited response already sent
+      }
 
       // Route request
       await this._routeRequest(req, res, url);
@@ -398,6 +417,72 @@ export class HttpAdapter {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  }
+
+  /**
+   * Check rate limit for request
+   * @param {http.IncomingMessage} req
+   * @param {http.ServerResponse} res
+   * @param {string} pathname
+   * @returns {boolean} True if request is allowed
+   * @private
+   */
+  _checkRateLimit(req, res, pathname) {
+    // Skip if disabled or exempt path
+    if (!this._rateLimitConfig.enabled) return true;
+    if (RATE_LIMIT_EXEMPT_PATHS.some(p => pathname === p || pathname.startsWith(p + '/'))) {
+      return true;
+    }
+
+    // Get client IP
+    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
+               req.socket.remoteAddress ||
+               'unknown';
+
+    const now = Date.now();
+    const { windowMs, maxRequests } = this._rateLimitConfig;
+
+    // Get or create rate limit entry
+    let entry = this._rateLimits.get(ip);
+    if (!entry || now - entry.windowStart > windowMs) {
+      // New window
+      entry = { count: 0, windowStart: now };
+      this._rateLimits.set(ip, entry);
+    }
+
+    entry.count++;
+
+    // Add rate limit headers
+    const remaining = Math.max(0, maxRequests - entry.count);
+    const reset = Math.ceil((entry.windowStart + windowMs - now) / 1000);
+    res.setHeader('X-RateLimit-Limit', maxRequests);
+    res.setHeader('X-RateLimit-Remaining', remaining);
+    res.setHeader('X-RateLimit-Reset', reset);
+
+    // Check if over limit
+    if (entry.count > maxRequests) {
+      res.writeHead(429, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        error: 'Too many requests',
+        retryAfter: reset,
+      }));
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * Clean up old rate limit entries (call periodically)
+   */
+  cleanupRateLimits() {
+    const now = Date.now();
+    const { windowMs } = this._rateLimitConfig;
+    for (const [ip, entry] of this._rateLimits) {
+      if (now - entry.windowStart > windowMs * 2) {
+        this._rateLimits.delete(ip);
+      }
+    }
   }
 
   /**
