@@ -38,10 +38,10 @@ CYNIC development follows a phased approach, building from core functionality to
 
 ### In Progress
 
-- **Identity Layer** (@cynic/identity)
-  - E-Score calculation
-  - Reputation graph
-  - Key management
+- **Identity Layer** (@cynic/identity) ✅
+  - E-Score calculation ✅ (7-dimension φ-weighted)
+  - Reputation graph ✅
+  - Key management ✅
 
 - **Emergence Layer** (@cynic/emergence)
   - Consciousness monitoring
@@ -65,8 +65,8 @@ CYNIC development follows a phased approach, building from core functionality to
 | PoJ chain persistence | ✅ | PostgreSQL + DAG |
 | Solana anchoring | ✅ | Basic anchoring queue |
 | Burn verification | ✅ | On-chain verification |
-| E-Score calculation | 🔄 | Identity package |
-| Unit test coverage | 🔄 | Core packages |
+| E-Score calculation | ✅ | 7-dimension φ-weighted (identity package) |
+| Unit test coverage | ✅ | 1713 tests across 9 packages |
 
 ### Phase 2: Dashboard
 
