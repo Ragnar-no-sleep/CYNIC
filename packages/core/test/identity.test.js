@@ -83,8 +83,9 @@ describe('CYNIC Identity', () => {
       assert.strictEqual(VERDICTS.WAG.threshold, 50);
     });
 
-    it('has GROWL threshold at 38.2', () => {
-      assert.ok(Math.abs(VERDICTS.GROWL.threshold - 38.2) < 0.1);
+    it('has GROWL threshold at 38 (φ⁻² rounded)', () => {
+      // THRESHOLDS.GROWL = Math.round(PHI_INV_2 * 100) = 38
+      assert.strictEqual(VERDICTS.GROWL.threshold, 38);
     });
 
     it('each verdict has emoji and reaction', () => {

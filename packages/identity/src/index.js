@@ -79,24 +79,29 @@ export {
   THRESHOLDS as ESCORE_THRESHOLDS,
 } from './e-score.js';
 
-// E-Score 7D (full 7-dimension calculation)
+// E-Score 7D (full 7-dimension symmetric calculation)
+// Dimensions: BURN(φ³) > BUILD(φ²) > JUDGE(φ) > RUN(1) > SOCIAL(φ⁻¹) > GRAPH(φ⁻²) > HOLD(φ⁻³)
+// Total weight = 3√5 + 4 ≈ 10.708
 export {
   EScore7DCalculator,
   createEScore7DCalculator,
   calculateEScore7D,
   getTrustLevel,
   toDbFormat as escoreToDbFormat,
-  normalizeHold,
-  normalizeBuild,
-  normalizeJudge,
-  normalizeBurn,
-  normalizeStake,
-  normalizeShare,
-  normalizeTrust,
+  // Normalizers (in φ-weight order)
+  normalizeBurn,    // φ³ - sacrifice
+  normalizeBuild,   // φ² - creation
+  normalizeJudge,   // φ  - validation
+  normalizeRun,     // 1  - operation (center)
+  normalizeSocial,  // φ⁻¹ - content quality
+  normalizeGraph,   // φ⁻² - network position
+  normalizeHold,    // φ⁻³ - passive stake
+  // Constants
   DIMENSIONS as ESCORE_7D_DIMENSIONS,
   THRESHOLDS as ESCORE_7D_THRESHOLDS,
   TRUST_LEVELS,
   TOTAL_WEIGHT as ESCORE_7D_TOTAL_WEIGHT,
+  PHI_POWERS as ESCORE_7D_PHI_POWERS,
 } from './e-score-7d.js';
 
 // Node identity

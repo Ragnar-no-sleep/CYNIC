@@ -1,20 +1,32 @@
 /**
  * E-Score 7D - Seven-Dimension Ecosystem Score Calculator
  *
- * "Trust is earned through seven paths" - κυνικός
+ * "φ distrusts φ. Trust is earned through sacrifice." - κυνικός
  *
- * Full E-Score calculation with 7 φ-weighted dimensions:
+ * Symmetric φ-aligned scoring system:
  *
- *   E = Σ(dimension_i × φ^weight_i) / Σ(φ^weight_i) × 100
+ *   E = Σ(dimension_i × weight_i) / Σ(weight_i) × 100
  *
- * Dimensions (from highest to lowest weight):
- *   1. HOLD  (φ⁶) - Token holding patterns
- *   2. BUILD (φ⁵) - Code contributions
- *   3. JUDGE (φ⁴) - Judgment accuracy
- *   4. BURN  (φ³) - Token burns
- *   5. STAKE (φ²) - Node operation
- *   6. SHARE (φ¹) - Knowledge sharing
- *   7. TRUST (φ⁰) - Community trust
+ * 7 Dimensions (symmetric around RUN = 1):
+ *
+ *   BURN   φ³  = 4.236   Sacrifice (tokens burned) - HIGHEST
+ *   BUILD  φ²  = 2.618   Creation (git-signed code)
+ *   JUDGE  φ   = 1.618   Validation (PoJ consensus + content quality)
+ *   RUN    1   = 1.000   Operation (node uptime) - CENTER
+ *   SOCIAL φ⁻¹ = 0.618   Content quality (AI-judged)
+ *   GRAPH  φ⁻² = 0.382   Network position (trust received)
+ *   HOLD   φ⁻³ = 0.236   Stake (passive holding) - LOWEST
+ *
+ * Total Weight = 3√5 + 4 ≈ 10.708
+ *
+ * Symmetry:
+ *   BURN ↔ HOLD   (φ³ ↔ φ⁻³)  Sacrifice vs Passive
+ *   BUILD ↔ GRAPH (φ² ↔ φ⁻²)  Create vs Receive trust
+ *   JUDGE ↔ SOCIAL(φ ↔ φ⁻¹)   Validate vs Contribute
+ *   RUN = CENTER  (1)         Operation as neutral point
+ *
+ * Philosophy: Active contribution > passive holding
+ * All dimensions are verifiable (on-chain, git, PoJ, AI-judged, ReputationGraph)
  *
  * @module @cynic/identity/escore-7d
  */
@@ -28,70 +40,85 @@ import { PHI, PHI_INV } from '@cynic/core';
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * φ powers for dimension weights
+ * φ powers for dimension weights (symmetric around 1)
+ *
+ * Mathematical identities:
+ *   φ + φ⁻¹ = √5
+ *   φ² + φ⁻² = 3
+ *   φ³ + φ⁻³ = 2√5
  */
 export const PHI_POWERS = {
-  PHI_6: Math.pow(PHI, 6),  // 17.944
-  PHI_5: Math.pow(PHI, 5),  // 11.090
-  PHI_4: Math.pow(PHI, 4),  // 6.854
-  PHI_3: Math.pow(PHI, 3),  // 4.236
-  PHI_2: Math.pow(PHI, 2),  // 2.618
-  PHI_1: PHI,               // 1.618
-  PHI_0: 1,                 // 1.000
+  PHI_3: Math.pow(PHI, 3),        // 4.236 - BURN (sacrifice)
+  PHI_2: Math.pow(PHI, 2),        // 2.618 - BUILD (create)
+  PHI_1: PHI,                     // 1.618 - JUDGE (validate)
+  PHI_0: 1,                       // 1.000 - RUN (operate) - CENTER
+  PHI_NEG_1: PHI_INV,             // 0.618 - SOCIAL (content quality)
+  PHI_NEG_2: Math.pow(PHI_INV, 2), // 0.382 - GRAPH (network position)
+  PHI_NEG_3: Math.pow(PHI_INV, 3), // 0.236 - HOLD (passive)
 };
 
 /**
- * Seven dimensions with φ-aligned weights
+ * Seven dimensions with φ-aligned weights (symmetric around RUN)
  *
- * Total weight = φ⁶ + φ⁵ + φ⁴ + φ³ + φ² + φ¹ + φ⁰ ≈ 45.36
+ * Total weight = φ³ + φ² + φ + 1 + φ⁻¹ + φ⁻² + φ⁻³
+ *              = (φ³ + φ⁻³) + (φ² + φ⁻²) + (φ + φ⁻¹) + 1
+ *              = 2√5 + 3 + √5 + 1
+ *              = 3√5 + 4 ≈ 10.708
  */
 export const DIMENSIONS = {
-  HOLD: {
-    key: 'hold',
-    weight: PHI_POWERS.PHI_6,
-    description: 'Token holding patterns',
-    dbColumn: 'hold_score',
+  BURN: {
+    key: 'burn',
+    weight: PHI_POWERS.PHI_3,  // φ³ = 4.236 (HIGHEST - sacrifice)
+    description: 'Token burns (sacrifice for weight)',
+    dbColumn: 'burn_score',
+    verifiable: 'on-chain',
   },
   BUILD: {
     key: 'build',
-    weight: PHI_POWERS.PHI_5,
+    weight: PHI_POWERS.PHI_2,  // φ² = 2.618 (create value)
     description: 'Code contributions (commits, PRs, issues)',
     dbColumn: 'build_score',
+    verifiable: 'git-signed',
   },
   JUDGE: {
     key: 'judge',
-    weight: PHI_POWERS.PHI_4,
-    description: 'Judgment accuracy (consensus agreement)',
-    dbColumn: 'use_score',  // Maps to "use" in DB schema
+    weight: PHI_POWERS.PHI_1,  // φ = 1.618 (validate)
+    description: 'Judgment accuracy (PoJ consensus + content quality)',
+    dbColumn: 'judge_score',
+    verifiable: 'PoJ',
   },
-  BURN: {
-    key: 'burn',
-    weight: PHI_POWERS.PHI_3,
-    description: 'Token burns (sacrifice for weight)',
-    dbColumn: 'burn_score',
-  },
-  STAKE: {
-    key: 'stake',
-    weight: PHI_POWERS.PHI_2,
+  RUN: {
+    key: 'run',
+    weight: PHI_POWERS.PHI_0,  // 1 = 1.000 (CENTER - operate)
     description: 'Node operation (uptime, blocks processed)',
-    dbColumn: 'run_score',  // Maps to "run" in DB schema
+    dbColumn: 'run_score',
+    verifiable: 'heartbeats',
   },
-  SHARE: {
-    key: 'share',
-    weight: PHI_POWERS.PHI_1,
-    description: 'Knowledge sharing (docs, tutorials, referrals)',
-    dbColumn: 'refer_score',  // Maps to "refer" in DB schema
+  SOCIAL: {
+    key: 'social',
+    weight: PHI_POWERS.PHI_NEG_1,  // φ⁻¹ = 0.618 (content quality)
+    description: 'Social content quality (AI-judged tweets, posts)',
+    dbColumn: 'social_score',
+    verifiable: 'AI-judged',
   },
-  TRUST: {
-    key: 'trust',
-    weight: PHI_POWERS.PHI_0,
-    description: 'Community trust (vouches, time in ecosystem)',
-    dbColumn: 'time_score',  // Maps to "time" in DB schema
+  GRAPH: {
+    key: 'graph',
+    weight: PHI_POWERS.PHI_NEG_2,  // φ⁻² = 0.382 (network position)
+    description: 'Network position (trust received in ReputationGraph)',
+    dbColumn: 'graph_score',
+    verifiable: 'ReputationGraph',
+  },
+  HOLD: {
+    key: 'hold',
+    weight: PHI_POWERS.PHI_NEG_3,  // φ⁻³ = 0.236 (LOWEST - passive)
+    description: 'Token holding patterns (passive stake)',
+    dbColumn: 'hold_score',
+    verifiable: 'on-chain',
   },
 };
 
 /**
- * Total weight for normalization
+ * Total weight for normalization = 3√5 + 4
  */
 export const TOTAL_WEIGHT = Object.values(DIMENSIONS)
   .reduce((sum, dim) => sum + dim.weight, 0);
@@ -100,11 +127,11 @@ export const TOTAL_WEIGHT = Object.values(DIMENSIONS)
  * E-Score thresholds (φ-aligned)
  */
 export const THRESHOLDS = {
-  GUARDIAN: PHI_INV * 100,     // 61.8% - Guardian level
-  STEWARD: PHI_INV ** 2 * 100, // 38.2% - Steward level
-  BUILDER: 30,                  // Builder level
-  CONTRIBUTOR: 15,              // Contributor level
-  OBSERVER: 0,                  // New participant
+  GUARDIAN: PHI_INV * 100,       // 61.8% - Guardian level
+  STEWARD: PHI_INV ** 2 * 100,   // 38.2% - Steward level
+  BUILDER: 30,                    // Builder level
+  CONTRIBUTOR: 15,                // Contributor level
+  OBSERVER: 0,                    // New participant
 };
 
 /**
@@ -123,12 +150,175 @@ export const TRUST_LEVELS = {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Normalize HOLD dimension (token holding)
+ * Normalize BURN dimension (token sacrifice)
+ *
+ * @param {Object} params
+ * @param {number} params.totalBurned - Total tokens burned
+ * @param {number} [params.scale=1e9] - Scale for normalization (1B default)
+ * @returns {number} Normalized score [0, 1]
+ */
+export function normalizeBurn({
+  totalBurned = 0,
+  scale = 1e9,
+}) {
+  if (totalBurned <= 0) return 0;
+
+  // Log scale with φ base for harmonic scaling
+  const normalized = Math.log(1 + totalBurned / scale) / Math.log(PHI + totalBurned / scale);
+
+  return Math.min(1, Math.max(0, normalized));
+}
+
+/**
+ * Normalize BUILD dimension (code contributions)
+ *
+ * @param {Object} params
+ * @param {number} [params.commits=0] - Number of commits
+ * @param {number} [params.prs=0] - Number of merged PRs
+ * @param {number} [params.issues=0] - Number of issues
+ * @returns {number} Normalized score [0, 1]
+ */
+export function normalizeBuild({
+  commits = 0,
+  prs = 0,
+  issues = 0,
+}) {
+  // Weight: commits = 1, PRs = 5, issues = 2
+  const weighted = commits + (prs * 5) + (issues * 2);
+
+  if (weighted <= 0) return 0;
+
+  // Log scale - 100 weighted contributions = 0.5, 1000 = ~0.75
+  return Math.min(1, Math.log10(weighted + 1) / 3);
+}
+
+/**
+ * Normalize JUDGE dimension (validation accuracy + content quality)
+ *
+ * @param {Object} params
+ * @param {number} params.agreementCount - Judgments matching consensus
+ * @param {number} params.totalJudgments - Total judgments made
+ * @param {number} [params.contentQualityScore=0] - Quality of judged content [0,1]
+ * @param {number} [params.minJudgments=10] - Minimum for meaningful score
+ * @returns {number} Normalized score [0, 1]
+ */
+export function normalizeJudge({
+  agreementCount = 0,
+  totalJudgments = 0,
+  contentQualityScore = 0,
+  minJudgments = 10,
+}) {
+  let judgmentAccuracy = 0;
+
+  if (totalJudgments < minJudgments) {
+    // Not enough data - scale linearly with participation
+    judgmentAccuracy = 0.5 * (totalJudgments / minJudgments);
+  } else {
+    judgmentAccuracy = agreementCount / totalJudgments;
+  }
+
+  // 80% weight on judgment accuracy, 20% on content quality
+  const score = judgmentAccuracy * 0.8 + contentQualityScore * 0.2;
+
+  return Math.min(1, Math.max(0, score));
+}
+
+/**
+ * Normalize RUN dimension (node operation) - CENTER dimension
+ *
+ * @param {Object} params
+ * @param {number} params.uptimeSeconds - Actual uptime
+ * @param {number} params.expectedUptimeSeconds - Expected uptime
+ * @param {number} [params.blocksProcessed=0] - Blocks processed
+ * @param {number} [params.expectedBlocks=0] - Expected blocks
+ * @returns {number} Normalized score [0, 1]
+ */
+export function normalizeRun({
+  uptimeSeconds = 0,
+  expectedUptimeSeconds = 0,
+  blocksProcessed = 0,
+  expectedBlocks = 0,
+}) {
+  if (expectedUptimeSeconds <= 0) return 0;
+
+  // Uptime ratio (70% weight)
+  const uptimeRatio = Math.min(1, uptimeSeconds / expectedUptimeSeconds);
+
+  // Block processing ratio (30% weight)
+  let blockRatio = 0;
+  if (expectedBlocks > 0) {
+    blockRatio = Math.min(1, blocksProcessed / expectedBlocks);
+  }
+
+  return uptimeRatio * 0.7 + blockRatio * 0.3;
+}
+
+/**
+ * Normalize SOCIAL dimension (AI-judged content quality)
+ *
+ * Based on AI analysis of social content (tweets, posts, replies):
+ * - Quality score from CYNIC judgment
+ * - Engagement authenticity
+ * - Ecosystem relevance
+ *
+ * @param {Object} params
+ * @param {number} [params.qualityScore=0] - AI-judged quality score [0,1]
+ * @param {number} [params.contentCount=0] - Number of pieces analyzed
+ * @param {number} [params.relevanceScore=0] - Ecosystem relevance [0,1]
+ * @param {number} [params.minContent=5] - Minimum content for meaningful score
+ * @returns {number} Normalized score [0, 1]
+ */
+export function normalizeSocial({
+  qualityScore = 0,
+  contentCount = 0,
+  relevanceScore = 0,
+  minContent = 5,
+}) {
+  if (contentCount < minContent) {
+    // Not enough data - scale linearly
+    return qualityScore * 0.5 * (contentCount / minContent);
+  }
+
+  // 70% quality, 30% relevance
+  return Math.min(1, Math.max(0, qualityScore * 0.7 + relevanceScore * 0.3));
+}
+
+/**
+ * Normalize GRAPH dimension (network position in ReputationGraph)
  *
  * Based on:
- * - Total holdings relative to circulating supply
- * - Diamond hands factor (holding duration)
- * - Distribution (not concentrated in one wallet)
+ * - Trust received from other nodes
+ * - Network centrality
+ * - Transitive trust score
+ *
+ * @param {Object} params
+ * @param {number} [params.trustReceived=0] - Direct trust score received [0,1]
+ * @param {number} [params.transitiveScore=0] - Transitive trust score [0,1]
+ * @param {number} [params.trustedByCount=0] - Number of nodes that trust you
+ * @param {number} [params.networkSize=1] - Total network size
+ * @returns {number} Normalized score [0, 1]
+ */
+export function normalizeGraph({
+  trustReceived = 0,
+  transitiveScore = 0,
+  trustedByCount = 0,
+  networkSize = 1,
+}) {
+  // Direct trust (40% weight)
+  const directScore = trustReceived * 0.4;
+
+  // Transitive trust (40% weight)
+  const transitScore = transitiveScore * 0.4;
+
+  // Network coverage (20% weight) - what % of network trusts you
+  const coverageRatio = networkSize > 0 ? trustedByCount / networkSize : 0;
+  const coverageScore = Math.min(0.2, coverageRatio * 0.2);
+
+  return Math.min(1, Math.max(0, directScore + transitScore + coverageScore));
+}
+
+/**
+ * Normalize HOLD dimension (passive token holding) - LOWEST weight
  *
  * @param {Object} params
  * @param {number} params.holdings - Total token holdings
@@ -158,162 +348,6 @@ export function normalizeHold({
   return Math.min(1, Math.max(0, holdingScore + diamondBonus + distBonus));
 }
 
-/**
- * Normalize BUILD dimension (code contributions)
- *
- * Based on:
- * - Commits
- * - Pull requests (merged)
- * - Issues opened/closed
- *
- * @param {Object} params
- * @param {number} [params.commits=0] - Number of commits
- * @param {number} [params.prs=0] - Number of merged PRs
- * @param {number} [params.issues=0] - Number of issues
- * @returns {number} Normalized score [0, 1]
- */
-export function normalizeBuild({
-  commits = 0,
-  prs = 0,
-  issues = 0,
-}) {
-  // Weight: commits = 1, PRs = 5, issues = 2
-  const weighted = commits + (prs * 5) + (issues * 2);
-
-  // Log scale - 100 weighted contributions = 0.5, 1000 = ~0.75
-  if (weighted <= 0) return 0;
-
-  return Math.min(1, Math.log10(weighted + 1) / 3);
-}
-
-/**
- * Normalize JUDGE dimension (judgment accuracy)
- *
- * @param {Object} params
- * @param {number} params.agreementCount - Judgments matching consensus
- * @param {number} params.totalJudgments - Total judgments made
- * @param {number} [params.minJudgments=10] - Minimum for meaningful score
- * @returns {number} Normalized score [0, 1]
- */
-export function normalizeJudge({
-  agreementCount = 0,
-  totalJudgments = 0,
-  minJudgments = 10,
-}) {
-  if (totalJudgments < minJudgments) {
-    // Not enough data - scale linearly with participation
-    return 0.5 * (totalJudgments / minJudgments);
-  }
-
-  return Math.min(1, Math.max(0, agreementCount / totalJudgments));
-}
-
-/**
- * Normalize BURN dimension (token burns)
- *
- * @param {Object} params
- * @param {number} params.totalBurned - Total tokens burned
- * @param {number} [params.scale=1e9] - Scale for normalization (1B default)
- * @returns {number} Normalized score [0, 1]
- */
-export function normalizeBurn({
-  totalBurned = 0,
-  scale = 1e9,
-}) {
-  if (totalBurned <= 0) return 0;
-
-  // Log scale with φ base for harmonic scaling
-  const normalized = Math.log(1 + totalBurned / scale) / Math.log(PHI + totalBurned / scale);
-
-  return Math.min(1, Math.max(0, normalized));
-}
-
-/**
- * Normalize STAKE dimension (node operation)
- *
- * @param {Object} params
- * @param {number} params.uptimeSeconds - Actual uptime
- * @param {number} params.expectedUptimeSeconds - Expected uptime
- * @param {number} [params.blocksProcessed=0] - Blocks processed
- * @param {number} [params.expectedBlocks=0] - Expected blocks
- * @returns {number} Normalized score [0, 1]
- */
-export function normalizeStake({
-  uptimeSeconds = 0,
-  expectedUptimeSeconds = 0,
-  blocksProcessed = 0,
-  expectedBlocks = 0,
-}) {
-  if (expectedUptimeSeconds <= 0) return 0;
-
-  // Uptime ratio (70% weight)
-  const uptimeRatio = Math.min(1, uptimeSeconds / expectedUptimeSeconds);
-
-  // Block processing ratio (30% weight)
-  let blockRatio = 0;
-  if (expectedBlocks > 0) {
-    blockRatio = Math.min(1, blocksProcessed / expectedBlocks);
-  }
-
-  return uptimeRatio * 0.7 + blockRatio * 0.3;
-}
-
-/**
- * Normalize SHARE dimension (knowledge sharing)
- *
- * @param {Object} params
- * @param {number} [params.docsWritten=0] - Documentation contributions
- * @param {number} [params.tutorialsCreated=0] - Tutorials created
- * @param {number} [params.questionsAnswered=0] - Community questions answered
- * @param {number} [params.referrals=0] - Successful referrals
- * @returns {number} Normalized score [0, 1]
- */
-export function normalizeShare({
-  docsWritten = 0,
-  tutorialsCreated = 0,
-  questionsAnswered = 0,
-  referrals = 0,
-}) {
-  // Weight: docs = 3, tutorials = 5, answers = 1, referrals = 2
-  const weighted = (docsWritten * 3) + (tutorialsCreated * 5) +
-                   questionsAnswered + (referrals * 2);
-
-  if (weighted <= 0) return 0;
-
-  return Math.min(1, Math.log10(weighted + 1) / 2);
-}
-
-/**
- * Normalize TRUST dimension (community trust)
- *
- * Based on:
- * - Vouches from other users
- * - Time in ecosystem
- * - Reputation graph trust score
- *
- * @param {Object} params
- * @param {number} [params.vouches=0] - Number of vouches received
- * @param {number} [params.daysInEcosystem=0] - Days since first activity
- * @param {number} [params.reputationScore=0] - From ReputationGraph [0, 1]
- * @returns {number} Normalized score [0, 1]
- */
-export function normalizeTrust({
-  vouches = 0,
-  daysInEcosystem = 0,
-  reputationScore = 0,
-}) {
-  // Vouches (40% weight) - log scale
-  const vouchScore = vouches > 0 ? Math.min(0.4, Math.log10(vouches + 1) / 2.5) : 0;
-
-  // Time factor (30% weight) - max at 2 years
-  const timeScore = Math.min(0.3, daysInEcosystem / 730 * 0.3);
-
-  // Reputation (30% weight)
-  const repScore = reputationScore * 0.3;
-
-  return Math.min(1, vouchScore + timeScore + repScore);
-}
-
 // ═══════════════════════════════════════════════════════════════════════════
 // MAIN CALCULATION
 // ═══════════════════════════════════════════════════════════════════════════
@@ -333,28 +367,28 @@ export function getTrustLevel(score) {
 }
 
 /**
- * Calculate full 7-dimension E-Score
+ * Calculate full 7-dimension E-Score (symmetric model)
  *
  * @param {Object} params - Input parameters for all dimensions
- * @param {Object} [params.hold] - HOLD dimension params
- * @param {Object} [params.build] - BUILD dimension params
- * @param {Object} [params.judge] - JUDGE dimension params
- * @param {Object} [params.burn] - BURN dimension params
- * @param {Object} [params.stake] - STAKE dimension params
- * @param {Object} [params.share] - SHARE dimension params
- * @param {Object} [params.trust] - TRUST dimension params
+ * @param {Object} [params.burn] - BURN dimension params (sacrifice)
+ * @param {Object} [params.build] - BUILD dimension params (create)
+ * @param {Object} [params.judge] - JUDGE dimension params (validate)
+ * @param {Object} [params.run] - RUN dimension params (operate)
+ * @param {Object} [params.social] - SOCIAL dimension params (content quality)
+ * @param {Object} [params.graph] - GRAPH dimension params (network position)
+ * @param {Object} [params.hold] - HOLD dimension params (passive)
  * @returns {Object} E-Score result with breakdown
  */
 export function calculateEScore7D(params = {}) {
   // Normalize each dimension
   const normalized = {
-    hold: normalizeHold(params.hold || {}),
+    burn: normalizeBurn(params.burn || {}),
     build: normalizeBuild(params.build || {}),
     judge: normalizeJudge(params.judge || {}),
-    burn: normalizeBurn(params.burn || {}),
-    stake: normalizeStake(params.stake || {}),
-    share: normalizeShare(params.share || {}),
-    trust: normalizeTrust(params.trust || {}),
+    run: normalizeRun(params.run || {}),
+    social: normalizeSocial(params.social || {}),
+    graph: normalizeGraph(params.graph || {}),
+    hold: normalizeHold(params.hold || {}),
   };
 
   // Calculate weighted sum
@@ -385,15 +419,15 @@ export function calculateEScore7D(params = {}) {
     trustLevelValue: TRUST_LEVELS[getTrustLevel(score)],
     dimensions: contributions,
     breakdown: {
-      hold: Math.round(normalized.hold * 100),
+      burn: Math.round(normalized.burn * 100),
       build: Math.round(normalized.build * 100),
       judge: Math.round(normalized.judge * 100),
-      burn: Math.round(normalized.burn * 100),
-      stake: Math.round(normalized.stake * 100),
-      share: Math.round(normalized.share * 100),
-      trust: Math.round(normalized.trust * 100),
+      run: Math.round(normalized.run * 100),
+      social: Math.round(normalized.social * 100),
+      graph: Math.round(normalized.graph * 100),
+      hold: Math.round(normalized.hold * 100),
     },
-    formula: 'E = Σ(dim × φ^weight) / Σ(φ^weight) × 100',
+    formula: 'E = Σ(dim × φ^weight) / (3√5 + 4) × 100',
     totalWeight: TOTAL_WEIGHT,
     timestamp: Date.now(),
   };
@@ -407,13 +441,13 @@ export function calculateEScore7D(params = {}) {
  */
 export function toDbFormat(breakdown) {
   return {
-    hold: breakdown.hold,
     burn: breakdown.burn,
-    use: breakdown.judge,   // JUDGE → use
     build: breakdown.build,
-    run: breakdown.stake,   // STAKE → run
-    refer: breakdown.share, // SHARE → refer
-    time: breakdown.trust,  // TRUST → time
+    judge: breakdown.judge,
+    run: breakdown.run,
+    social: breakdown.social,
+    graph: breakdown.graph,
+    hold: breakdown.hold,
   };
 }
 
@@ -426,42 +460,46 @@ export function toDbFormat(breakdown) {
  */
 export class EScore7DCalculator {
   constructor() {
-    // HOLD state
-    this.holdings = 0;
-    this.circulatingSupply = 1e12;
-    this.holdingStartDate = null;
-    this.walletCount = 1;
+    // BURN state (φ³)
+    this.totalBurned = 0;
+    this.burnHistory = [];
 
-    // BUILD state
+    // BUILD state (φ²)
     this.commits = 0;
     this.prs = 0;
     this.issues = 0;
 
-    // JUDGE state
+    // JUDGE state (φ)
     this.agreementCount = 0;
     this.totalJudgments = 0;
+    this.contentQualityScore = 0;
 
-    // BURN state
-    this.totalBurned = 0;
-    this.burnHistory = [];
-
-    // STAKE state
+    // RUN state (1) - CENTER
     this.startTime = Date.now();
     this.totalUptimeMs = 0;
     this.lastHeartbeat = Date.now();
     this.isOnline = true;
     this.blocksProcessed = 0;
 
-    // SHARE state
-    this.docsWritten = 0;
-    this.tutorialsCreated = 0;
-    this.questionsAnswered = 0;
-    this.referrals = 0;
+    // SOCIAL state (φ⁻¹)
+    this.socialQualityScore = 0;
+    this.socialContentCount = 0;
+    this.socialRelevanceScore = 0;
 
-    // TRUST state
-    this.vouches = 0;
+    // GRAPH state (φ⁻²)
+    this.trustReceived = 0;
+    this.transitiveScore = 0;
+    this.trustedByCount = 0;
+    this.networkSize = 1;
+
+    // HOLD state (φ⁻³)
+    this.holdings = 0;
+    this.circulatingSupply = 1e12;
+    this.holdingStartDate = null;
+    this.walletCount = 1;
+
+    // Metadata
     this.firstActivityDate = Date.now();
-    this.reputationScore = 0;
 
     // Cache
     this._cachedScore = null;
@@ -469,14 +507,15 @@ export class EScore7DCalculator {
     this._cacheTtl = 60000;
   }
 
-  // --- Recording Methods ---
+  // --- BURN Recording (φ³) ---
 
-  recordHoldings(amount, circulatingSupply = null) {
-    this.holdings = amount;
-    if (circulatingSupply) this.circulatingSupply = circulatingSupply;
-    if (!this.holdingStartDate) this.holdingStartDate = Date.now();
+  recordBurn(amount, txSignature = null) {
+    this.totalBurned += amount;
+    this.burnHistory.push({ amount, txSignature, timestamp: Date.now() });
     this._invalidateCache();
   }
+
+  // --- BUILD Recording (φ²) ---
 
   recordCommit() {
     this.commits++;
@@ -493,17 +532,20 @@ export class EScore7DCalculator {
     this._invalidateCache();
   }
 
+  // --- JUDGE Recording (φ) ---
+
   recordJudgment(matchedConsensus) {
     this.totalJudgments++;
     if (matchedConsensus) this.agreementCount++;
     this._invalidateCache();
   }
 
-  recordBurn(amount, txSignature = null) {
-    this.totalBurned += amount;
-    this.burnHistory.push({ amount, txSignature, timestamp: Date.now() });
+  setContentQualityScore(score) {
+    this.contentQualityScore = Math.min(1, Math.max(0, score));
     this._invalidateCache();
   }
+
+  // --- RUN Recording (1) - CENTER ---
 
   heartbeat() {
     const now = Date.now();
@@ -519,33 +561,39 @@ export class EScore7DCalculator {
     this._invalidateCache();
   }
 
-  recordDoc() {
-    this.docsWritten++;
+  // --- SOCIAL Recording (φ⁻¹) ---
+
+  recordSocialContent(qualityScore, relevanceScore = 0) {
+    this.socialContentCount++;
+    // Running average for quality
+    this.socialQualityScore = (
+      (this.socialQualityScore * (this.socialContentCount - 1) + qualityScore) /
+      this.socialContentCount
+    );
+    // Running average for relevance
+    this.socialRelevanceScore = (
+      (this.socialRelevanceScore * (this.socialContentCount - 1) + relevanceScore) /
+      this.socialContentCount
+    );
     this._invalidateCache();
   }
 
-  recordTutorial() {
-    this.tutorialsCreated++;
+  // --- GRAPH Recording (φ⁻²) ---
+
+  updateGraphPosition({ trustReceived, transitiveScore, trustedByCount, networkSize }) {
+    if (trustReceived !== undefined) this.trustReceived = trustReceived;
+    if (transitiveScore !== undefined) this.transitiveScore = transitiveScore;
+    if (trustedByCount !== undefined) this.trustedByCount = trustedByCount;
+    if (networkSize !== undefined) this.networkSize = networkSize;
     this._invalidateCache();
   }
 
-  recordAnswer() {
-    this.questionsAnswered++;
-    this._invalidateCache();
-  }
+  // --- HOLD Recording (φ⁻³) ---
 
-  recordReferral() {
-    this.referrals++;
-    this._invalidateCache();
-  }
-
-  recordVouch() {
-    this.vouches++;
-    this._invalidateCache();
-  }
-
-  setReputationScore(score) {
-    this.reputationScore = Math.min(1, Math.max(0, score));
+  recordHoldings(amount, circulatingSupply = null) {
+    this.holdings = amount;
+    if (circulatingSupply) this.circulatingSupply = circulatingSupply;
+    if (!this.holdingStartDate) this.holdingStartDate = Date.now();
     this._invalidateCache();
   }
 
@@ -566,14 +614,9 @@ export class EScore7DCalculator {
       ? (now - this.holdingStartDate) / (1000 * 60 * 60 * 24)
       : 0;
 
-    const daysInEcosystem = (now - this.firstActivityDate) / (1000 * 60 * 60 * 24);
-
     const result = calculateEScore7D({
-      hold: {
-        holdings: this.holdings,
-        circulatingSupply: this.circulatingSupply,
-        holdingDurationDays: holdingDays,
-        walletCount: this.walletCount,
+      burn: {
+        totalBurned: this.totalBurned,
       },
       build: {
         commits: this.commits,
@@ -583,25 +626,29 @@ export class EScore7DCalculator {
       judge: {
         agreementCount: this.agreementCount,
         totalJudgments: this.totalJudgments,
+        contentQualityScore: this.contentQualityScore,
       },
-      burn: {
-        totalBurned: this.totalBurned,
-      },
-      stake: {
+      run: {
         uptimeSeconds: actualUptime,
         expectedUptimeSeconds: expectedUptime,
         blocksProcessed: this.blocksProcessed,
       },
-      share: {
-        docsWritten: this.docsWritten,
-        tutorialsCreated: this.tutorialsCreated,
-        questionsAnswered: this.questionsAnswered,
-        referrals: this.referrals,
+      social: {
+        qualityScore: this.socialQualityScore,
+        contentCount: this.socialContentCount,
+        relevanceScore: this.socialRelevanceScore,
       },
-      trust: {
-        vouches: this.vouches,
-        daysInEcosystem,
-        reputationScore: this.reputationScore,
+      graph: {
+        trustReceived: this.trustReceived,
+        transitiveScore: this.transitiveScore,
+        trustedByCount: this.trustedByCount,
+        networkSize: this.networkSize,
+      },
+      hold: {
+        holdings: this.holdings,
+        circulatingSupply: this.circulatingSupply,
+        holdingDurationDays: holdingDays,
+        walletCount: this.walletCount,
       },
     });
 
@@ -619,29 +666,39 @@ export class EScore7DCalculator {
 
   export() {
     return {
-      holdings: this.holdings,
-      circulatingSupply: this.circulatingSupply,
-      holdingStartDate: this.holdingStartDate,
-      walletCount: this.walletCount,
+      // BURN (φ³)
+      totalBurned: this.totalBurned,
+      burnHistory: this.burnHistory,
+      // BUILD (φ²)
       commits: this.commits,
       prs: this.prs,
       issues: this.issues,
+      // JUDGE (φ)
       agreementCount: this.agreementCount,
       totalJudgments: this.totalJudgments,
-      totalBurned: this.totalBurned,
-      burnHistory: this.burnHistory,
+      contentQualityScore: this.contentQualityScore,
+      // RUN (1)
       startTime: this.startTime,
       totalUptimeMs: this.totalUptimeMs,
       lastHeartbeat: this.lastHeartbeat,
       isOnline: this.isOnline,
       blocksProcessed: this.blocksProcessed,
-      docsWritten: this.docsWritten,
-      tutorialsCreated: this.tutorialsCreated,
-      questionsAnswered: this.questionsAnswered,
-      referrals: this.referrals,
-      vouches: this.vouches,
+      // SOCIAL (φ⁻¹)
+      socialQualityScore: this.socialQualityScore,
+      socialContentCount: this.socialContentCount,
+      socialRelevanceScore: this.socialRelevanceScore,
+      // GRAPH (φ⁻²)
+      trustReceived: this.trustReceived,
+      transitiveScore: this.transitiveScore,
+      trustedByCount: this.trustedByCount,
+      networkSize: this.networkSize,
+      // HOLD (φ⁻³)
+      holdings: this.holdings,
+      circulatingSupply: this.circulatingSupply,
+      holdingStartDate: this.holdingStartDate,
+      walletCount: this.walletCount,
+      // Metadata
       firstActivityDate: this.firstActivityDate,
-      reputationScore: this.reputationScore,
     };
   }
 
@@ -675,14 +732,14 @@ export default {
   TOTAL_WEIGHT,
   PHI_POWERS,
 
-  // Normalization
-  normalizeHold,
-  normalizeBuild,
-  normalizeJudge,
-  normalizeBurn,
-  normalizeStake,
-  normalizeShare,
-  normalizeTrust,
+  // Normalization (in φ-weight order)
+  normalizeBurn,    // φ³
+  normalizeBuild,   // φ²
+  normalizeJudge,   // φ
+  normalizeRun,     // 1
+  normalizeSocial,  // φ⁻¹
+  normalizeGraph,   // φ⁻²
+  normalizeHold,    // φ⁻³
 
   // Calculation
   calculateEScore7D,
