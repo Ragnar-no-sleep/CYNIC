@@ -122,6 +122,8 @@ export {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Solana Anchoring - "Onchain is truth"
+// @deprecated Import directly from @cynic/anchor instead
+// These re-exports will be removed in v2.0
 // ═══════════════════════════════════════════════════════════════════════════════
 export {
   // Anchorer
@@ -147,6 +149,8 @@ export {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Burns Verification - "Don't extract, burn"
+// @deprecated Import directly from @cynic/burns instead
+// These re-exports will be removed in v2.0
 // ═══════════════════════════════════════════════════════════════════════════════
 export {
   // Verifier
@@ -178,6 +182,8 @@ export {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Identity Layer (Layer 6) - "Know thyself, then verify"
+// @deprecated Import directly from @cynic/identity instead
+// These re-exports will be removed in v2.0
 // ═══════════════════════════════════════════════════════════════════════════════
 export {
   // Key management
@@ -185,7 +191,7 @@ export {
   createKeyManager,
   generateKeypair,
   deriveNodeId,
-  // E-Score (from @cynic/identity)
+  // E-Score (from @cynic/identity) - NOTE: Use 7D version for new code
   EScoreCalculator,
   createEScoreCalculator,
   calculateEScore,

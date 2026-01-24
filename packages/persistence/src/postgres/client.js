@@ -26,16 +26,18 @@ const DEFAULT_CONFIG = {
 };
 
 /**
- * Determine SSL config based on connection string
+ * Determine SSL config based on connection string and environment
  *
- * SECURITY NOTE: For cloud databases (Render, Railway, etc.), we use
- * rejectUnauthorized: false because these services use self-signed or
- * dynamically provisioned certificates. This is acceptable for:
- * - Managed database services with network-level security
- * - Development/staging environments
+ * SECURITY MODES:
+ * 1. STRICT (CYNIC_DB_SSL_STRICT=true): Requires valid certificates
+ *    - Use with CYNIC_DB_SSL_CA for custom CA certificates
+ *    - Recommended for production with enterprise databases
  *
- * For production with custom certificates, set ssl config explicitly
- * in the constructor options with proper CA certificates.
+ * 2. MANAGED (default for cloud): rejectUnauthorized=false
+ *    - For Render, Railway, Supabase, etc. with self-signed certs
+ *    - Network-level security provides protection
+ *
+ * 3. DISABLED: For localhost or explicit sslmode=disable
  *
  * @param {string} connectionString - Database URL
  * @returns {Object|boolean} SSL config or false
@@ -47,8 +49,26 @@ function getSSLConfig(connectionString) {
       connectionString.includes('sslmode=disable')) {
     return false;
   }
-  // Enable SSL with relaxed cert validation for cloud deployments
-  // See security note above for rationale
+
+  // Strict mode with CA certificate verification
+  if (process.env.CYNIC_DB_SSL_STRICT === 'true') {
+    const sslConfig = { rejectUnauthorized: true };
+
+    // Load CA certificate if provided
+    if (process.env.CYNIC_DB_SSL_CA) {
+      try {
+        const { readFileSync } = require('fs');
+        sslConfig.ca = readFileSync(process.env.CYNIC_DB_SSL_CA, 'utf8');
+      } catch (err) {
+        console.warn(`[PostgresClient] Failed to load SSL CA: ${err.message}`);
+      }
+    }
+
+    return sslConfig;
+  }
+
+  // Default: relaxed validation for managed cloud databases
+  // This is secure for services like Render/Railway that use network isolation
   return { rejectUnauthorized: false };
 }
 

@@ -1,5 +1,15 @@
 /**
- * E-Score - Node Reputation Calculator
+ * E-Score - Node Reputation Calculator (LEGACY 3D VERSION)
+ *
+ * @deprecated Use e-score-7d.js instead. This 3D version is kept for
+ * backward compatibility but will be removed in v2.0.
+ *
+ * Migration guide:
+ * - OLD: calculateEScore({ burns, uptime, quality })
+ * - NEW: calculate7DEScore({ burn, build, judge, run, social, graph, hold })
+ *
+ * The 7D version provides more comprehensive reputation measurement
+ * with symmetric φ-powers around the RUN dimension.
  *
  * "Reputation is earned through sacrifice" - κυνικός
  *
@@ -14,6 +24,7 @@
  * All components normalized to [0, 1], output is [0, 100]
  *
  * @module @cynic/identity/escore
+ * @deprecated Use e-score-7d.js for new implementations
  */
 
 'use strict';
@@ -113,6 +124,9 @@ export function normalizeQuality(agreementCount, totalJudgments, minJudgments = 
 /**
  * Calculate E-Score
  *
+ * @deprecated Use calculate7DEScore from e-score-7d.js instead.
+ * This 3D version will be removed in v2.0.
+ *
  * @param {Object} params - Score parameters
  * @param {number} params.burns - Total burns (raw amount)
  * @param {number} params.uptimeSeconds - Actual uptime
@@ -125,6 +139,11 @@ export function normalizeQuality(agreementCount, totalJudgments, minJudgments = 
  * @returns {Object} E-Score result
  */
 export function calculateEScore(params, options = {}) {
+  // Emit deprecation warning (once per process)
+  if (!calculateEScore._warned) {
+    console.warn('[DEPRECATED] calculateEScore is deprecated. Use calculate7DEScore from e-score-7d.js');
+    calculateEScore._warned = true;
+  }
   const {
     burns = 0,
     uptimeSeconds = 0,

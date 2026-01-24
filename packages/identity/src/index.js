@@ -66,10 +66,13 @@ export {
   deriveNodeId,
 } from './key-manager.js';
 
-// E-Score calculation (3-dimension legacy)
+// E-Score calculation (3-dimension LEGACY - DEPRECATED)
+// @deprecated Use 7D version below for new implementations
+// Will be removed in v2.0
 export {
   EScoreCalculator,
   createEScoreCalculator,
+  /** @deprecated Use calculateEScore7D instead */
   calculateEScore,
   normalizeBurns,
   normalizeUptime,
