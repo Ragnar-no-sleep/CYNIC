@@ -16,6 +16,15 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
+// Load E-Score bridge for trust calculation
+let escoreBridge = null;
+try {
+  escoreBridge = require('./escore-bridge.cjs');
+  escoreBridge.init();
+} catch (e) {
+  // E-Score bridge not available - continue without
+}
+
 // =============================================================================
 // CONSTANTS - φ governs all ratios
 // =============================================================================
@@ -151,11 +160,29 @@ function createDefaultProfile(userId) {
       firstSeen: new Date().toISOString(),
       lastSeen: new Date().toISOString()
     },
+    // E-Score 7D: Trust level based on verifiable actions
+    eScore: {
+      score: 30,          // Default: BUILDER level (30%)
+      trustLevel: 'BUILDER',
+      dimensions: {
+        burn: 0,          // φ³ - Token sacrifice (not applicable for dev)
+        build: 0,         // φ² - Code contributions
+        judge: 0,         // φ  - Judgment accuracy
+        run: 0,           // 1  - Node uptime
+        social: 0,        // φ⁻¹- Content quality
+        graph: 0,         // φ⁻²- Network position
+        hold: 0,          // φ⁻³- Token holdings
+      },
+      lastCalculated: null,
+    },
     stats: {
       sessions: 0,
       toolCalls: 0,
       errorsEncountered: 0,
-      dangerBlocked: 0
+      dangerBlocked: 0,
+      commitsWithCynic: 0,   // For BUILD dimension
+      judgmentsMade: 0,      // For JUDGE dimension
+      judgmentsCorrect: 0,   // For JUDGE dimension
     },
     patterns: {
       preferredLanguages: [],
@@ -188,6 +215,139 @@ function updateUserProfile(profile, updates) {
   profile.identity.lastSeen = new Date().toISOString();
   saveUserProfile(profile);
   return profile;
+}
+
+// =============================================================================
+// E-SCORE CALCULATION - Trust level from verifiable actions
+// =============================================================================
+
+/**
+ * Calculate E-Score for a user based on their profile stats
+ * Uses escore-bridge if available, otherwise local calculation
+ *
+ * @param {Object} profile - User profile
+ * @returns {Object} E-Score result
+ */
+function calculateUserEScore(profile) {
+  // If escore-bridge is available, use it
+  if (escoreBridge) {
+    try {
+      // Update from contributor context (commits, PRs, etc)
+      if (profile.stats) {
+        escoreBridge.updateFromContributor({
+          totalCommits: profile.stats.commitsWithCynic || 0,
+          repos: profile.patterns?.projectTypes || [],
+          pullRequests: 0, // Would need git history
+        });
+      }
+      const escoreData = escoreBridge.getScore();
+      if (escoreData.score !== null) {
+        return {
+          score: escoreData.score,
+          trustLevel: getTrustLevelFromScore(escoreData.score),
+          dimensions: escoreData.dimensions,
+          source: 'escore-bridge',
+        };
+      }
+    } catch (e) {
+      // Fall through to local calculation
+    }
+  }
+
+  // Local E-Score calculation based on profile stats
+  const stats = profile.stats || {};
+  const firstSeen = profile.identity?.firstSeen ? new Date(profile.identity.firstSeen) : new Date();
+  const daysActive = (Date.now() - firstSeen.getTime()) / (1000 * 60 * 60 * 24);
+
+  // BUILD dimension (φ² weight): commits with CYNIC
+  const buildScore = Math.min(1, (stats.commitsWithCynic || 0) / 50); // 50 commits = max
+
+  // JUDGE dimension (φ weight): judgment accuracy
+  let judgeScore = 0.5; // Default neutral
+  if (stats.judgmentsMade > 10) {
+    judgeScore = (stats.judgmentsCorrect || 0) / stats.judgmentsMade;
+  }
+
+  // RUN dimension (1 weight): session participation
+  const runScore = Math.min(1, (stats.sessions || 0) / 100); // 100 sessions = max
+
+  // TIME dimension: days active with φ-decay
+  const timeScore = Math.min(1, daysActive / (PHI * 60)); // ~97 days = max
+
+  // Calculate weighted average (simplified 7D)
+  // Weights: BUILD=φ²=2.618, JUDGE=φ=1.618, RUN=1, TIME=φ⁻²=0.382
+  const weights = {
+    build: 2.618,
+    judge: 1.618,
+    run: 1.0,
+    time: 0.382,
+  };
+  const totalWeight = Object.values(weights).reduce((a, b) => a + b, 0);
+
+  const weightedSum =
+    buildScore * weights.build +
+    judgeScore * weights.judge +
+    runScore * weights.run +
+    timeScore * weights.time;
+
+  const score = Math.round((weightedSum / totalWeight) * 100);
+
+  return {
+    score: Math.min(100, Math.max(0, score)),
+    trustLevel: getTrustLevelFromScore(score),
+    dimensions: {
+      burn: 0,
+      build: Math.round(buildScore * 100),
+      judge: Math.round(judgeScore * 100),
+      run: Math.round(runScore * 100),
+      social: 0,
+      graph: 0,
+      hold: 0,
+      time: Math.round(timeScore * 100),
+    },
+    source: 'local',
+  };
+}
+
+/**
+ * Get trust level from E-Score
+ * @param {number} score - E-Score (0-100)
+ * @returns {string} Trust level
+ */
+function getTrustLevelFromScore(score) {
+  if (score >= PHI_INV * 100) return 'GUARDIAN';  // ≥61.8%
+  if (score >= PHI_INV_2 * 100) return 'STEWARD'; // ≥38.2%
+  if (score >= 30) return 'BUILDER';               // ≥30
+  if (score >= 15) return 'CONTRIBUTOR';           // ≥15
+  return 'OBSERVER';
+}
+
+/**
+ * Get E-Score for current user (cached in profile)
+ * @param {Object} profile - User profile (optional, will load if not provided)
+ * @returns {Object} E-Score result
+ */
+function getUserEScore(profile = null) {
+  if (!profile) {
+    const user = detectUser();
+    profile = loadUserProfile(user.userId);
+  }
+
+  // Check if cached score is still valid (recalculate every ~18.5 min)
+  const cacheAge = profile.eScore?.lastCalculated
+    ? Date.now() - profile.eScore.lastCalculated
+    : Infinity;
+
+  if (cacheAge > PHI_INV * 30 * 60 * 1000) { // ~18.5 minutes
+    const newScore = calculateUserEScore(profile);
+    profile.eScore = {
+      ...newScore,
+      lastCalculated: Date.now(),
+    };
+    saveUserProfile(profile);
+  }
+
+  return profile.eScore;
 }
 
 // =============================================================================
@@ -659,8 +819,18 @@ async function endBrainSession(sessionId) {
  * @returns {Promise<Object>} Orchestration decision with routing and intervention
  */
 async function orchestrate(event, data, context = {}) {
+  // Permissive fallback when MCP unavailable
+  const fallback = {
+    routing: { sefirah: 'Keter', domain: 'general', suggestedAgent: null, suggestedTools: [] },
+    intervention: { level: 'silent', actionRisk: 'low' },
+    actions: [],
+  };
+
   try {
     const user = detectUser();
+    const profile = loadUserProfile(user.userId);
+    const eScore = getUserEScore(profile);
+
     const result = await callBrainTool('brain_keter', {
       event,
       data,
@@ -669,18 +839,27 @@ async function orchestrate(event, data, context = {}) {
         project: context.project || detectProject(),
         gitBranch: context.gitBranch,
         recentActions: context.recentActions || [],
+        // Pass E-Score to orchestrator for trust-based intervention
+        eScore: eScore.score,
+        trustLevel: eScore.trustLevel,
         ...context,
       },
     });
+
+    // Check if MCP call failed (returns { success: false, error: ... } or { error: ... })
+    if (result?.error || result?.success === false) {
+      return { ...fallback, mcpError: result.error || 'MCP call failed' };
+    }
+
+    // Ensure result has expected structure
+    if (!result?.routing && !result?.result?.routing) {
+      return { ...fallback, mcpError: 'Invalid MCP response structure' };
+    }
+
     return result;
   } catch (e) {
     // Fallback: return permissive default if orchestrator unavailable
-    return {
-      routing: { sefirah: 'Keter', domain: 'general', suggestedAgent: null, suggestedTools: [] },
-      intervention: { level: 'silent', actionRisk: 'low' },
-      actions: [],
-      error: e.message,
-    };
+    return { ...fallback, error: e.message };
   }
 }
 
@@ -1028,6 +1207,11 @@ module.exports = {
   loadUserProfile,
   saveUserProfile,
   updateUserProfile,
+
+  // E-Score (Trust level)
+  calculateUserEScore,
+  getUserEScore,
+  getTrustLevelFromScore,
 
   // Collective
   loadCollectivePatterns,

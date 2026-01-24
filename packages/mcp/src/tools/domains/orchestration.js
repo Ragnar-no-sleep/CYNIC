@@ -335,8 +335,13 @@ This is the "brain" of CYNIC - all events pass through KETER for routing.`,
       if (context.user && context.user !== sessionState.userId) {
         sessionState.userId = context.user;
 
-        // Load user E-Score from persistence
-        if (persistence) {
+        // PREFER E-Score from context (calculated by hooks)
+        if (context.eScore !== undefined) {
+          sessionState.eScore = context.eScore;
+          sessionState.trustLevel = context.trustLevel || 'BUILDER';
+        }
+        // Fallback: Load user E-Score from persistence
+        else if (persistence) {
           try {
             const result = await persistence.query(
               `SELECT e_score, trust_level FROM user_profiles WHERE user_id = $1`,
@@ -350,6 +355,11 @@ This is the "brain" of CYNIC - all events pass through KETER for routing.`,
             // User not found, use defaults
           }
         }
+      }
+      // Always update E-Score if provided in context (for returning users)
+      else if (context.eScore !== undefined) {
+        sessionState.eScore = context.eScore;
+        sessionState.trustLevel = context.trustLevel || sessionState.trustLevel;
       }
 
       if (context.project) {

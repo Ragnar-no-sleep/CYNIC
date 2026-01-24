@@ -328,8 +328,7 @@ async function main() {
     // ==========================================================================
     const loopCheck = circuitBreaker.checkAndRecord(toolName, toolInput);
     if (loopCheck.shouldBlock) {
-      // Load user profile for stats
-      const user = cynic.detectUser();
+      // Load user profile for stats (user already detected above)
       const profile = cynic.loadUserProfile(user.userId);
 
       // Update stats
@@ -480,8 +479,7 @@ async function main() {
       return;
     }
 
-    // Load user profile for stats update
-    const user = cynic.detectUser();
+    // Load user profile for stats update (user already detected above)
     const profile = cynic.loadUserProfile(user.userId);
 
     // Format response
