@@ -15,7 +15,7 @@ import {
   generateKeypair,
   deriveNodeId,
 
-  // E-Score
+  // E-Score (3D legacy)
   EScoreCalculator,
   createEScoreCalculator,
   calculateEScore,
@@ -24,6 +24,24 @@ import {
   normalizeQuality,
   ESCORE_WEIGHTS,
   ESCORE_THRESHOLDS,
+
+  // E-Score 7D
+  EScore7DCalculator,
+  createEScore7DCalculator,
+  calculateEScore7D,
+  getTrustLevel,
+  escoreToDbFormat,
+  normalizeHold,
+  normalizeBuild,
+  normalizeJudge,
+  normalizeBurn,
+  normalizeStake,
+  normalizeShare,
+  normalizeTrust,
+  ESCORE_7D_DIMENSIONS,
+  ESCORE_7D_THRESHOLDS,
+  TRUST_LEVELS,
+  ESCORE_7D_TOTAL_WEIGHT,
 
   // Node identity
   NodeIdentity,
@@ -413,5 +431,205 @@ describe('Integration', () => {
     const rep = graph.getReputation(identity2.nodeId, identity1.nodeId);
     assert.ok(rep.trust > 0, 'should have trust');
     assert.ok(rep.score >= 0, 'should have score');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// E-SCORE 7D TESTS
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('E-Score 7D Constants', () => {
+  test('has 7 dimensions', () => {
+    const dims = Object.keys(ESCORE_7D_DIMENSIONS);
+    assert.strictEqual(dims.length, 7);
+    assert.ok(dims.includes('HOLD'));
+    assert.ok(dims.includes('BUILD'));
+    assert.ok(dims.includes('JUDGE'));
+    assert.ok(dims.includes('BURN'));
+    assert.ok(dims.includes('STAKE'));
+    assert.ok(dims.includes('SHARE'));
+    assert.ok(dims.includes('TRUST'));
+  });
+
+  test('weights are φ-aligned', () => {
+    const PHI = 1.618033988749895;
+    const holdWeight = ESCORE_7D_DIMENSIONS.HOLD.weight;
+    const trustWeight = ESCORE_7D_DIMENSIONS.TRUST.weight;
+
+    // HOLD = φ⁶, TRUST = φ⁰ = 1
+    assert.ok(Math.abs(holdWeight - Math.pow(PHI, 6)) < 0.001);
+    assert.strictEqual(trustWeight, 1);
+  });
+
+  test('total weight is sum of φ powers', () => {
+    // φ⁶ + φ⁵ + φ⁴ + φ³ + φ² + φ¹ + φ⁰ ≈ 45.36
+    assert.ok(ESCORE_7D_TOTAL_WEIGHT > 45 && ESCORE_7D_TOTAL_WEIGHT < 46);
+  });
+
+  test('thresholds are φ-aligned', () => {
+    const PHI_INV = 0.618033988749895;
+    assert.ok(Math.abs(ESCORE_7D_THRESHOLDS.GUARDIAN - PHI_INV * 100) < 0.1);
+    assert.ok(Math.abs(ESCORE_7D_THRESHOLDS.STEWARD - PHI_INV * PHI_INV * 100) < 0.1);
+  });
+});
+
+describe('E-Score 7D Normalization', () => {
+  test('normalizeHold returns 0 for no holdings', () => {
+    const score = normalizeHold({ holdings: 0 });
+    assert.strictEqual(score, 0);
+  });
+
+  test('normalizeHold scales with holdings', () => {
+    const low = normalizeHold({ holdings: 1000 });
+    const high = normalizeHold({ holdings: 1000000 });
+    assert.ok(high > low);
+    assert.ok(low >= 0 && low <= 1);
+    assert.ok(high >= 0 && high <= 1);
+  });
+
+  test('normalizeBuild counts contributions', () => {
+    const none = normalizeBuild({});
+    const some = normalizeBuild({ commits: 10, prs: 5, issues: 3 });
+    assert.strictEqual(none, 0);
+    assert.ok(some > 0 && some <= 1);
+  });
+
+  test('normalizeJudge returns accuracy', () => {
+    const perfect = normalizeJudge({ agreementCount: 10, totalJudgments: 10 });
+    const half = normalizeJudge({ agreementCount: 5, totalJudgments: 10 });
+    assert.ok(perfect > half);
+    assert.ok(Math.abs(half - 0.5) < 0.01);
+  });
+
+  test('normalizeBurn scales logarithmically', () => {
+    const low = normalizeBurn({ totalBurned: 1e6 });
+    const high = normalizeBurn({ totalBurned: 1e9 });
+    assert.ok(high > low);
+    assert.ok(low >= 0 && low <= 1);
+  });
+
+  test('normalizeStake returns uptime ratio', () => {
+    const full = normalizeStake({ uptimeSeconds: 3600, expectedUptimeSeconds: 3600 });
+    const half = normalizeStake({ uptimeSeconds: 1800, expectedUptimeSeconds: 3600 });
+    assert.ok(full > half);
+    assert.ok(Math.abs(full - 0.7) < 0.01); // 70% weight on uptime
+  });
+
+  test('normalizeShare counts knowledge sharing', () => {
+    const none = normalizeShare({});
+    const some = normalizeShare({ docsWritten: 5, tutorialsCreated: 2, referrals: 10 });
+    assert.strictEqual(none, 0);
+    assert.ok(some > 0 && some <= 1);
+  });
+
+  test('normalizeTrust combines factors', () => {
+    const none = normalizeTrust({});
+    const some = normalizeTrust({ vouches: 5, daysInEcosystem: 365, reputationScore: 0.8 });
+    assert.ok(some > none);
+    assert.ok(some >= 0 && some <= 1);
+  });
+});
+
+describe('E-Score 7D Calculation', () => {
+  test('calculateEScore7D returns valid structure', () => {
+    const result = calculateEScore7D({});
+
+    assert.ok(typeof result.score === 'number');
+    assert.ok(typeof result.trustLevel === 'string');
+    assert.ok(typeof result.trustLevelValue === 'number');
+    assert.ok(result.dimensions);
+    assert.ok(result.breakdown);
+    assert.ok(result.timestamp);
+  });
+
+  test('score is between 0 and 100', () => {
+    const empty = calculateEScore7D({});
+    const full = calculateEScore7D({
+      hold: { holdings: 1e9 },
+      build: { commits: 1000, prs: 100 },
+      judge: { agreementCount: 100, totalJudgments: 100 },
+      burn: { totalBurned: 1e9 },
+      stake: { uptimeSeconds: 86400, expectedUptimeSeconds: 86400 },
+      share: { docsWritten: 100, tutorialsCreated: 50 },
+      trust: { vouches: 100, daysInEcosystem: 730, reputationScore: 1 },
+    });
+
+    assert.ok(empty.score >= 0 && empty.score <= 100);
+    assert.ok(full.score >= 0 && full.score <= 100);
+    assert.ok(full.score > empty.score);
+  });
+
+  test('getTrustLevel returns correct levels', () => {
+    assert.strictEqual(getTrustLevel(70), 'GUARDIAN');
+    assert.strictEqual(getTrustLevel(50), 'STEWARD');
+    assert.strictEqual(getTrustLevel(30), 'BUILDER');
+    assert.strictEqual(getTrustLevel(20), 'CONTRIBUTOR');
+    assert.strictEqual(getTrustLevel(5), 'OBSERVER');
+  });
+
+  test('toDbFormat maps dimensions correctly', () => {
+    const breakdown = { hold: 80, build: 70, judge: 60, burn: 50, stake: 40, share: 30, trust: 20 };
+    const db = escoreToDbFormat(breakdown);
+
+    assert.strictEqual(db.hold, 80);
+    assert.strictEqual(db.build, 70);
+    assert.strictEqual(db.use, 60);   // JUDGE → use
+    assert.strictEqual(db.burn, 50);
+    assert.strictEqual(db.run, 40);   // STAKE → run
+    assert.strictEqual(db.refer, 30); // SHARE → refer
+    assert.strictEqual(db.time, 20);  // TRUST → time
+  });
+});
+
+describe('EScore7DCalculator', () => {
+  test('creates calculator', () => {
+    const calc = createEScore7DCalculator();
+    assert.ok(calc instanceof EScore7DCalculator);
+  });
+
+  test('records and calculates', () => {
+    const calc = new EScore7DCalculator();
+
+    calc.recordHoldings(1e9, 1e12); // 0.1% of supply
+    calc.recordCommit();
+    calc.recordCommit();
+    calc.recordPR();
+    calc.recordJudgment(true);
+    calc.recordJudgment(true);
+    calc.recordJudgment(false);
+    calc.recordBurn(1e8); // Significant burn
+    calc.heartbeat();
+    calc.recordDoc();
+    calc.recordVouch();
+
+    const result = calc.calculate();
+
+    assert.ok(result.score > 0, 'should have positive score');
+    assert.ok(result.breakdown.hold > 0, 'should have hold score');
+    assert.ok(result.breakdown.build > 0, 'should have build score');
+    assert.ok(result.breakdown.burn > 0, 'should have burn score');
+  });
+
+  test('export and import state', () => {
+    const calc1 = new EScore7DCalculator();
+    calc1.recordBurn(1e9);
+    calc1.recordJudgment(true);
+
+    const state = calc1.export();
+    const calc2 = new EScore7DCalculator();
+    calc2.import(state);
+
+    assert.strictEqual(calc2.totalBurned, 1e9);
+    assert.strictEqual(calc2.agreementCount, 1);
+  });
+
+  test('getStats returns full info', () => {
+    const calc = new EScore7DCalculator();
+    calc.recordBurn(1e6);
+
+    const stats = calc.getStats();
+    assert.ok(stats.score);
+    assert.ok(stats.state);
+    assert.strictEqual(stats.state.totalBurned, 1e6);
   });
 });

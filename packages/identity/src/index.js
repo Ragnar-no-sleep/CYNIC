@@ -66,7 +66,7 @@ export {
   deriveNodeId,
 } from './key-manager.js';
 
-// E-Score calculation
+// E-Score calculation (3-dimension legacy)
 export {
   EScoreCalculator,
   createEScoreCalculator,
@@ -78,6 +78,26 @@ export {
   WEIGHTS as ESCORE_WEIGHTS,
   THRESHOLDS as ESCORE_THRESHOLDS,
 } from './e-score.js';
+
+// E-Score 7D (full 7-dimension calculation)
+export {
+  EScore7DCalculator,
+  createEScore7DCalculator,
+  calculateEScore7D,
+  getTrustLevel,
+  toDbFormat as escoreToDbFormat,
+  normalizeHold,
+  normalizeBuild,
+  normalizeJudge,
+  normalizeBurn,
+  normalizeStake,
+  normalizeShare,
+  normalizeTrust,
+  DIMENSIONS as ESCORE_7D_DIMENSIONS,
+  THRESHOLDS as ESCORE_7D_THRESHOLDS,
+  TRUST_LEVELS,
+  TOTAL_WEIGHT as ESCORE_7D_TOTAL_WEIGHT,
+} from './e-score-7d.js';
 
 // Node identity
 export {
