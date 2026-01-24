@@ -16,6 +16,9 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
+// Load unified decision constants
+const DC = require('./decision-constants.cjs');
+
 // Load E-Score bridge for trust calculation
 let escoreBridge = null;
 try {
@@ -25,13 +28,35 @@ try {
   // E-Score bridge not available - continue without
 }
 
+// Load decision engine for unified decision making
+let decisionEngine = null;
+try {
+  decisionEngine = require('./decision-engine.cjs');
+} catch (e) {
+  // Decision engine not available - continue without
+}
+
+// Load physics bridge for process resonance monitoring
+let physicsBridge = null;
+try {
+  physicsBridge = require('./physics-bridge.cjs');
+  // Register core processes as oscillators for harmony tracking
+  physicsBridge.registerProcess('perceive', { frequency: 1, amplitude: 80 });
+  physicsBridge.registerProcess('guard', { frequency: 1.5, amplitude: 60 });
+  physicsBridge.registerProcess('observe', { frequency: 2, amplitude: 70 });
+  physicsBridge.registerProcess('digest', { frequency: 0.5, amplitude: 50 });
+  physicsBridge.registerProcess('awaken', { frequency: 0.1, amplitude: 40 });
+} catch (e) {
+  // Physics bridge not available - continue without
+}
+
 // =============================================================================
-// CONSTANTS - φ governs all ratios
+// CONSTANTS - φ governs all ratios (re-exported from decision-constants)
 // =============================================================================
 
-const PHI = 1.618033988749895;
-const PHI_INV = 0.618033988749895;     // φ⁻¹ = 61.8% max confidence
-const PHI_INV_2 = 0.381966011250105;   // φ⁻² = 38.2% min doubt
+const PHI = DC.PHI.PHI;
+const PHI_INV = DC.PHI.PHI_INV;        // φ⁻¹ = 61.8% max confidence
+const PHI_INV_2 = DC.PHI.PHI_INV_2;    // φ⁻² = 38.2% min doubt
 const HEARTBEAT_MS = 61800;            // 61.8 seconds
 
 // =============================================================================
@@ -1265,4 +1290,29 @@ module.exports = {
   getContributorDiscovery,
 
   // NOTE: Learnings persistence removed - uses PostgreSQL via brain_learning MCP tool
+
+  // Decision Engine (unified decision coordination)
+  decisionEngine,
+  DC,
 };
+
+// =============================================================================
+// DECISION ENGINE INTEGRATION
+// Wire up orchestration callback so decision engine can use KETER
+// =============================================================================
+
+if (decisionEngine) {
+  decisionEngine.setOrchestrationCallback(async (context) => {
+    // Transform decision context to orchestration format
+    const result = await orchestrate(context.event, {
+      content: context.metadata?.content || '',
+      source: context.source,
+      metadata: context.metadata,
+    }, {
+      user: context.user?.userId,
+      eScore: context.user?.eScore,
+      trustLevel: context.user?.trustLevel?.name,
+    });
+    return result;
+  });
+}

@@ -19,6 +19,9 @@ const path = require('path');
 const libPath = path.join(__dirname, '..', 'lib', 'cynic-core.cjs');
 const cynic = require(libPath);
 
+// Load unified decision constants
+const DC = require(path.join(__dirname, '..', 'lib', 'decision-constants.cjs'));
+
 // Load Elenchus engine for Socratic questioning (Phase 6B)
 const elenchusPath = path.join(__dirname, '..', 'lib', 'elenchus-engine.cjs');
 let elenchus = null;
@@ -85,6 +88,15 @@ try {
   hypothesisTesting = require(hypothesisPath);
 } catch (e) {
   // Hypothesis testing not available - continue without
+}
+
+// Load Physics Bridge for Dog emergence (symmetry-breaking)
+const physicsBridgePath = path.join(__dirname, '..', 'lib', 'physics-bridge.cjs');
+let physicsBridge = null;
+try {
+  physicsBridge = require(physicsBridgePath);
+} catch (e) {
+  // Physics bridge not available - continue without
 }
 
 // =============================================================================
@@ -271,7 +283,7 @@ async function main() {
     const prompt = hookContext.prompt || '';
 
     // Short prompts don't need context injection
-    if (prompt.length < 10) {
+    if (prompt.length < DC.LENGTH.MIN_PROMPT) {
       console.log(JSON.stringify({ continue: true }));
       return;
     }
@@ -340,10 +352,37 @@ async function main() {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // SYMMETRY BREAKING: Dynamic Dog Personality Emergence
+    // "Πάντα ῥεῖ - from unified field to distinct Dogs"
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (physicsBridge && prompt.length > DC.LENGTH.MIN_PROMPT) {
+      try {
+        const dogResult = physicsBridge.processDogEmergence(prompt);
+
+        if (dogResult.broken && dogResult.greeting) {
+          // A Dog has emerged! Include its greeting in the response
+          injections.push(`── DOG EMERGED ────────────────────────────────────────────
+   ${dogResult.greeting}
+   Traits: ${dogResult.traits?.join(', ') || 'unknown'}
+   *${dogResult.currentDog}* is now active.`);
+        } else if (dogResult.nearCritical) {
+          // Near emergence threshold - hint at it
+          const voice = physicsBridge.getDogVoice();
+          if (voice && Math.random() < DC.PROBABILITY.DOG_HINT) {
+            injections.push(`── FIELD TENSION ──────────────────────────────────────────
+   *sniff* Energy building... ${Math.round(dogResult.fieldEnergy || 0)} / critical threshold`);
+          }
+        }
+      } catch (e) {
+        // Dog emergence failed - continue without
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // ELENCHUS: Socratic questioning (Phase 6B)
     // "Ἔλεγχος - l'art de questionner pour révéler la vérité"
     // ═══════════════════════════════════════════════════════════════════════════
-    if (elenchus && prompt.length > 30) {
+    if (elenchus && prompt.length > DC.LENGTH.ELENCHUS_MIN) {
       try {
         // Check if this looks like an assertion (not a question)
         const isAssertion = !prompt.trim().endsWith('?') &&
@@ -366,7 +405,7 @@ async function main() {
         } else if (elenchus.shouldUseMaieutics(prompt)) {
           // For questions, use maieutic mode - guide to discovery
           const maieutic = elenchus.generateMaieuticQuestion(prompt);
-          if (maieutic && Math.random() < 0.382) { // φ⁻² chance
+          if (maieutic && Math.random() < DC.PROBABILITY.ELENCHUS) { // φ⁻²
             injections.push(`── MAIEUTIC ───────────────────────────────────────────────\n   💡 ${maieutic}`);
           }
         }
@@ -379,7 +418,7 @@ async function main() {
     // TI ESTI: Essence questions (Phase 6B)
     // "Τί ἐστι - Qu'est-ce que c'est?"
     // ═══════════════════════════════════════════════════════════════════════════
-    if (tiEsti && prompt.length > 15) {
+    if (tiEsti && prompt.length > DC.LENGTH.TI_ESTI_MIN) {
       try {
         const promptLower = prompt.toLowerCase();
         // Detect "what is X?" style questions
@@ -402,7 +441,7 @@ async function main() {
     // DEFINITION TRACKER: Track user definitions (Phase 6B)
     // "Les mots dérivent - le chien se souvient"
     // ═══════════════════════════════════════════════════════════════════════════
-    if (definitionTracker && prompt.length > 20) {
+    if (definitionTracker && prompt.length > DC.LENGTH.DEFINITION_MIN) {
       try {
         // Check for definition statements: "X means Y", "by X I mean Y", etc.
         const definitionMatch = prompt.match(/(?:by\s+)?["']?(\w+)["']?\s+(?:means?|is|refers?\s+to|I\s+mean)\s+(.+)/i) ||
@@ -428,11 +467,11 @@ async function main() {
     // CHRIA: Wisdom injection (Phase 8B)
     // "Χρεία - la sagesse en peu de mots"
     // ═══════════════════════════════════════════════════════════════════════════
-    if (chriaDB && prompt.length > 20 && injections.length === 0) {
+    if (chriaDB && prompt.length > DC.LENGTH.DEFINITION_MIN && injections.length === 0) {
       try {
         // Only inject chria when we haven't injected anything else
         // and with φ⁻² probability (38.2%)
-        if (Math.random() < 0.382) {
+        if (Math.random() < DC.PROBABILITY.CHRIA_WISDOM) {
           const contextTags = intents.map(i => i.intent);
           const chria = chriaDB.getContextualChria(contextTags, prompt);
           if (chria) {
@@ -449,12 +488,12 @@ async function main() {
     // FALLACY DETECTOR: Check for logical fallacies
     // "Le chien renifle les sophismes"
     // ═══════════════════════════════════════════════════════════════════════════
-    if (fallacyDetector && prompt.length > 50) {
+    if (fallacyDetector && prompt.length > DC.LENGTH.FALLACY_MIN) {
       try {
         const analysis = fallacyDetector.analyze(prompt);
         if (analysis && analysis.fallacies && analysis.fallacies.length > 0) {
           const topFallacy = analysis.fallacies[0];
-          if (topFallacy.confidence > 0.5) {
+          if (topFallacy.confidence > DC.CONFIDENCE.FALLACY_DETECTION) {
             injections.push(`── FALLACY ────────────────────────────────────────────────\n   ⚠️ Possible ${topFallacy.name}: ${topFallacy.explanation || ''}\n   Consider: ${topFallacy.remedy || 'Verify the reasoning'}`);
           }
         }
@@ -467,7 +506,7 @@ async function main() {
     // ROLE REVERSAL: Detect teaching opportunities
     // "Enseigner, c'est apprendre deux fois"
     // ═══════════════════════════════════════════════════════════════════════════
-    if (roleReversal && prompt.length > 30 && Math.random() < 0.236) {
+    if (roleReversal && prompt.length > DC.LENGTH.ROLE_REVERSAL_MIN && Math.random() < DC.PROBABILITY.ROLE_REVERSAL) {
       try {
         const opportunity = roleReversal.detectReversalOpportunity(prompt, {});
         if (opportunity && opportunity.shouldReverse) {
@@ -482,11 +521,11 @@ async function main() {
     // HYPOTHESIS: Track claims and hypotheses
     // "Toute assertion est une hypothèse à tester"
     // ═══════════════════════════════════════════════════════════════════════════
-    if (hypothesisTesting && prompt.length > 40) {
+    if (hypothesisTesting && prompt.length > DC.LENGTH.HYPOTHESIS_MIN) {
       try {
         // Check for assertion patterns that could be hypotheses
         const assertionPatterns = /(?:I think|I believe|probably|likely|should be|must be|always|never)/i;
-        if (assertionPatterns.test(prompt) && Math.random() < 0.382) {
+        if (assertionPatterns.test(prompt) && Math.random() < DC.PROBABILITY.MEDIUM) {
           injections.push(`── HYPOTHESIS ─────────────────────────────────────────────\n   🔬 *sniff* This sounds like a hypothesis. What would falsify it?`);
         }
       } catch (e) {

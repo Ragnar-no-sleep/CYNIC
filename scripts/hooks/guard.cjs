@@ -19,6 +19,9 @@ const path = require('path');
 const libPath = path.join(__dirname, '..', 'lib', 'cynic-core.cjs');
 const cynic = require(libPath);
 
+// Load unified decision constants
+const DC = require(path.join(__dirname, '..', 'lib', 'decision-constants.cjs'));
+
 // Load security watchdog
 const watchdog = require(path.join(__dirname, '..', 'lib', 'watchdog.cjs'));
 
@@ -209,11 +212,8 @@ function scanForSecrets() {
 }
 
 function formatGuardianResponse(issues, toolName, profile) {
-  // Get the most severe issue
-  const maxSeverity = issues.reduce((max, issue) => {
-    const severities = ['low', 'medium', 'high', 'critical'];
-    return severities.indexOf(issue.severity) > severities.indexOf(max) ? issue.severity : max;
-  }, 'low');
+  // Get the most severe issue using centralized function
+  const maxSeverity = DC.maxSeverity(issues.map(i => i.severity));
 
   // Determine if we should block
   const shouldBlock = issues.some(i => i.action === 'block');
@@ -427,7 +427,7 @@ async function main() {
           }
 
           // Challenge large additions (>162 lines, φ × 100)
-          if (linesAdded > 162 && toolName === 'Write') {
+          if (linesAdded > DC.LENGTH.OVER_ENGINEERING && toolName === 'Write') {
             issues.push({
               severity: 'low',
               message: `*head tilt* ${linesAdded} lignes? Diogène demande: est-ce vraiment nécessaire?`,
@@ -450,7 +450,7 @@ async function main() {
 
           if (conventionCheck && conventionCheck.conventions?.length > 0) {
             // Only challenge with φ⁻² probability (38.2%) to not be annoying
-            if (Math.random() < 0.382) {
+            if (Math.random() < DC.PROBABILITY.PHYSIS_CHALLENGE) {
               const convention = conventionCheck.conventions[0];
               issues.push({
                 severity: 'low',

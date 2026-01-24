@@ -19,6 +19,9 @@ const path = require('path');
 const libPath = path.join(__dirname, '..', 'lib', 'cynic-core.cjs');
 const cynic = require(libPath);
 
+// Load unified decision constants
+const DC = require(path.join(__dirname, '..', 'lib', 'decision-constants.cjs'));
+
 // Load cockpit for enhanced ecosystem awareness
 const cockpitPath = path.join(__dirname, '..', 'lib', 'cockpit.cjs');
 let cockpit = null;
@@ -346,7 +349,7 @@ async function main() {
     if (psychology) {
       try {
         const psySummary = psychology.getSummary();
-        if (psySummary.confidence > 0.2) { // Only show if some confidence
+        if (psySummary.confidence > DC.CONFIDENCE.PSYCHOLOGY_DISPLAY) { // Only show if some confidence
           const stateLines = ['', '── ÉTAT ───────────────────────────────────────────────────'];
           stateLines.push(`   ${psySummary.emoji} ${psySummary.overallState.toUpperCase()}`);
           stateLines.push(`   énergie: ${Math.round(psySummary.energy.value * 100)}% ${psySummary.energy.trend === 'rising' ? '↑' : psySummary.energy.trend === 'falling' ? '↓' : '→'}`);
@@ -448,7 +451,7 @@ async function main() {
               const lastScan = JSON.parse(fs.readFileSync(lastScanPath, 'utf8'));
               const hoursSinceScan = (Date.now() - lastScan.timestamp) / (1000 * 60 * 60);
               // Only full scan every 6.18 hours (φ-aligned)
-              shouldScan = hoursSinceScan > 6.18;
+              shouldScan = hoursSinceScan > DC.PHI.PHI_HOURS;
             }
           } catch (e) { /* scan anyway */ }
 

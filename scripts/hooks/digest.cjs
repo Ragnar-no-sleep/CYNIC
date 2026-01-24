@@ -19,6 +19,9 @@ const path = require('path');
 const libPath = path.join(__dirname, '..', 'lib', 'cynic-core.cjs');
 const cynic = require(libPath);
 
+// Load unified decision constants
+const DC = require(path.join(__dirname, '..', 'lib', 'decision-constants.cjs'));
+
 // Load task enforcer
 const enforcerPath = path.join(__dirname, '..', 'lib', 'task-enforcer.cjs');
 const enforcer = require(enforcerPath);
@@ -62,6 +65,15 @@ try {
   // Emergence detector not available
 }
 
+// Load Physics Bridge for multi-perspective evaluation
+const physicsBridgePath = path.join(__dirname, '..', 'lib', 'physics-bridge.cjs');
+let physicsBridge = null;
+try {
+  physicsBridge = require(physicsBridgePath);
+} catch (e) {
+  // Physics bridge not available
+}
+
 // =============================================================================
 // SESSION ANALYSIS
 // =============================================================================
@@ -103,7 +115,7 @@ function extractInsights(profile, collectivePatterns) {
 
   if (errorPatterns.length > 0) {
     for (const pattern of errorPatterns) {
-      if (pattern.count >= 3) {
+      if (pattern.count >= DC.FREQUENCY.ERROR_PATTERN_MIN) {
         insights.push({
           type: 'recurring_error',
           description: `${pattern.description} occurred ${pattern.count} times`,
@@ -149,7 +161,7 @@ function formatDigestMessage(profile, analysis, insights, engineStats) {
 
   // Todo completion stats
   if (analysis.todosTotal > 0) {
-    const emoji = analysis.completionRate >= 0.618 ? '✅' : '⚠️';
+    const emoji = analysis.completionRate >= DC.PHI.PHI_INV ? '✅' : '⚠️';
     lines.push(`   Tasks: ${analysis.todosCompleted}/${analysis.todosTotal} completed ${emoji} (${Math.round(analysis.completionRate * 100)}%)`);
   }
 
@@ -182,6 +194,19 @@ function formatDigestMessage(profile, analysis, insights, engineStats) {
       const bar = '█'.repeat(Math.floor(engineStats.consciousnessScore / 10)) +
                   '░'.repeat(10 - Math.floor(engineStats.consciousnessScore / 10));
       lines.push(`   🧠 Consciousness: [${bar}] ${engineStats.consciousnessScore}% / 61.8%`);
+    }
+    // Show physics engine stats
+    if (engineStats.physicsLoaded > 0) {
+      lines.push(`   🔬 Physics engines: ${engineStats.physicsLoaded}/5 loaded`);
+    }
+    if (engineStats.entangledPairs > 0) {
+      lines.push(`   ⊗  Pattern entanglements: ${engineStats.entangledPairs} pairs`);
+    }
+    if (engineStats.activeDog) {
+      lines.push(`   🐕 Active Dog: ${engineStats.activeDog}`);
+    }
+    if (engineStats.perspectiveConflicts > 0) {
+      lines.push(`   ⚖️  Perspective conflicts: ${engineStats.perspectiveConflicts}`);
     }
     lines.push('');
   }
@@ -318,6 +343,55 @@ async function main() {
           engineStats.consciousnessScore = Math.round(snapshot.consciousnessScore);
         }
       } catch (e) { /* ignore */ }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // RELATIVITY: Multi-Perspective Session Evaluation
+    // "Πάντα πρός τι - all things are relative"
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (physicsBridge) {
+      try {
+        // Evaluate session from multiple stakeholder perspectives
+        const sessionSummary = `Session with ${analysis.toolsUsed} tool calls, ${analysis.errorsEncountered} errors, completion rate ${Math.round((analysis.completionRate || 0) * 100)}%`;
+
+        const evaluation = physicsBridge.evaluatePerspectives(
+          sessionSummary,
+          { toolsUsed: analysis.toolsUsed, errors: analysis.errorsEncountered },
+          ['developer', 'futureYou', 'operator'] // Key perspectives for session review
+        );
+
+        if (evaluation.conflicts && evaluation.conflicts.length > 0) {
+          // Record perspective conflicts as insights
+          for (const conflict of evaluation.conflicts) {
+            insights.push({
+              type: 'perspective_conflict',
+              description: conflict.description,
+              suggestion: 'Consider balancing these viewpoints'
+            });
+          }
+          engineStats.perspectiveConflicts = evaluation.conflicts.length;
+        }
+
+        // Get perspective suggestion for next session
+        const suggestion = physicsBridge.suggestPerspective(sessionSummary);
+        if (suggestion) {
+          engineStats.perspectiveSuggestion = suggestion.suggestion?.name;
+        }
+
+        // Record physics stats
+        const physicsStatus = physicsBridge.getPhysicsStatus();
+        if (physicsStatus) {
+          engineStats.physicsLoaded = Object.values(physicsStatus.loaded).filter(Boolean).length;
+          if (physicsStatus.entanglement?.activePairs > 0) {
+            engineStats.entangledPairs = physicsStatus.entanglement.activePairs;
+          }
+          if (physicsStatus.symmetry?.broken) {
+            engineStats.activeDog = physicsStatus.symmetry.currentDog;
+          }
+        }
+      } catch (e) {
+        // Multi-perspective evaluation failed - continue without
+      }
     }
 
     // ═══════════════════════════════════════════════════════════════════════════

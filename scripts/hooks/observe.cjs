@@ -19,6 +19,9 @@ const path = require('path');
 const libPath = path.join(__dirname, '..', 'lib', 'cynic-core.cjs');
 const cynic = require(libPath);
 
+// Load unified decision constants
+const DC = require(path.join(__dirname, '..', 'lib', 'decision-constants.cjs'));
+
 // Load task enforcer
 const enforcerPath = path.join(__dirname, '..', 'lib', 'task-enforcer.cjs');
 const enforcer = require(enforcerPath);
@@ -161,6 +164,15 @@ try {
   inferenceEngine.init();
 } catch (e) {
   // Inference engine not available - continue without
+}
+
+// Load Physics Bridge for pattern entanglement
+const physicsBridgePath = path.join(__dirname, '..', 'lib', 'physics-bridge.cjs');
+let physicsBridge = null;
+try {
+  physicsBridge = require(physicsBridgePath);
+} catch (e) {
+  // Physics bridge not available - continue without
 }
 
 // =============================================================================
@@ -585,6 +597,58 @@ async function main() {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // ENTANGLEMENT: Pattern Correlation Prediction
+    // "Σύμπλεξις - bound together across space"
+    // ═══════════════════════════════════════════════════════════════════════════
+    let entanglementPredictions = [];
+    if (physicsBridge) {
+      try {
+        // Observe the tool pattern
+        for (const pattern of patterns) {
+          const obsResult = physicsBridge.observePattern(
+            pattern.signature,
+            toolName,
+            { type: pattern.type, isError }
+          );
+
+          // Collect predictions for related patterns
+          if (obsResult.predictions && obsResult.predictions.length > 0) {
+            entanglementPredictions.push(...obsResult.predictions);
+          }
+
+          // If new entanglements were created, note them
+          if (obsResult.newPairs && obsResult.newPairs.length > 0) {
+            for (const pair of obsResult.newPairs) {
+              // Record to consciousness if available
+              if (consciousness) {
+                consciousness.recordInsight({
+                  type: 'entanglement',
+                  title: 'Pattern entanglement detected',
+                  message: `${pair.patterns[0]} ⊗ ${pair.patterns[1]} (${Math.round(pair.correlation * 100)}%)`,
+                  data: pair,
+                  priority: 'low',
+                });
+              }
+            }
+          }
+        }
+
+        // Get predictions for what might appear next
+        if (entanglementPredictions.length > 0) {
+          // Sort by probability and take top 3
+          const topPredictions = entanglementPredictions
+            .sort((a, b) => b.probability - a.probability)
+            .slice(0, 3);
+
+          // Store for later use (e.g., proactive warnings)
+          process.env.CYNIC_PREDICTED_PATTERNS = JSON.stringify(topPredictions);
+        }
+      } catch (e) {
+        // Entanglement observation failed - continue without
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // COGNITIVE THERMODYNAMICS: Track heat/work/efficiency (Phase 10A)
     // "Ἐνέργεια - First Law: Energy is conserved"
     // ═══════════════════════════════════════════════════════════════════════════
@@ -730,7 +794,7 @@ async function main() {
           if (content.includes('/**') || content.includes('///') || content.includes('"""')) {
             signalCollector.collectSemanticSignal('documentation', { file: filePath });
           }
-          if (linesChanged > 50 && toolName === 'Write') {
+          if (linesChanged > DC.LENGTH.CONTRIBUTOR_PROFILE && toolName === 'Write') {
             signalCollector.collectSemanticSignal('new_abstraction', { file: filePath, lines: linesChanged });
           }
         }
@@ -754,9 +818,9 @@ async function main() {
           errorType: isError ? detectErrorType(typeof toolOutput === 'string' ? toolOutput : '') : null,
         });
 
-        // Run bias detection periodically (every 5 actions)
+        // Run bias detection periodically (every N actions)
         const stats = cognitiveBiases.getStats();
-        if (stats.actionHistorySize % 5 === 0) {
+        if (stats.actionHistorySize % DC.FREQUENCY.BIAS_CHECK_INTERVAL === 0) {
           detectedBiases = cognitiveBiases.detectBiases();
         }
       } catch (e) {
@@ -853,7 +917,7 @@ async function main() {
               }
 
               // Record as insight if enough gaps
-              if (significantGaps.length >= 3) {
+              if (significantGaps.length >= DC.FREQUENCY.HARMONY_GAP_MIN) {
                 const principles = Object.entries(byPrinciple)
                   .sort((a, b) => b[1] - a[1])
                   .map(([p, n]) => `${p}:${n}`)
@@ -910,7 +974,7 @@ async function main() {
         const linesChanged = (content.match(/\n/g) || []).length + 1;
 
         // Only enrich on significant changes (>50 lines)
-        if (linesChanged > 50) {
+        if (linesChanged > DC.LENGTH.CONTRIBUTOR_PROFILE) {
           setImmediate(async () => {
             try {
               const profile = await contributorDiscovery.getCurrentUserProfile();
@@ -936,7 +1000,7 @@ async function main() {
     // If biases detected but no intervention, show informative warning
     // "Le chien voit ce que l'humain refuse de voir"
     if (detectedBiases.length > 0 && cognitiveBiases) {
-      const highConfidenceBiases = detectedBiases.filter(b => b.confidence >= 0.5);
+      const highConfidenceBiases = detectedBiases.filter(b => b.confidence >= DC.CONFIDENCE.BIAS_DETECTION);
       if (highConfidenceBiases.length > 0) {
         const biasWarning = highConfidenceBiases
           .map(b => cognitiveBiases.formatDetection(b))
@@ -955,7 +1019,7 @@ async function main() {
       try {
         const entropy = signalCollector.calculateSessionEntropy();
         // Only warn when entropy exceeds φ⁻¹ (61.8%) - truly chaotic
-        if (entropy.combined > 0.618 && entropy.interpretation === 'CHAOTIC') {
+        if (entropy.combined > DC.CONFIDENCE.ENTROPY_WARNING && entropy.interpretation === 'CHAOTIC') {
           const emoji = signalCollector.getEntropyEmoji(entropy.interpretation);
           const toolBar = '█'.repeat(Math.round(entropy.tool * 10)) + '░'.repeat(10 - Math.round(entropy.tool * 10));
           const fileBar = '█'.repeat(Math.round(entropy.file * 10)) + '░'.repeat(10 - Math.round(entropy.file * 10));
@@ -987,7 +1051,7 @@ async function main() {
     // VOLUNTARY POVERTY: Celebrate deletions (Phase 10C)
     // "Moins c'est plus" - Diogenes threw away his cup
     // ═══════════════════════════════════════════════════════════════════════════
-    if (deletionCelebration && Math.random() < 0.618) { // φ⁻¹ probability to not spam
+    if (deletionCelebration && Math.random() < DC.PROBABILITY.DELETION_CELEBRATE) { // φ⁻¹
       console.log(JSON.stringify({
         continue: true,
         message: `\n── VOLUNTARY POVERTY ──────────────────────────────────────\n   🏺 ${deletionCelebration}\n   *tail wag* Less is more.\n`,
@@ -1008,7 +1072,7 @@ async function main() {
       if (selfRefinement && judgment.qScore !== undefined) {
         try {
           // Only refine judgments that might have issues (Q < 60 or GROWL/BARK)
-          const shouldRefine = judgment.qScore < 60 ||
+          const shouldRefine = judgment.qScore < DC.QUALITY.Q_SCORE_REFINEMENT ||
                               judgment.verdict === 'GROWL' ||
                               judgment.verdict === 'BARK';
 
@@ -1018,7 +1082,7 @@ async function main() {
               Q: judgment.qScore,
               qScore: judgment.qScore,
               verdict: judgment.verdict,
-              confidence: judgment.confidence || 0.618,
+              confidence: judgment.confidence || DC.MAX_CONFIDENCE,
               breakdown: judgment.axiomScores || {
                 PHI: judgment.qScore,
                 VERIFY: judgment.qScore,
