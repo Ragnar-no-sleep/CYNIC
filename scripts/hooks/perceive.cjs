@@ -305,11 +305,15 @@ async function main() {
     const injections = [];
 
     // If orchestrator suggests a specific agent, note it
-    if (orchestration?.routing?.suggestedAgent) {
-      const sefirah = orchestration.routing.sefirah;
-      const agent = orchestration.routing.suggestedAgent;
+    // Result is in orchestration.result from MCP response
+    const routing = orchestration?.result?.routing || orchestration?.routing;
+    const intervention = orchestration?.result?.intervention || orchestration?.intervention;
+
+    if (routing?.suggestedAgent) {
+      const sefirah = routing.sefirah;
+      const agent = routing.suggestedAgent;
       // Only inject if intervention level is not silent
-      if (orchestration.intervention?.level !== 'silent') {
+      if (intervention?.level !== 'silent') {
         injections.push(`── SEFIRAH: ${sefirah} ────────────────────────────────────\n   *sniff* Routing to ${agent}`);
       }
     }

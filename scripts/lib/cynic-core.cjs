@@ -299,7 +299,7 @@ function detectEcosystem() {
   return ecosystem;
 }
 
-function detectProject(dir) {
+function detectProject(dir = process.cwd()) {
   // Check for common project indicators
   const indicators = ['package.json', 'Cargo.toml', 'go.mod', 'pyproject.toml', '.git'];
 
