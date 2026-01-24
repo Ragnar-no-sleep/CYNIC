@@ -10,7 +10,9 @@
 'use strict';
 
 import Redis from 'ioredis';
-import { secureToken } from '@cynic/core';
+import { secureToken, createLogger } from '@cynic/core';
+
+const log = createLogger('RedisClient');
 
 // Singleton instance
 let redis = null;
@@ -77,7 +79,7 @@ export class RedisClient {
     });
 
     await this.client.connect();
-    console.log('🐕 Redis connected');
+    log.info('Redis connected');
 
     return this;
   }
@@ -89,7 +91,7 @@ export class RedisClient {
     if (this.client) {
       await this.client.quit();
       this.client = null;
-      console.log('🐕 Redis disconnected');
+      log.info('Redis disconnected');
     }
   }
 

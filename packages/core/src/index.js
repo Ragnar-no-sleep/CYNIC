@@ -50,3 +50,6 @@ export * from './errors.js';
 
 // Cryptographic Utilities (secure random generation)
 export * from './crypto-utils.js';
+
+// Structured Logging (phi-aligned log levels)
+export * from './logger.js';

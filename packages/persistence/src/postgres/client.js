@@ -10,7 +10,10 @@
 'use strict';
 
 import pg from 'pg';
+import { createLogger } from '@cynic/core';
+
 const { Pool } = pg;
+const log = createLogger('PostgresClient');
 
 // Singleton pool instance
 let pool = null;
@@ -78,7 +81,7 @@ function getSSLConfig(connectionString) {
         const { readFileSync } = require('fs');
         sslConfig.ca = readFileSync(process.env.CYNIC_DB_SSL_CA, 'utf8');
       } catch (err) {
-        console.warn(`[PostgresClient] Failed to load SSL CA: ${err.message}`);
+        log.warn('Failed to load SSL CA', { error: err.message });
       }
     }
 
@@ -188,7 +191,7 @@ export class PostgresClient {
       // Successfully recovered - close circuit
       this._circuitState = CircuitState.CLOSED;
       this._failureCount = 0;
-      console.log('[PostgresClient] Circuit breaker: CLOSED (recovered)');
+      log.info('Circuit breaker: CLOSED (recovered)');
     } else {
       // Reset failure count on success
       this._failureCount = 0;
@@ -206,11 +209,11 @@ export class PostgresClient {
     if (this._circuitState === CircuitState.HALF_OPEN) {
       // Failed during recovery test - reopen circuit
       this._circuitState = CircuitState.OPEN;
-      console.warn('[PostgresClient] Circuit breaker: OPEN (recovery failed)');
+      log.warn('Circuit breaker: OPEN (recovery failed)');
     } else if (this._failureCount >= this._circuitConfig.failureThreshold) {
       // Too many failures - open circuit
       this._circuitState = CircuitState.OPEN;
-      console.warn(`[PostgresClient] Circuit breaker: OPEN (${this._failureCount} failures)`);
+      log.warn('Circuit breaker: OPEN', { failures: this._failureCount });
     }
   }
 
@@ -234,7 +237,7 @@ export class PostgresClient {
     const client = await this.pool.connect();
     try {
       await client.query('SELECT NOW()');
-      console.log('🐕 PostgreSQL connected');
+      log.info('PostgreSQL connected');
     } finally {
       client.release();
     }
@@ -320,7 +323,7 @@ export class PostgresClient {
     if (this.pool) {
       await this.pool.end();
       this.pool = null;
-      console.log('🐕 PostgreSQL disconnected');
+      log.info('PostgreSQL disconnected');
     }
   }
 
@@ -331,7 +334,7 @@ export class PostgresClient {
     this._circuitState = CircuitState.CLOSED;
     this._failureCount = 0;
     this._lastFailureTime = 0;
-    console.log('[PostgresClient] Circuit breaker: manually reset to CLOSED');
+    log.info('Circuit breaker: manually reset to CLOSED');
   }
 
   /**
