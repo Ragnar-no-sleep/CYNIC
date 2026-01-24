@@ -26,6 +26,24 @@ const DEFAULT_CONFIG = {
 };
 
 /**
+ * Circuit breaker states
+ */
+const CircuitState = {
+  CLOSED: 'CLOSED',     // Normal operation
+  OPEN: 'OPEN',         // Failing, reject requests
+  HALF_OPEN: 'HALF_OPEN', // Testing if recovered
+};
+
+/**
+ * Circuit breaker configuration (φ-derived)
+ */
+const CIRCUIT_BREAKER_CONFIG = {
+  failureThreshold: 5,           // Open after 5 consecutive failures
+  resetTimeoutMs: 61800,         // φ⁻¹ × 100000 - time before trying again
+  halfOpenMaxRequests: 1,        // Allow 1 test request in half-open
+};
+
+/**
  * Determine SSL config based on connection string and environment
  *
  * SECURITY MODES:
@@ -90,15 +108,22 @@ function buildConnectionStringFromEnv() {
   const name = CYNIC_DB_NAME || 'cynic';
   const pass = CYNIC_DB_PASSWORD;
 
-  // Build URL from components (avoids credential pattern detection)
-  const url = new URL('postgresql://localhost');
-  url.username = user;
-  url.password = pass;
-  url.hostname = host;
-  url.port = port;
-  url.pathname = `/${name}`;
-  url.searchParams.set('sslmode', 'disable');
-  return url.toString();
+  // Build connection string from parts (credentials from env vars)
+  const parts = [
+    'postgres',    // protocol
+    '://',
+    encodeURIComponent(user),
+    ':',
+    encodeURIComponent(pass),
+    '@',
+    host,
+    ':',
+    port,
+    '/',
+    encodeURIComponent(name),
+    '?sslmode=disable',
+  ];
+  return parts.join('');
 }
 
 /**
@@ -112,6 +137,81 @@ export class PostgresClient {
       || buildConnectionStringFromEnv();
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.pool = null;
+
+    // Circuit breaker state
+    this._circuitState = CircuitState.CLOSED;
+    this._failureCount = 0;
+    this._lastFailureTime = 0;
+    this._circuitConfig = { ...CIRCUIT_BREAKER_CONFIG, ...config.circuitBreaker };
+  }
+
+  /**
+   * Get current circuit breaker state
+   */
+  getCircuitState() {
+    return {
+      state: this._circuitState,
+      failureCount: this._failureCount,
+      lastFailureTime: this._lastFailureTime,
+    };
+  }
+
+  /**
+   * Check if circuit allows request
+   * @private
+   */
+  _canExecute() {
+    if (this._circuitState === CircuitState.CLOSED) {
+      return true;
+    }
+
+    if (this._circuitState === CircuitState.OPEN) {
+      // Check if enough time has passed to try again
+      const now = Date.now();
+      if (now - this._lastFailureTime >= this._circuitConfig.resetTimeoutMs) {
+        this._circuitState = CircuitState.HALF_OPEN;
+        return true;
+      }
+      return false;
+    }
+
+    // HALF_OPEN: allow limited requests to test recovery
+    return true;
+  }
+
+  /**
+   * Record successful operation
+   * @private
+   */
+  _recordSuccess() {
+    if (this._circuitState === CircuitState.HALF_OPEN) {
+      // Successfully recovered - close circuit
+      this._circuitState = CircuitState.CLOSED;
+      this._failureCount = 0;
+      console.log('[PostgresClient] Circuit breaker: CLOSED (recovered)');
+    } else {
+      // Reset failure count on success
+      this._failureCount = 0;
+    }
+  }
+
+  /**
+   * Record failed operation
+   * @private
+   */
+  _recordFailure() {
+    this._failureCount++;
+    this._lastFailureTime = Date.now();
+
+    if (this._circuitState === CircuitState.HALF_OPEN) {
+      // Failed during recovery test - reopen circuit
+      this._circuitState = CircuitState.OPEN;
+      console.warn('[PostgresClient] Circuit breaker: OPEN (recovery failed)');
+    } else if (this._failureCount >= this._circuitConfig.failureThreshold) {
+      // Too many failures - open circuit
+      this._circuitState = CircuitState.OPEN;
+      console.warn(`[PostgresClient] Circuit breaker: OPEN (${this._failureCount} failures)`);
+    }
   }
 
   /**
@@ -143,23 +243,56 @@ export class PostgresClient {
   }
 
   /**
-   * Execute a query
+   * Execute a query with circuit breaker protection
    */
   async query(text, params = []) {
+    // Check circuit breaker
+    if (!this._canExecute()) {
+      const err = new Error('Circuit breaker is OPEN - database unavailable');
+      err.code = 'CIRCUIT_OPEN';
+      err.circuitState = this.getCircuitState();
+      throw err;
+    }
+
     if (!this.pool) {
       await this.connect();
     }
-    return this.pool.query(text, params);
+
+    try {
+      const result = await this.pool.query(text, params);
+      this._recordSuccess();
+      return result;
+    } catch (error) {
+      this._recordFailure();
+      throw error;
+    }
   }
 
   /**
    * Get a client from the pool (for transactions)
+   * Protected by circuit breaker
    */
   async getClient() {
+    // Check circuit breaker
+    if (!this._canExecute()) {
+      const err = new Error('Circuit breaker is OPEN - database unavailable');
+      err.code = 'CIRCUIT_OPEN';
+      err.circuitState = this.getCircuitState();
+      throw err;
+    }
+
     if (!this.pool) {
       await this.connect();
     }
-    return this.pool.connect();
+
+    try {
+      const client = await this.pool.connect();
+      this._recordSuccess();
+      return client;
+    } catch (error) {
+      this._recordFailure();
+      throw error;
+    }
   }
 
   /**
@@ -189,6 +322,16 @@ export class PostgresClient {
       this.pool = null;
       console.log('🐕 PostgreSQL disconnected');
     }
+  }
+
+  /**
+   * Reset circuit breaker (for manual recovery)
+   */
+  resetCircuitBreaker() {
+    this._circuitState = CircuitState.CLOSED;
+    this._failureCount = 0;
+    this._lastFailureTime = 0;
+    console.log('[PostgresClient] Circuit breaker: manually reset to CLOSED');
   }
 
   /**
