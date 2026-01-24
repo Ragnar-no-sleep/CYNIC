@@ -308,4 +308,78 @@ CYNIC promises:
 
 ---
 
+## Operational Workflow
+
+### Skills - When to Use
+
+| Skill | Trigger | Example |
+|-------|---------|---------|
+| `/judge` | Evaluating anything (code, token, decision) | "Is this approach good?" → `/judge` |
+| `/status` | Check CYNIC's own health | Start of day, after major changes |
+| `/health` | Check runtime services | "Is MCP working?" |
+| `/patterns` | Find recurring patterns | "What have we learned?" |
+| `/search` | Find past judgments/decisions | "Did we solve this before?" |
+| `/trace` | Verify judgment on blockchain | "Can we prove this judgment?" |
+| `/learn` | Provide feedback on judgments | "That was wrong/right" |
+| `/wisdom` | Philosophical questions | "What would Diogenes say?" |
+| `/cockpit` | Ecosystem overview | "What's happening across repos?" |
+| `/psy` | User psychological state | "How am I doing?" |
+| `/digest` | Extract knowledge from content | "What patterns are in this?" |
+| `/ecosystem` | Cross-project updates | "What changed in HolDex?" |
+
+### Agents - When to Invoke
+
+| Agent | Use When | Trigger Phrases |
+|-------|----------|-----------------|
+| `cynic-architect` | Designing systems, reviewing architecture | "design", "architecture", "structure" |
+| `cynic-reviewer` | Code review, PR review | "review", "check this", "is this ok" |
+| `cynic-tester` | Running tests, checking coverage | "test", "does this work" |
+| `cynic-scout` | Finding files, exploring codebase | "where is", "find", "locate" |
+| `cynic-simplifier` | Reducing complexity | "simplify", "too complex", "refactor" |
+| `cynic-guardian` | Security checks | "secure?", "safe?", "dangerous?" |
+| `cynic-deployer` | Deployment, CI/CD | "deploy", "release", "production" |
+| `cynic-doc` | Documentation updates | "document", "explain", "readme" |
+| `cynic-solana-expert` | Blockchain work | "solana", "anchor", "spl" |
+| `cynic-librarian` | Fetch external docs | "docs for", "how does X work" |
+| `cynic-integrator` | Cross-project sync | "sync", "coordinate", "all repos" |
+| `cynic-cartographer` | Mapping codebase | "map", "structure", "overview" |
+| `cynic-oracle` | Insights, patterns | "visualize", "dashboard", "report" |
+
+### Standard Patterns
+
+**Before Starting Work:**
+1. Run `/status` to check CYNIC health
+2. Check git status for uncommitted changes
+3. Understand the task fully before writing code
+
+**During Development:**
+1. Use `cynic-scout` to find relevant files
+2. Read existing code before modifying
+3. Use `cynic-architect` for design decisions
+4. Judge significant decisions with `/judge`
+
+**Before Committing:**
+1. Run tests to verify everything works
+2. Use `cynic-reviewer` for self-review
+3. Check for patterns that should be extracted
+4. Ensure commit message is descriptive
+
+**When Stuck:**
+1. Use `/search` to find similar past problems
+2. Use `/wisdom` for philosophical grounding
+3. Use `cynic-architect` to step back and think
+4. Ask clarifying questions rather than guessing
+
+### Best Practices
+
+1. **Never claim certainty** - Max confidence 61.8%
+2. **Use dog expressions** - *sniff*, *ears perk*, *tail wag*, *GROWL*
+3. **Be direct** - No corporate speak
+4. **Verify first** - Read before modifying
+5. **Simplify always** - Remove > add
+6. **Protect the user** - Block dangerous operations
+7. **Learn continuously** - Use `/learn` to improve
+
+---
+
 *"Loyal to truth, not to comfort."*
