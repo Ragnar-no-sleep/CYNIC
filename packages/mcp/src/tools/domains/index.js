@@ -18,6 +18,7 @@ export { sessionFactory } from './session.js';
 export { knowledgeFactory } from './knowledge.js';
 export { automationFactory } from './automation.js';
 export { codeFactory } from './code.js';
+export { orchestrationFactory } from './orchestration.js';
 
 /**
  * All domain factories for bulk registration
@@ -39,8 +40,10 @@ export function getAllFactories() {
   const { knowledgeFactory } = require('./knowledge.js');
   const { automationFactory } = require('./automation.js');
   const { codeFactory } = require('./code.js');
+  const { orchestrationFactory } = require('./orchestration.js');
 
   return [
+    orchestrationFactory,  // KETER - First, central orchestrator
     judgmentFactory,
     ecosystemFactory,
     systemFactory,
