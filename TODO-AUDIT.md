@@ -1,14 +1,26 @@
 # CYNIC Audit TODO List
 
 > Generated 2026-01-24 from security & architecture audit
+> Updated 2026-01-25 with analysis and status
 
-## Completed (17/24)
+## Completed (20/24)
 
 - [x] #1 Fix .env credential leak
 - [x] #2 Fix mixed module system in tools/domains/index.js
 - [x] #3 Create custom error types in @cynic/core
+- [x] #4 Add critical path tests - PoJ judgment, key-manager, consensus
+  - ✓ Already covered: poj.test.js, consensus.test.js, multi-node-consensus.test.js, crypto.test.js
 - [x] #5 Replace Math.random() with crypto.randomBytes()
 - [x] #6 Add rate limiting to MCP server
+- [x] #7 Break up god files (>1000 lines) into smaller modules
+  - ✓ scorers.js (1326 → 6 modules in scorers/)
+  - ✓ cynic.js (1949 → 1364, extracted: constants.js, sefirot.js, relationship-graph.js)
+  - ⏸️ 12 other files analyzed: cohesive classes, no split needed
+    - node.js, server.js: system coordinators (complexity inherent)
+    - live.js, arch.js: view classes (many small render methods)
+    - analyst.js, scout.js, deployer.js, guardian.js: agents (BaseAgent)
+    - learning-service.js, engine.js: domain services
+    - events.js, organic-signals.js: could split but low priority
 - [x] #9 Fix phi-alignment violation in residual.js
 - [x] #12 Add circuit breaker to persistence layer
 - [x] #13 Fix unsafe Function() constructor in console.js
@@ -21,24 +33,7 @@
 - [x] #22 Fix SSL certificate validation disabled
 - [x] #24 Clean up TODO/FIXME markers
 
-## In Progress (2)
-
-- [ ] #7 Break up god files (>1000 lines) into smaller modules
-  - DONE: scorers.js (1326 lines → 6 modules in scorers/)
-  - REMAINING: 13 files >1000 lines:
-    - cynic.js (1949)
-    - node.js (1642)
-    - live.js (1419)
-    - server.js (1339)
-    - learning-service.js (1266)
-    - analyst.js (1252)
-    - scout.js (1175)
-    - deployer.js (1145)
-    - arch.js (1128)
-    - events.js (1124)
-    - engine.js (1096)
-    - organic-signals.js (1081)
-    - guardian.js (1016)
+## In Progress (1)
 
 - [ ] #8 Replace console.log with structured logging
   - DONE: Created @cynic/core/logger module
@@ -46,13 +41,17 @@
   - REMAINING: ~900 console.log calls across codebase
   - Pattern established - can be done incrementally
 
-## Pending (5)
+## Pending (3)
 
-- [ ] #4 Add critical path tests - PoJ judgment, key-manager, consensus
-- [ ] #10 Add tests for emergence package (20% → 60%)
-- [ ] #11 Add tests for identity package (17% → 60%)
-- [ ] #19 Add tests for persistence repositories (13% → 50%)
+- [ ] #10 Add tests for emergence package (~23% → 60%)
+  - Current: 598 lines tests / 2,609 lines src
+- [ ] #11 Add tests for identity package (~28% → 60%)
+  - Current: 758 lines tests / 2,701 lines src
+- [ ] #19 Add tests for persistence repositories (~21% → 50%)
+  - Current: 2,759 lines tests / 13,080 lines src
 - [ ] #21 Extract duplicated repository CRUD patterns
+  - 12/17 repos already use BaseRepository
+  - 5 to migrate: escore-history, learning-cycles, library-cache, pattern-evolution, user-learning-profiles
 - [ ] #23 Add TypeDoc generation for API documentation
 
 ## Key Files Created/Modified
@@ -68,6 +67,10 @@
   - `culture-axiom.js` - CULTURE dimension scorers
   - `burn-axiom.js` - BURN dimension scorers
   - `index.js` - Registry and re-exports
+- `packages/node/src/agents/collective/` - CYNIC modules:
+  - `constants.js` - CYNIC_CONSTANTS, enums
+  - `sefirot.js` - Tree of Life geometry
+  - `relationship-graph.js` - Agent relationship learning
 
 ### Modified Files
 - `packages/mcp/src/server/HttpAdapter.js` - Rate limiting, CORS, CSP
