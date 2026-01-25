@@ -11,7 +11,8 @@
     "./qscore": "./src/qscore/index.js",
     "./identity": "./src/identity/index.js",
     "./worlds": "./src/worlds/index.js",
-    "./container": "./src/container.js"
+    "./container": "./src/container.js",
+    "./engines": "./src/engines/index.js"
   },
   "scripts": {
     "test": "node --test test/*.test.js"

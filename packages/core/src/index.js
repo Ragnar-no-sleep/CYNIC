@@ -56,3 +56,6 @@ export * from './logger.js';
 
 // Dependency Injection Container (SOLID foundation)
 export * from './container.js';
+
+// Engine System (philosophical and analytical engines)
+export * from './engines/index.js';
