@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "CYNIC hooks, engines, and local scripts",
   "private": true,
+  "type": "module",
   "scripts": {
     "test": "node --test test/*.test.cjs",
     "test:refinement": "node --test test/self-refinement.test.cjs",

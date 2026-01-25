@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/../scripts/hooks/awaken.cjs 2>/dev/null || true",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/../scripts/hooks/awaken.js 2>/dev/null || true",
             "timeout": 15
           }
         ]
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/../scripts/hooks/sleep.cjs 2>/dev/null || true",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/../scripts/hooks/sleep.js 2>/dev/null || true",
             "timeout": 10
           }
         ]
