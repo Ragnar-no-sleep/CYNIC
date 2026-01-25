@@ -3,7 +3,7 @@
 > Generated 2026-01-24 from security & architecture audit
 > Updated 2026-01-25 with analysis and status
 
-## Completed (20/24)
+## Completed (21/24)
 
 - [x] #1 Fix .env credential leak
 - [x] #2 Fix mixed module system in tools/domains/index.js
@@ -30,6 +30,8 @@
 - [x] #17 Standardize export patterns - named exports only
 - [x] #18 Remove re-exports from @cynic/node index.js
 - [x] #20 Extract duplicated scorer patterns into base class
+- [x] #21 Extract duplicated repository CRUD patterns
+  - ✓ All 17/17 repos now use BaseRepository
 - [x] #22 Fix SSL certificate validation disabled
 - [x] #24 Clean up TODO/FIXME markers
 
@@ -41,7 +43,7 @@
   - REMAINING: ~900 console.log calls across codebase
   - Pattern established - can be done incrementally
 
-## Pending (3)
+## Pending (4)
 
 - [ ] #10 Add tests for emergence package (~23% → 60%)
   - Current: 598 lines tests / 2,609 lines src
@@ -49,9 +51,6 @@
   - Current: 758 lines tests / 2,701 lines src
 - [ ] #19 Add tests for persistence repositories (~21% → 50%)
   - Current: 2,759 lines tests / 13,080 lines src
-- [ ] #21 Extract duplicated repository CRUD patterns
-  - 12/17 repos already use BaseRepository
-  - 5 to migrate: escore-history, learning-cycles, library-cache, pattern-evolution, user-learning-profiles
 - [ ] #23 Add TypeDoc generation for API documentation
 
 ## Key Files Created/Modified
