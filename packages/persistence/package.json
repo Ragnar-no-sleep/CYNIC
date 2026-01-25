@@ -11,7 +11,9 @@
     "./repositories": "./src/postgres/repositories/index.js",
     "./dag": "./src/dag/index.js",
     "./poj": "./src/poj/index.js",
-    "./graph": "./src/graph/index.js"
+    "./graph": "./src/graph/index.js",
+    "./factory": "./src/factory.js",
+    "./interfaces": "./src/interfaces/IRepository.js"
   },
   "scripts": {
     "test": "node --test test/*.test.js",

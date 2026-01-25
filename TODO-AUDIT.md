@@ -1,9 +1,9 @@
 # CYNIC Audit TODO List
 
 > Generated 2026-01-24 from security & architecture audit
-> Updated 2026-01-25 with analysis and status
+> Updated 2026-01-25 with architecture transformation
 
-## Completed (23/26)
+## Completed (25/26)
 
 - [x] #1 Fix .env credential leak
 - [x] #2 Fix mixed module system in tools/domains/index.js
@@ -63,9 +63,51 @@
   - Already comprehensive: 50 tests covering KeyManager, E-Score 3D/7D, NodeIdentity, ReputationGraph
   - All tests passing
 
+## Architecture Transformation (NEW - Post-Audit)
+
+> SOLID-compliant refactoring based on comprehensive audit
+
+### Phase 1: DI Foundation ✓ COMPLETED
+- [x] #25 Create ServiceContainer in @cynic/core
+  - `packages/core/src/container.js` - DI Container with singleton/transient support
+  - Exports: ServiceContainer, globalContainer, withContainer, createCYNICContainer
+  - Package export path: `@cynic/core/container`
+- [x] #26 Create RepositoryFactory in @cynic/persistence
+  - `packages/persistence/src/factory.js` - Factory for all 17 repositories
+  - Exports: RepositoryFactory, createMockFactory
+  - Supports custom factories, tags, mock testing
+  - Package export path: `@cynic/persistence/factory`
+
+### Phase 2: CYNICNode Decomposition (PENDING)
+- [ ] #27 Extract OperatorComponent from CYNICNode
+- [ ] #28 Extract JudgeComponent from CYNICNode
+- [ ] #29 Extract StateComponent from CYNICNode
+- [ ] #30 Extract TransportComponent from CYNICNode
+- [ ] #31 Extract ConsensusComponent from CYNICNode
+- [ ] #32 Extract EmergenceComponent from CYNICNode
+
+### Phase 3: Plugin System (PENDING)
+- [ ] #33 Create DimensionRegistry for runtime extension
+- [ ] #34 Update CYNICJudge to use DimensionRegistry
+
+### Phase 4: Dead Code Cleanup (PENDING)
+- [ ] #35 Archive 119 dead modules in scripts/lib/ (82.6% unused)
+- [ ] #36 Unify circuit-breaker implementations
+
+### Phase 5: Hook Refactor (PENDING)
+- [ ] #37 Extract inline logic from observe.cjs (1160 → ~400 lines)
+- [ ] #38 Create BaseHook class with DI injection
+
+### Audit Reports Generated
+- `AUDIT_ARCHITECTURE.md` - Full SOLID analysis (990 lines)
+- `AUDIT_KEY_FILES.md` - Quick reference to key files
+- `VIOLATIONS_QUICK_FIX.md` - Prioritized fix guide
+
 ## Key Files Created/Modified
 
 ### New Files
+- `packages/core/src/container.js` - DI Container (SOLID foundation)
+- `packages/persistence/src/factory.js` - Repository Factory
 - `packages/core/src/errors.js` - Custom error types (10 classes, 44 codes)
 - `packages/core/src/crypto-utils.js` - Secure random utilities
 - `packages/core/src/logger.js` - Structured logging module

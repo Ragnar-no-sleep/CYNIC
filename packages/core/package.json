@@ -10,7 +10,8 @@
     "./timing": "./src/timing/index.js",
     "./qscore": "./src/qscore/index.js",
     "./identity": "./src/identity/index.js",
-    "./worlds": "./src/worlds/index.js"
+    "./worlds": "./src/worlds/index.js",
+    "./container": "./src/container.js"
   },
   "scripts": {
     "test": "node --test test/*.test.js"

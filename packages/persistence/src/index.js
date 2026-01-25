@@ -24,6 +24,12 @@ export { migrate } from './postgres/migrate.js';
 // Repositories
 export * from './postgres/repositories/index.js';
 
+// Repository Factory (DI pattern)
+export { RepositoryFactory, createMockFactory } from './factory.js';
+
+// Repository Interfaces (for extension)
+export { BaseRepository } from './interfaces/IRepository.js';
+
 // Session Store
 export { SessionStore } from './redis/session-store.js';
 
