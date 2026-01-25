@@ -33,6 +33,14 @@ export class EngineRegistry {
   #dependencyGraph = new Map();
 
   /**
+   * Get the number of registered engines
+   * @returns {number}
+   */
+  get size() {
+    return this.#engines.size;
+  }
+
+  /**
    * Register an engine
    *
    * @param {Engine} engine - Engine instance to register

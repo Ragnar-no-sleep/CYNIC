@@ -59,3 +59,9 @@ export * from './container.js';
 
 // Engine System (philosophical and analytical engines)
 export * from './engines/index.js';
+
+// Boot System (lifecycle management, auto-discovery, unified startup)
+export * from './boot/index.js';
+
+// Communication Bus (N-tier, SOLID, inter-layer messaging)
+export * from './bus/index.js';

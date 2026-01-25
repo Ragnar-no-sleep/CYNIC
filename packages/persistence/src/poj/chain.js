@@ -12,6 +12,7 @@
 'use strict';
 
 import { EventEmitter } from 'events';
+import { connectToBus } from '@cynic/core/bus';
 import {
   PoJBlock,
   Attestation,
@@ -173,6 +174,13 @@ export class PoJChain extends EventEmitter {
     this._validators = new Set();
 
     this._initialized = false;
+
+    // Connect to global event bus for cross-layer communication
+    this._busDisconnect = connectToBus(this, {
+      namespace: 'poj',
+      events: ['initialized', 'block:created', 'block:finalized', 'judgment:added',
+               'slot:advanced', 'epoch:completed', 'chain:reorg'],
+    });
   }
 
   /**

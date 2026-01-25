@@ -12,7 +12,10 @@
     "./identity": "./src/identity/index.js",
     "./worlds": "./src/worlds/index.js",
     "./container": "./src/container.js",
-    "./engines": "./src/engines/index.js"
+    "./engines": "./src/engines/index.js",
+    "./boot": "./src/boot/index.js",
+    "./boot/providers": "./src/boot/providers/index.js",
+    "./bus": "./src/bus/index.js"
   },
   "scripts": {
     "test": "node --test test/*.test.js"

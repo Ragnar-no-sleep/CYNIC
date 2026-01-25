@@ -11,6 +11,7 @@
 'use strict';
 
 import { EventEmitter } from 'events';
+import { connectToBus } from '@cynic/core/bus';
 import { GraphStore } from './store.js';
 import { GraphTraversal } from './traversal.js';
 import {
@@ -240,6 +241,13 @@ export class GraphOverlay extends EventEmitter {
     this.traversal = new GraphTraversal(this.store);
 
     this._initialized = false;
+
+    // Connect to global event bus for cross-layer communication
+    this._busDisconnect = connectToBus(this, {
+      namespace: 'graph',
+      events: ['initialized', 'node:added', 'node:updated', 'node:removed',
+               'edge:added', 'edge:removed', 'pattern:detected'],
+    });
   }
 
   /**

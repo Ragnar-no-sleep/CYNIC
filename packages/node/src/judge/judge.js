@@ -57,6 +57,8 @@ export class CYNICJudge {
    * @param {boolean} [options.applySkepticism=true] - Whether to automatically apply skepticism to judgments
    * @param {boolean} [options.includeUnnameable=true] - Whether to include THE_UNNAMEABLE in dimensions
    * @param {Object} [options.eScoreProvider] - E-Score provider for vote weighting
+   * @param {import('./engine-integration.js').EngineIntegration} [options.engineIntegration] - 73 philosophy engines
+   * @param {boolean} [options.consultEngines=false] - Whether to consult engines during judgment
    */
   constructor(options = {}) {
     this.customDimensions = options.customDimensions || {};
@@ -71,12 +73,17 @@ export class CYNICJudge {
     // E-Score provider for vote weighting (Burns → E-Score → Vote Weight)
     this.eScoreProvider = options.eScoreProvider || null;
 
+    // Engine integration (73 philosophy engines)
+    this.engineIntegration = options.engineIntegration || null;
+    this.consultEngines = options.consultEngines || false;
+
     // Stats tracking
     this.stats = {
       totalJudgments: 0,
       verdicts: { HOWL: 0, WAG: 0, GROWL: 0, BARK: 0 },
       anomaliesDetected: 0,
       avgScore: 0,
+      engineConsultations: 0,
     };
 
     // Anomaly buffer for ResidualDetector
@@ -116,6 +123,71 @@ export class CYNICJudge {
    */
   setEScoreProvider(eScoreProvider) {
     this.eScoreProvider = eScoreProvider;
+  }
+
+  /**
+   * Set engine integration (for post-construction injection)
+   * 73 philosophy engines provide additional perspectives
+   * @param {import('./engine-integration.js').EngineIntegration} engineIntegration
+   */
+  setEngineIntegration(engineIntegration) {
+    this.engineIntegration = engineIntegration;
+  }
+
+  /**
+   * Enable/disable engine consultation during judgments
+   * @param {boolean} enabled
+   */
+  setConsultEngines(enabled) {
+    this.consultEngines = enabled;
+  }
+
+  /**
+   * Judge an item with optional engine consultation
+   * Async version that can consult the 73 philosophy engines
+   *
+   * @param {Object} item - Item to judge
+   * @param {Object} [context] - Judgment context
+   * @param {Object} [options] - Judge options
+   * @param {boolean} [options.consultEngines] - Override consultEngines setting
+   * @returns {Promise<Object>} Judgment result with Q-Score and engine insights
+   */
+  async judgeAsync(item, context = {}, options = {}) {
+    // Get base judgment (sync)
+    const judgment = this.judge(item, context);
+
+    // Optionally consult engines
+    const shouldConsult = options.consultEngines ?? this.consultEngines;
+
+    if (shouldConsult && this.engineIntegration?.isEnabled()) {
+      try {
+        const consultation = await this.engineIntegration.consult(item, context, {
+          maxEngines: options.maxEngines || 5,
+          timeout: options.engineTimeout || 5000,
+        });
+
+        // Add engine insights to judgment
+        judgment.engineConsultation = consultation.toJSON();
+
+        // Factor engine confidence into overall confidence
+        if (consultation.confidence > 0) {
+          const engineWeight = 0.2; // 20% weight for engine consensus
+          judgment.confidence =
+            judgment.confidence * (1 - engineWeight) +
+            consultation.confidence * engineWeight;
+        }
+
+        this.stats.engineConsultations++;
+      } catch (error) {
+        // Engine consultation failed - continue without it
+        judgment.engineConsultation = {
+          error: error.message,
+          engineCount: 0,
+        };
+      }
+    }
+
+    return judgment;
   }
 
   /**

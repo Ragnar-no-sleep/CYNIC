@@ -1,0 +1,333 @@
+/**
+ * CYNIC Event Bus
+ *
+ * Unified event system for inter-layer communication.
+ * All components can emit and subscribe to typed events.
+ *
+ * "The pack communicates as one" - κυνικός
+ *
+ * @module @cynic/core/bus/event-bus
+ */
+
+'use strict';
+
+import { EventEmitter } from 'node:events';
+import { randomUUID } from 'node:crypto';
+
+/**
+ * Standard CYNIC event types
+ */
+export const EventType = {
+  // Lifecycle events
+  COMPONENT_READY: 'component:ready',
+  COMPONENT_STOPPED: 'component:stopped',
+  COMPONENT_ERROR: 'component:error',
+
+  // Judgment events
+  JUDGMENT_REQUESTED: 'judgment:requested',
+  JUDGMENT_CREATED: 'judgment:created',
+  JUDGMENT_UPDATED: 'judgment:updated',
+
+  // Engine events
+  ENGINE_REGISTERED: 'engine:registered',
+  ENGINE_CONSULTED: 'engine:consulted',
+  ENGINE_RESULT: 'engine:result',
+
+  // Pattern events
+  PATTERN_DETECTED: 'pattern:detected',
+  PATTERN_LEARNED: 'pattern:learned',
+  ANOMALY_DETECTED: 'anomaly:detected',
+
+  // Memory events
+  MEMORY_STORED: 'memory:stored',
+  MEMORY_RETRIEVED: 'memory:retrieved',
+  INSIGHT_CREATED: 'insight:created',
+
+  // User events
+  USER_ACTION: 'user:action',
+  USER_FEEDBACK: 'user:feedback',
+  SESSION_STARTED: 'session:started',
+  SESSION_ENDED: 'session:ended',
+
+  // Tool events (from hooks)
+  TOOL_CALLED: 'tool:called',
+  TOOL_COMPLETED: 'tool:completed',
+  TOOL_FAILED: 'tool:failed',
+
+  // Sync events
+  SYNC_REQUESTED: 'sync:requested',
+  SYNC_COMPLETED: 'sync:completed',
+  STATE_CHANGED: 'state:changed',
+};
+
+/**
+ * Event envelope with metadata
+ */
+export class CYNICEvent {
+  constructor(type, payload, options = {}) {
+    this.id = options.id || randomUUID();
+    this.type = type;
+    this.payload = payload;
+    this.source = options.source || 'unknown';
+    this.timestamp = options.timestamp || Date.now();
+    this.correlationId = options.correlationId || null;
+    this.metadata = options.metadata || {};
+  }
+
+  /**
+   * Create a reply event correlated to this one
+   */
+  reply(type, payload, options = {}) {
+    return new CYNICEvent(type, payload, {
+      ...options,
+      correlationId: this.id,
+      source: options.source,
+    });
+  }
+
+  toJSON() {
+    return {
+      id: this.id,
+      type: this.type,
+      payload: this.payload,
+      source: this.source,
+      timestamp: this.timestamp,
+      correlationId: this.correlationId,
+      metadata: this.metadata,
+    };
+  }
+}
+
+/**
+ * CYNIC Event Bus
+ *
+ * Central hub for all inter-component communication.
+ * Supports typed events, wildcards, and request/reply patterns.
+ */
+export class CYNICEventBus extends EventEmitter {
+  #history = [];
+  #historyLimit = 1000;
+  #subscriptions = new Map();
+  #middlewares = [];
+
+  constructor(options = {}) {
+    super();
+    this.#historyLimit = options.historyLimit || 1000;
+    this.setMaxListeners(100); // Allow many listeners
+  }
+
+  /**
+   * Publish an event to all subscribers
+   *
+   * @param {string} type - Event type
+   * @param {any} payload - Event data
+   * @param {Object} [options] - Event options
+   * @returns {CYNICEvent} The published event
+   */
+  publish(type, payload, options = {}) {
+    const event = new CYNICEvent(type, payload, options);
+
+    // Run through middlewares
+    for (const middleware of this.#middlewares) {
+      try {
+        const result = middleware(event);
+        if (result === false) {
+          return event; // Middleware blocked the event
+        }
+      } catch (error) {
+        console.error('[EventBus] Middleware error:', error.message);
+      }
+    }
+
+    // Store in history
+    this.#addToHistory(event);
+
+    // Emit to specific type listeners
+    this.emit(type, event);
+
+    // Emit to wildcard listeners
+    const namespace = type.split(':')[0];
+    this.emit(`${namespace}:*`, event);
+    this.emit('*', event);
+
+    return event;
+  }
+
+  /**
+   * Subscribe to events of a specific type
+   *
+   * @param {string} type - Event type (supports wildcards like "judgment:*")
+   * @param {Function} handler - Event handler
+   * @returns {Function} Unsubscribe function
+   */
+  subscribe(type, handler) {
+    const wrappedHandler = (event) => {
+      try {
+        handler(event);
+      } catch (error) {
+        console.error(`[EventBus] Handler error for ${type}:`, error.message);
+        this.publish(EventType.COMPONENT_ERROR, {
+          eventType: type,
+          error: error.message,
+        });
+      }
+    };
+
+    this.on(type, wrappedHandler);
+
+    // Track subscription
+    if (!this.#subscriptions.has(type)) {
+      this.#subscriptions.set(type, new Set());
+    }
+    this.#subscriptions.get(type).add(wrappedHandler);
+
+    // Return unsubscribe function
+    return () => {
+      this.off(type, wrappedHandler);
+      this.#subscriptions.get(type)?.delete(wrappedHandler);
+    };
+  }
+
+  /**
+   * Subscribe to an event once
+   */
+  subscribeOnce(type, handler) {
+    const wrappedHandler = (event) => {
+      try {
+        handler(event);
+      } catch (error) {
+        console.error(`[EventBus] Handler error for ${type}:`, error.message);
+      }
+    };
+
+    this.once(type, wrappedHandler);
+  }
+
+  /**
+   * Request/Reply pattern - publish and wait for correlated response
+   *
+   * @param {string} type - Request event type
+   * @param {any} payload - Request data
+   * @param {Object} [options] - Options
+   * @param {number} [options.timeout=5000] - Timeout in ms
+   * @param {string} [options.replyType] - Expected reply event type
+   * @returns {Promise<CYNICEvent>} Reply event
+   */
+  async request(type, payload, options = {}) {
+    const { timeout = 5000, replyType } = options;
+
+    const requestEvent = this.publish(type, payload, options);
+    const expectedReplyType = replyType || `${type}:reply`;
+
+    return new Promise((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        reject(new Error(`Request timeout for ${type}`));
+      }, timeout);
+
+      const handler = (event) => {
+        if (event.correlationId === requestEvent.id) {
+          clearTimeout(timeoutId);
+          this.off(expectedReplyType, handler);
+          resolve(event);
+        }
+      };
+
+      this.on(expectedReplyType, handler);
+    });
+  }
+
+  /**
+   * Add middleware that processes all events
+   *
+   * @param {Function} middleware - (event) => boolean|void
+   */
+  use(middleware) {
+    this.#middlewares.push(middleware);
+  }
+
+  /**
+   * Get recent event history
+   *
+   * @param {Object} [filter] - Filter options
+   * @returns {CYNICEvent[]}
+   */
+  getHistory(filter = {}) {
+    let events = [...this.#history];
+
+    if (filter.type) {
+      events = events.filter(e => e.type === filter.type);
+    }
+
+    if (filter.source) {
+      events = events.filter(e => e.source === filter.source);
+    }
+
+    if (filter.since) {
+      events = events.filter(e => e.timestamp >= filter.since);
+    }
+
+    if (filter.limit) {
+      events = events.slice(-filter.limit);
+    }
+
+    return events;
+  }
+
+  /**
+   * Get subscription statistics
+   */
+  getStats() {
+    const stats = {
+      totalSubscriptions: 0,
+      byType: {},
+      historySize: this.#history.length,
+      middlewareCount: this.#middlewares.length,
+    };
+
+    for (const [type, handlers] of this.#subscriptions) {
+      stats.byType[type] = handlers.size;
+      stats.totalSubscriptions += handlers.size;
+    }
+
+    return stats;
+  }
+
+  /**
+   * Clear all subscriptions and history
+   */
+  clear() {
+    this.removeAllListeners();
+    this.#subscriptions.clear();
+    this.#history = [];
+  }
+
+  /**
+   * Add event to history with size limit
+   * @private
+   */
+  #addToHistory(event) {
+    this.#history.push(event);
+    if (this.#history.length > this.#historyLimit) {
+      this.#history.shift();
+    }
+  }
+}
+
+/**
+ * Global event bus instance
+ */
+export const globalEventBus = new CYNICEventBus();
+
+/**
+ * Convenience function to publish to global bus
+ */
+export function publish(type, payload, options = {}) {
+  return globalEventBus.publish(type, payload, options);
+}
+
+/**
+ * Convenience function to subscribe to global bus
+ */
+export function subscribe(type, handler) {
+  return globalEventBus.subscribe(type, handler);
+}
