@@ -105,9 +105,9 @@ export async function bootCYNIC(options = {}) {
   // Register standard providers if not already done
   registerStandardProviders();
 
-  // Discover all components
+  // Discover all components (now async for dynamic imports)
   const context = { config: config || {} };
-  const discovered = discoverComponents(context);
+  const discovered = await discoverComponents(context);
 
   // Filter components
   let componentNames = Array.from(discovered.keys());

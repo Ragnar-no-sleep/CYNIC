@@ -12,6 +12,9 @@
 'use strict';
 
 import { createLifecycle, HealthStatus } from './lifecycle.js';
+import { createLogger } from '../logger.js';
+import { EngineRegistry } from '../engines/registry.js';
+import { loadPhilosophyEngines } from '../engines/philosophy/loader.js';
 
 /**
  * Component registry for discovered components
@@ -24,12 +27,33 @@ const discoveredComponents = new Map();
 const componentProviders = new Map();
 
 /**
+ * Cached module imports (lazy loaded)
+ * @type {Map<string, any>}
+ */
+const moduleCache = new Map();
+
+/**
+ * Lazy load a module from @cynic packages
+ * @param {string} modulePath - Module path
+ * @returns {Promise<any>}
+ */
+async function lazyImport(modulePath) {
+  if (moduleCache.has(modulePath)) {
+    return moduleCache.get(modulePath);
+  }
+
+  const mod = await import(modulePath);
+  moduleCache.set(modulePath, mod);
+  return mod;
+}
+
+/**
  * Register a component provider
  *
  * @param {string} name - Component name
  * @param {Object} config - Provider configuration
  * @param {string[]} [config.dependencies] - Component dependencies
- * @param {Function} config.create - Factory function that creates the component
+ * @param {Function} config.create - Factory function that creates the component (can be async)
  * @param {Function} [config.initialize] - Initialize callback
  * @param {Function} [config.start] - Start callback
  * @param {Function} [config.stop] - Stop callback
@@ -38,7 +62,10 @@ const componentProviders = new Map();
  * @example
  * registerProvider('postgres', {
  *   dependencies: ['config'],
- *   create: (deps) => new PostgresClient(deps.config.database),
+ *   create: async (deps) => {
+ *     const { PostgresClient } = await import('@cynic/persistence');
+ *     return new PostgresClient(deps.config.database);
+ *   },
  *   initialize: async (client) => await client.connect(),
  *   stop: async (client) => await client.close(),
  *   health: async (client) => ({
@@ -52,15 +79,16 @@ export function registerProvider(name, config) {
 
 /**
  * Discover and create all components from registered providers
+ * Now async to support dynamic imports
  *
  * @param {Object} [context] - Shared context (config, etc.)
- * @returns {Map<string, Lifecycle>} Discovered components
+ * @returns {Promise<Map<string, Lifecycle>>} Discovered components
  */
-export function discoverComponents(context = {}) {
+export async function discoverComponents(context = {}) {
   const resolved = new Map();
   const resolving = new Set();
 
-  const resolve = (name) => {
+  const resolve = async (name) => {
     if (resolved.has(name)) {
       return resolved.get(name);
     }
@@ -79,11 +107,15 @@ export function discoverComponents(context = {}) {
     // Resolve dependencies first
     const deps = {};
     for (const depName of (provider.dependencies || [])) {
-      deps[depName] = resolve(depName);
+      deps[depName] = await resolve(depName);
+      // Get actual instance from lifecycle wrapper
+      if (deps[depName]?.instance !== undefined) {
+        deps[depName] = deps[depName].instance;
+      }
     }
 
-    // Create the component instance
-    const instance = provider.create(deps, context);
+    // Create the component instance (now supports async)
+    const instance = await Promise.resolve(provider.create(deps, context));
 
     // Wrap in lifecycle
     const lifecycle = createLifecycle({
@@ -115,7 +147,7 @@ export function discoverComponents(context = {}) {
 
   // Resolve all registered providers
   for (const name of componentProviders.keys()) {
-    resolve(name);
+    await resolve(name);
   }
 
   return resolved;
@@ -138,6 +170,7 @@ export function getComponent(name) {
 export function clearDiscovery() {
   discoveredComponents.clear();
   componentProviders.clear();
+  moduleCache.clear();
 }
 
 // ============================================================================
@@ -167,8 +200,6 @@ export function registerStandardProviders() {
   registerProvider('logger', {
     dependencies: ['config'],
     create: (deps) => {
-      // Dynamically import to avoid circular deps
-      const { createLogger } = require('../logger.js');
       return createLogger('CYNIC', deps.config.log);
     },
     health: async () => ({ status: HealthStatus.HEALTHY }),
@@ -177,30 +208,30 @@ export function registerStandardProviders() {
   // PostgreSQL provider
   registerProvider('postgres', {
     dependencies: ['config', 'logger'],
-    create: (deps) => {
-      const { PostgresClient } = require('../../persistence/src/postgres/client.js');
+    create: async (deps) => {
+      const { PostgresClient } = await lazyImport('@cynic/persistence');
       return new PostgresClient(deps.config.database);
     },
     initialize: async (client) => {
-      await client.connect();
+      if (client) await client.connect();
     },
     stop: async (client) => {
-      await client.close();
+      if (client) await client.close();
     },
     health: async (client) => ({
-      status: client.isConnected() ? HealthStatus.HEALTHY : HealthStatus.UNHEALTHY,
-      poolSize: client.getPoolStats?.(),
+      status: client?.isConnected?.() ? HealthStatus.HEALTHY : HealthStatus.UNHEALTHY,
+      poolSize: client?.getPoolStats?.(),
     }),
   });
 
   // Redis provider (optional)
   registerProvider('redis', {
     dependencies: ['config', 'logger'],
-    create: (deps) => {
+    create: async (deps) => {
       if (!deps.config.redis?.url) {
         return null; // Redis is optional
       }
-      const { RedisClient } = require('../../persistence/src/redis/client.js');
+      const { RedisClient } = await lazyImport('@cynic/persistence');
       return new RedisClient(deps.config.redis);
     },
     initialize: async (client) => {
@@ -214,7 +245,7 @@ export function registerStandardProviders() {
         return { status: HealthStatus.HEALTHY, available: false };
       }
       return {
-        status: client.isReady() ? HealthStatus.HEALTHY : HealthStatus.UNHEALTHY,
+        status: client.isReady?.() ? HealthStatus.HEALTHY : HealthStatus.UNHEALTHY,
         available: true,
       };
     },
@@ -224,12 +255,10 @@ export function registerStandardProviders() {
   registerProvider('engines', {
     dependencies: ['config', 'logger'],
     create: () => {
-      const { EngineRegistry } = require('../engines/registry.js');
       return new EngineRegistry();
     },
     initialize: async (registry, deps) => {
       // Load philosophy engines
-      const { loadPhilosophyEngines } = require('../engines/philosophy/loader.js');
       loadPhilosophyEngines({ registry, silent: !deps.config.verbose });
     },
     health: async (registry) => ({
@@ -241,17 +270,26 @@ export function registerStandardProviders() {
   // Judge provider
   registerProvider('judge', {
     dependencies: ['config', 'postgres', 'redis', 'engines'],
-    create: (deps) => {
-      const { CYNICJudge } = require('../../mcp/src/judge.js');
+    create: async (deps) => {
+      const { CYNICJudge } = await lazyImport('@cynic/node');
+      const { createEngineIntegration } = await lazyImport('@cynic/node/judge/engine-integration.js');
+
+      // Create engine integration from loaded engines
+      const engineIntegration = deps.engines
+        ? createEngineIntegration({ registry: deps.engines })
+        : null;
+
       return new CYNICJudge({
         postgres: deps.postgres,
         redis: deps.redis,
-        engines: deps.engines,
+        engineIntegration,
+        consultEngines: true, // Enable engine consultation by default
       });
     },
     health: async (judge) => ({
       status: HealthStatus.HEALTHY,
       initialized: true,
+      consultEngines: judge?.consultEngines || false,
     }),
   });
 }

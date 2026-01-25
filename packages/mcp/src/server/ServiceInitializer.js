@@ -11,8 +11,8 @@
 
 'use strict';
 
-import { CYNICJudge, createCollectivePack, LearningService, createEScoreCalculator, JudgmentGraphIntegration } from '@cynic/node';
-import { PeriodicScheduler, FibonacciIntervals } from '@cynic/core';
+import { CYNICJudge, createCollectivePack, LearningService, createEScoreCalculator, JudgmentGraphIntegration, createEngineIntegration } from '@cynic/node';
+import { PeriodicScheduler, FibonacciIntervals, EngineRegistry, loadPhilosophyEngines, globalEventBus, EventType } from '@cynic/core';
 import { GraphOverlay } from '@cynic/persistence/graph';
 import { PersistenceManager } from '../persistence.js';
 import { SessionManager } from '../session-manager.js';
@@ -79,6 +79,7 @@ export class ServiceInitializer {
     this.factories = {
       eScoreCalculator: this._createEScoreCalculator.bind(this),
       learningService: this._createLearningService.bind(this),
+      engineRegistry: this._createEngineRegistry.bind(this),
       judge: this._createJudge.bind(this),
       persistence: this._createPersistence.bind(this),
       sessionManager: this._createSessionManager.bind(this),
@@ -123,7 +124,12 @@ export class ServiceInitializer {
       services.learningService = this.factories.learningService(services);
     }
 
-    // 2. Judge (depends on eScore, learning)
+    // 2. Engine Registry (73 philosophy engines)
+    if (!services.engineRegistry) {
+      services.engineRegistry = await this.factories.engineRegistry(services);
+    }
+
+    // 3. Judge (depends on eScore, learning, engines)
     if (!services.judge) {
       services.judge = this.factories.judge(services);
     }
@@ -188,7 +194,94 @@ export class ServiceInitializer {
       services.metrics = this.factories.metrics(services);
     }
 
+    // 15. Setup event bus subscriptions for cross-layer communication
+    this._setupBusSubscriptions(services);
+
     return services;
+  }
+
+  /**
+   * Setup subscriptions to global event bus
+   * Bridges PoJ/Graph events to metrics and logging
+   * @private
+   */
+  _setupBusSubscriptions(services) {
+    // Track subscriptions for cleanup
+    this._busSubscriptions = [];
+
+    // Subscribe to PoJ chain events
+    this._busSubscriptions.push(
+      globalEventBus.subscribe('poj:block:created', (event) => {
+        const { slot, judgmentCount, blockHash } = event.payload || {};
+        console.error(`   [PoJ] Block created: slot=${slot}, judgments=${judgmentCount}`);
+        services.metrics?.recordEvent('poj_block_created', { slot, judgmentCount });
+      })
+    );
+
+    this._busSubscriptions.push(
+      globalEventBus.subscribe('poj:block:finalized', (event) => {
+        const { slot, blockHash } = event.payload || {};
+        console.error(`   [PoJ] Block finalized: slot=${slot}`);
+        services.metrics?.recordEvent('poj_block_finalized', { slot });
+      })
+    );
+
+    // Subscribe to graph events
+    this._busSubscriptions.push(
+      globalEventBus.subscribe('graph:node:added', (event) => {
+        const { nodeType, id } = event.payload || {};
+        services.metrics?.recordEvent('graph_node_added', { nodeType });
+      })
+    );
+
+    this._busSubscriptions.push(
+      globalEventBus.subscribe('graph:edge:added', (event) => {
+        const { edgeType, from, to } = event.payload || {};
+        services.metrics?.recordEvent('graph_edge_added', { edgeType });
+      })
+    );
+
+    // Subscribe to judgment events
+    this._busSubscriptions.push(
+      globalEventBus.subscribe(EventType.JUDGMENT_CREATED, (event) => {
+        const { qScore, verdict } = event.payload || {};
+        services.metrics?.recordEvent('judgment_created', { qScore, verdict });
+      })
+    );
+
+    // Subscribe to engine events
+    this._busSubscriptions.push(
+      globalEventBus.subscribe(EventType.ENGINE_CONSULTED, (event) => {
+        const { engineId, domain } = event.payload || {};
+        services.metrics?.recordEvent('engine_consulted', { engineId, domain });
+      })
+    );
+
+    // Subscribe to pattern events (for anomaly detection)
+    this._busSubscriptions.push(
+      globalEventBus.subscribe(EventType.ANOMALY_DETECTED, (event) => {
+        const { type, severity, description } = event.payload || {};
+        console.error(`   *GROWL* Anomaly detected: ${type} (${severity})`);
+        services.metrics?.recordEvent('anomaly_detected', { type, severity });
+      })
+    );
+
+    console.error(`   Bus: ${this._busSubscriptions.length} subscriptions active`);
+  }
+
+  /**
+   * Cleanup bus subscriptions
+   */
+  cleanupBusSubscriptions() {
+    if (this._busSubscriptions) {
+      for (const unsubscribe of this._busSubscriptions) {
+        if (typeof unsubscribe === 'function') {
+          unsubscribe();
+        }
+      }
+      this._busSubscriptions = [];
+      console.error('   Bus: subscriptions cleaned up');
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -210,10 +303,24 @@ export class ServiceInitializer {
     });
   }
 
+  async _createEngineRegistry() {
+    const registry = new EngineRegistry();
+    const result = loadPhilosophyEngines({ registry, silent: true });
+    console.error(`   Engines: ${result.loaded} philosophy engines loaded`);
+    return registry;
+  }
+
   _createJudge(services) {
+    // Create engine integration if registry is available
+    const engineIntegration = services.engineRegistry
+      ? createEngineIntegration({ registry: services.engineRegistry })
+      : null;
+
     return new CYNICJudge({
       eScoreProvider: services.eScoreCalculator,
       learningService: services.learningService,
+      engineIntegration,
+      consultEngines: !!engineIntegration, // Enable if engines available
     });
   }
 

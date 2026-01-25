@@ -51,6 +51,11 @@ export {
   createSelfSkeptic,
   SKEPTIC_CONSTANTS,
   BiasType,
+  // Engine Integration (73 philosophy engines)
+  EngineIntegration,
+  EngineConsultation,
+  createEngineIntegration,
+  CONTEXT_DOMAIN_MAP,
 } from './judge/index.js';
 
 // State

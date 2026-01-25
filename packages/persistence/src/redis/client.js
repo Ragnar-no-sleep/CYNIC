@@ -18,6 +18,24 @@ const log = createLogger('RedisClient');
 let redis = null;
 
 /**
+ * Circuit breaker states
+ */
+const CircuitState = {
+  CLOSED: 'CLOSED',     // Normal operation
+  OPEN: 'OPEN',         // Failing, reject requests
+  HALF_OPEN: 'HALF_OPEN', // Testing if recovered
+};
+
+/**
+ * Circuit breaker configuration (φ-derived)
+ */
+const CIRCUIT_BREAKER_CONFIG = {
+  failureThreshold: 5,           // Open after 5 consecutive failures
+  resetTimeoutMs: 61800,         // φ⁻¹ × 100000 - time before trying again
+  halfOpenMaxRequests: 1,        // Allow 1 test request in half-open
+};
+
+/**
  * Default TTLs (φ-derived, in seconds)
  */
 export const TTL = {
@@ -57,9 +75,94 @@ const RELEASE_LOCK_SCRIPT = `
  * Redis Client wrapper
  */
 export class RedisClient {
-  constructor(url) {
+  constructor(url, config = {}) {
     this.url = url || process.env.CYNIC_REDIS_URL;
     this.client = null;
+
+    // Circuit breaker state
+    this._circuitState = CircuitState.CLOSED;
+    this._failureCount = 0;
+    this._lastFailureTime = 0;
+    this._circuitConfig = { ...CIRCUIT_BREAKER_CONFIG, ...config.circuitBreaker };
+  }
+
+  /**
+   * Get current circuit breaker state
+   */
+  getCircuitState() {
+    return {
+      state: this._circuitState,
+      failureCount: this._failureCount,
+      lastFailureTime: this._lastFailureTime,
+    };
+  }
+
+  /**
+   * Check if circuit allows request
+   * @private
+   */
+  _canExecute() {
+    if (this._circuitState === CircuitState.CLOSED) {
+      return true;
+    }
+
+    if (this._circuitState === CircuitState.OPEN) {
+      // Check if enough time has passed to try again
+      const now = Date.now();
+      if (now - this._lastFailureTime >= this._circuitConfig.resetTimeoutMs) {
+        this._circuitState = CircuitState.HALF_OPEN;
+        return true;
+      }
+      return false;
+    }
+
+    // HALF_OPEN: allow limited requests to test recovery
+    return true;
+  }
+
+  /**
+   * Record successful operation
+   * @private
+   */
+  _recordSuccess() {
+    if (this._circuitState === CircuitState.HALF_OPEN) {
+      // Successfully recovered - close circuit
+      this._circuitState = CircuitState.CLOSED;
+      this._failureCount = 0;
+      log.info('Circuit breaker: CLOSED (recovered)');
+    } else {
+      // Reset failure count on success
+      this._failureCount = 0;
+    }
+  }
+
+  /**
+   * Record failed operation
+   * @private
+   */
+  _recordFailure() {
+    this._failureCount++;
+    this._lastFailureTime = Date.now();
+
+    if (this._circuitState === CircuitState.HALF_OPEN) {
+      // Failed during recovery test - reopen circuit
+      this._circuitState = CircuitState.OPEN;
+      log.warn('Circuit breaker: OPEN (recovery failed)');
+    } else if (this._failureCount >= this._circuitConfig.failureThreshold) {
+      // Too many failures - open circuit
+      this._circuitState = CircuitState.OPEN;
+      log.warn('Circuit breaker: OPEN', { failures: this._failureCount });
+    }
+  }
+
+  /**
+   * Reset circuit breaker (for manual recovery)
+   */
+  resetCircuitBreaker() {
+    this._circuitState = CircuitState.CLOSED;
+    this._failureCount = 0;
+    this._lastFailureTime = 0;
+    log.info('Circuit breaker: manually reset to CLOSED');
   }
 
   /**
@@ -96,41 +199,68 @@ export class RedisClient {
   }
 
   // ==========================================================================
-  // BASIC OPERATIONS
+  // BASIC OPERATIONS (circuit breaker protected)
   // ==========================================================================
 
-  async get(key) {
-    const value = await this.client.get(key);
-    try {
-      return value ? JSON.parse(value) : null;
-    } catch {
-      return value;
+  /**
+   * Execute operation with circuit breaker protection
+   * @private
+   */
+  async _executeProtected(operation) {
+    // Check circuit breaker
+    if (!this._canExecute()) {
+      const err = new Error('Circuit breaker is OPEN - Redis unavailable');
+      err.code = 'CIRCUIT_OPEN';
+      err.circuitState = this.getCircuitState();
+      throw err;
     }
+
+    try {
+      const result = await operation();
+      this._recordSuccess();
+      return result;
+    } catch (error) {
+      this._recordFailure();
+      throw error;
+    }
+  }
+
+  async get(key) {
+    return this._executeProtected(async () => {
+      const value = await this.client.get(key);
+      try {
+        return value ? JSON.parse(value) : null;
+      } catch {
+        return value;
+      }
+    });
   }
 
   async set(key, value, ttl = null) {
-    const serialized = typeof value === 'string' ? value : JSON.stringify(value);
-    if (ttl) {
-      await this.client.setex(key, ttl, serialized);
-    } else {
-      await this.client.set(key, serialized);
-    }
+    return this._executeProtected(async () => {
+      const serialized = typeof value === 'string' ? value : JSON.stringify(value);
+      if (ttl) {
+        await this.client.setex(key, ttl, serialized);
+      } else {
+        await this.client.set(key, serialized);
+      }
+    });
   }
 
   async del(key) {
-    return this.client.del(key);
+    return this._executeProtected(() => this.client.del(key));
   }
 
   async exists(key) {
-    return this.client.exists(key);
+    return this._executeProtected(() => this.client.exists(key));
   }
 
   async expire(key, ttl) {
-    return this.client.expire(key, ttl);
+    return this._executeProtected(() => this.client.expire(key, ttl));
   }
 
   async ttl(key) {
-    return this.client.ttl(key);
+    return this._executeProtected(() => this.client.ttl(key));
   }
 
   // ==========================================================================
@@ -168,35 +298,39 @@ export class RedisClient {
   }
 
   // ==========================================================================
-  // RATE LIMITING
+  // RATE LIMITING (circuit breaker protected)
   // ==========================================================================
 
   async checkRateLimit(identifier, limit = 100, window = TTL.RATE_LIMIT) {
-    const key = `${PREFIX.RATE}${identifier}`;
-    const current = await this.client.incr(key);
+    return this._executeProtected(async () => {
+      const key = `${PREFIX.RATE}${identifier}`;
+      const current = await this.client.incr(key);
 
-    if (current === 1) {
-      await this.client.expire(key, window);
-    }
+      if (current === 1) {
+        await this.client.expire(key, window);
+      }
 
-    return {
-      allowed: current <= limit,
-      current,
-      limit,
-      remaining: Math.max(0, limit - current),
-    };
+      return {
+        allowed: current <= limit,
+        current,
+        limit,
+        remaining: Math.max(0, limit - current),
+      };
+    });
   }
 
   // ==========================================================================
-  // DISTRIBUTED LOCK (using Redis Lua scripting for atomicity)
+  // DISTRIBUTED LOCK (circuit breaker protected, using Redis Lua scripting)
   // ==========================================================================
 
   async acquireLock(resource, ttl = TTL.LOCK) {
-    const key = `${PREFIX.LOCK}${resource}`;
-    const token = secureToken();
+    return this._executeProtected(async () => {
+      const key = `${PREFIX.LOCK}${resource}`;
+      const token = secureToken();
 
-    const acquired = await this.client.set(key, token, 'EX', ttl, 'NX');
-    return acquired ? token : null;
+      const acquired = await this.client.set(key, token, 'EX', ttl, 'NX');
+      return acquired ? token : null;
+    });
   }
 
   /**
@@ -205,9 +339,11 @@ export class RedisClient {
    * This is safe: Lua runs server-side in Redis
    */
   async releaseLock(resource, token) {
-    const key = `${PREFIX.LOCK}${resource}`;
-    // ioredis evalsha/eval runs Lua on Redis server, not JS
-    return this.client.call('EVAL', RELEASE_LOCK_SCRIPT, 1, key, token);
+    return this._executeProtected(async () => {
+      const key = `${PREFIX.LOCK}${resource}`;
+      // ioredis evalsha/eval runs Lua on Redis server, not JS
+      return this.client.call('EVAL', RELEASE_LOCK_SCRIPT, 1, key, token);
+    });
   }
 
   // ==========================================================================
@@ -224,9 +360,20 @@ export class RedisClient {
   }
 
   /**
-   * Health check
+   * Health check (includes circuit breaker state)
    */
   async health() {
+    const circuitState = this.getCircuitState();
+
+    // If circuit is open, report unhealthy without hitting Redis
+    if (this._circuitState === CircuitState.OPEN) {
+      return {
+        status: 'unhealthy',
+        error: 'Circuit breaker is OPEN',
+        circuitBreaker: circuitState,
+      };
+    }
+
     try {
       const start = Date.now();
       await this.client.ping();
@@ -235,15 +382,23 @@ export class RedisClient {
       const info = await this.client.info('memory');
       const memMatch = info.match(/used_memory_human:(\S+)/);
 
+      // If we got here from HALF_OPEN, record success
+      if (this._circuitState === CircuitState.HALF_OPEN) {
+        this._recordSuccess();
+      }
+
       return {
         status: 'healthy',
         latency,
         memory: memMatch ? memMatch[1] : 'unknown',
+        circuitBreaker: circuitState,
       };
     } catch (error) {
+      this._recordFailure();
       return {
         status: 'unhealthy',
         error: error.message,
+        circuitBreaker: this.getCircuitState(),
       };
     }
   }
