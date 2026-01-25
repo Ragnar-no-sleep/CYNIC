@@ -397,6 +397,149 @@ export function getPhysicsBridge() {
   return _physicsBridge || null;
 }
 
+// More module getters for digest and other hooks
+let _taskEnforcer = null;
+let _thermodynamics = null;
+let _emergence = null;
+
+export function getTaskEnforcer() {
+  if (_taskEnforcer === null) {
+    try {
+      _taskEnforcer = require('./task-enforcer.cjs');
+    } catch (e) {
+      _taskEnforcer = false;
+    }
+  }
+  return _taskEnforcer || null;
+}
+
+export function getThermodynamics() {
+  if (_thermodynamics === null) {
+    try {
+      _thermodynamics = require('./cognitive-thermodynamics.cjs');
+      _thermodynamics.init?.();
+    } catch (e) {
+      _thermodynamics = false;
+    }
+  }
+  return _thermodynamics || null;
+}
+
+export function getEmergence() {
+  if (_emergence === null) {
+    try {
+      _emergence = require('./emergence-detector.cjs');
+    } catch (e) {
+      _emergence = false;
+    }
+  }
+  return _emergence || null;
+}
+
+// More module getters for observe hook
+let _selfRefinement = null;
+let _harmonyAnalyzer = null;
+let _cognitiveBiases = null;
+let _topologyTracker = null;
+let _interventionEngine = null;
+let _cosmopolitan = null;
+let _dialectic = null;
+let _inferenceEngine = null;
+
+export function getSelfRefinement() {
+  if (_selfRefinement === null) {
+    try {
+      _selfRefinement = require('./self-refinement.cjs');
+    } catch (e) {
+      _selfRefinement = false;
+    }
+  }
+  return _selfRefinement || null;
+}
+
+export function getHarmonyAnalyzer() {
+  if (_harmonyAnalyzer === null) {
+    try {
+      _harmonyAnalyzer = require('./harmony-analyzer.cjs');
+    } catch (e) {
+      _harmonyAnalyzer = false;
+    }
+  }
+  return _harmonyAnalyzer || null;
+}
+
+export function getCognitiveBiases() {
+  if (_cognitiveBiases === null) {
+    try {
+      _cognitiveBiases = require('./cognitive-biases.cjs');
+      _cognitiveBiases.init?.();
+    } catch (e) {
+      _cognitiveBiases = false;
+    }
+  }
+  return _cognitiveBiases || null;
+}
+
+export function getTopologyTracker() {
+  if (_topologyTracker === null) {
+    try {
+      _topologyTracker = require('./topology-tracker.cjs');
+      _topologyTracker.init?.();
+    } catch (e) {
+      _topologyTracker = false;
+    }
+  }
+  return _topologyTracker || null;
+}
+
+export function getInterventionEngine() {
+  if (_interventionEngine === null) {
+    try {
+      _interventionEngine = require('./intervention-engine.cjs');
+      _interventionEngine.init?.();
+    } catch (e) {
+      _interventionEngine = false;
+    }
+  }
+  return _interventionEngine || null;
+}
+
+export function getCosmopolitan() {
+  if (_cosmopolitan === null) {
+    try {
+      _cosmopolitan = require('./cosmopolitan-learning.cjs');
+      _cosmopolitan.init?.();
+    } catch (e) {
+      _cosmopolitan = false;
+    }
+  }
+  return _cosmopolitan || null;
+}
+
+export function getDialectic() {
+  if (_dialectic === null) {
+    try {
+      _dialectic = require('./dialectic-synthesizer.cjs');
+      _dialectic.init?.();
+    } catch (e) {
+      _dialectic = false;
+    }
+  }
+  return _dialectic || null;
+}
+
+export function getInferenceEngine() {
+  if (_inferenceEngine === null) {
+    try {
+      _inferenceEngine = require('./inference-engine.cjs');
+      _inferenceEngine.init?.();
+    } catch (e) {
+      _inferenceEngine = false;
+    }
+  }
+  return _inferenceEngine || null;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // DIRECT REQUIRE (for modules that need full access)
 // ═══════════════════════════════════════════════════════════════════════════
