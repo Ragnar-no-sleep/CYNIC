@@ -44,8 +44,17 @@
   - DONE: Converted packages/node/src/node.js (41 calls)
   - DONE: Converted packages/node/src/components/*.js (21 calls)
   - DONE: Fixed MCP server.js console.log breaking protocol (2 calls)
-  - REMAINING: ~1200 console.log calls across codebase
-  - Pattern established - can be done incrementally
+  - DONE: Converted @cynic/mcp package (16 files, ~100 calls)
+    - server/ServiceInitializer.js, HttpAdapter.js, poj-chain-manager.js
+    - persistence.js, session-manager.js, discovery-service.js, librarian-service.js
+    - All persistence adapters (7 files)
+    - tools/domains/judgment.js, search-progressive.js
+  - DONE: Converted @cynic/node api/server.js (9 calls)
+  - DONE: Converted @cynic/protocol gossip/propagation.js (5 calls)
+  - DONE: Converted @cynic/identity node-identity.js (2 calls)
+  - REMAINING: ~60 console.* calls in production code
+  - NOTE: CLI/bin files intentionally use console for terminal output
+  - NOTE: dashboard/js files are browser-side (can't use @cynic/core)
 
 ## Pending (2)
 
