@@ -44,17 +44,21 @@
   - DONE: Converted packages/node/src/node.js (41 calls)
   - DONE: Converted packages/node/src/components/*.js (21 calls)
   - DONE: Fixed MCP server.js console.log breaking protocol (2 calls)
-  - DONE: Converted @cynic/mcp package (16 files, ~100 calls)
+  - DONE: Converted @cynic/mcp package (22 files, ~140 calls)
     - server/ServiceInitializer.js, HttpAdapter.js, poj-chain-manager.js
     - persistence.js, session-manager.js, discovery-service.js, librarian-service.js
-    - All persistence adapters (7 files)
-    - tools/domains/judgment.js, search-progressive.js
-  - DONE: Converted @cynic/node api/server.js (9 calls)
-  - DONE: Converted @cynic/protocol gossip/propagation.js (5 calls)
-  - DONE: Converted @cynic/identity node-identity.js (2 calls)
-  - REMAINING: ~60 console.* calls in production code
-  - NOTE: CLI/bin files intentionally use console for terminal output
-  - NOTE: dashboard/js files are browser-side (can't use @cynic/core)
+    - ecosystem-service.js, code-analyzer.js, integrator-service.js
+    - All persistence adapters (9 files)
+    - tools/domains/*.js (6 files), tools/registry.js
+  - DONE: Converted @cynic/core boot/*.js, bus/*.js (5 files)
+  - DONE: Converted @cynic/node api/server.js, agents/base.js (2 files)
+  - DONE: Converted @cynic/protocol gossip/propagation.js (1 file)
+  - DONE: Converted @cynic/identity node-identity.js (1 file)
+  - REMAINING: ~45 console.* calls in production code
+  - SKIP: CLI/bin files (100+ calls) - intentional terminal output with chalk
+  - SKIP: dashboard/js files (100+ calls) - browser-side, can't use @cynic/core
+  - SKIP: MCP server.js (37 calls) - MCP protocol requires stderr for JSON-RPC
+  - SKIP: examples/scripts/tests (~600+ calls) - development files
 
 ## Pending (2)
 
