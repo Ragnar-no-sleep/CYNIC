@@ -65,3 +65,6 @@ export * from './boot/index.js';
 
 // Communication Bus (N-tier, SOLID, inter-layer messaging)
 export * from './bus/index.js';
+
+// Circuit Breaker (resilience pattern for service protection)
+export * from './circuit-breaker.js';

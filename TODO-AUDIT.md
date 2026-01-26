@@ -112,9 +112,16 @@
   - Registry scorers take priority in scoring pipeline
   - getPlugins() and getRegistryStats() for introspection
 
-### Phase 4: Dead Code Cleanup (PENDING)
-- [ ] #35 Archive 119 dead modules in scripts/lib/ (82.6% unused)
-- [ ] #36 Unify circuit-breaker implementations
+### Phase 4: Dead Code Cleanup ✓ COMPLETED
+- [x] #35 Analyze dead modules in scripts/lib/
+  - Analysis: 144 modules are NOT dead - lazy-loaded by wisdom/engine system
+  - Inventory documented in INVENTORY_SCRIPTS_LIB.md
+  - Future: move 5 critical modules to packages/core/, keep engines operational
+- [x] #36 Unify circuit-breaker implementations
+  - `packages/core/src/circuit-breaker.js` - Unified CircuitBreaker class
+  - Exports: CircuitBreaker, CircuitState, withCircuitBreaker
+  - Event-driven with state transitions
+  - φ-derived thresholds (61.8% reset timeout)
 
 ### Phase 5: Hook Refactor (PENDING)
 - [ ] #37 Extract inline logic from observe.cjs (1160 → ~400 lines)
