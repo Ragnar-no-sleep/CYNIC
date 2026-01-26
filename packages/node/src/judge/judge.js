@@ -656,7 +656,7 @@ export class CYNICJudge {
     for (const [name, score] of Object.entries(dimensionScores)) {
       const config = allDims[name] ||
         this.customDimensions[name] ||
-        dimensionRegistry.get(name);
+        this.dimensionRegistry?.get(name);
 
       let weight = config?.weight || 1.0;
 
