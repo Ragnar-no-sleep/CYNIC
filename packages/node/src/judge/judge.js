@@ -24,7 +24,10 @@ import {
   calculateFinalScore,
   getVerdict,
   analyzeWeaknesses,
+  createLogger,
 } from '@cynic/core';
+
+const log = createLogger('CYNICJudge');
 import {
   createJudgment,
   validateJudgment,
@@ -179,7 +182,7 @@ export class CYNICJudge {
    */
   registerDimension(axiom, name, config) {
     if (!this.dimensionRegistry) {
-      console.warn('[CYNICJudge] No dimension registry available');
+      log.warn('No dimension registry available');
       return false;
     }
     return this.dimensionRegistry.register(axiom, name, config);
@@ -202,7 +205,7 @@ export class CYNICJudge {
    */
   registerPlugin(plugin) {
     if (!this.dimensionRegistry) {
-      console.warn('[CYNICJudge] No dimension registry available');
+      log.warn('No dimension registry available');
       return false;
     }
     return this.dimensionRegistry.registerPlugin(plugin);

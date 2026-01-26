@@ -12,7 +12,9 @@
 'use strict';
 
 import { EventEmitter } from 'events';
-import { PHI_INV, PHI_INV_2 } from '@cynic/core';
+import { PHI_INV, PHI_INV_2, createLogger } from '@cynic/core';
+
+const log = createLogger('AgentEventBus');
 import {
   EVENT_CONSTANTS,
   AgentEvent,
@@ -369,7 +371,7 @@ export class AgentEventBus extends EventEmitter {
           });
         } catch (err) {
           // Don't fail event delivery if persistence fails
-          console.error(`[EventBus] Persistence error: ${err.message}`);
+          log.error('Persistence error', { error: err.message });
         }
       }
     }

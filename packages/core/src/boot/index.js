@@ -13,6 +13,9 @@
 
 import { globalBootManager, BootManager, BootState, BootEvent } from './boot-manager.js';
 import { Lifecycle, LifecycleState, HealthStatus, createLifecycle } from './lifecycle.js';
+import { createLogger } from '../logger.js';
+
+const bootLog = createLogger('BootCYNIC');
 import {
   registerProvider,
   discoverComponents,
@@ -95,7 +98,7 @@ export async function bootCYNIC(options = {}) {
 
   const log = silent
     ? () => {}
-    : (msg) => console.log(`[CYNIC] ${msg}`);
+    : (msg) => bootLog.info(msg);
 
   log('Initializing boot sequence...');
 

@@ -23,6 +23,10 @@
 
 'use strict';
 
+import { createLogger } from '@cynic/core';
+
+const log = createLogger('AgentManager');
+
 // Base agent
 export {
   BaseAgent,
@@ -258,7 +262,7 @@ export class AgentManager {
         }
       } catch (err) {
         // Log any errors during agent processing
-        console.error(`[AgentManager] Error processing ${name}:`, err.message);
+        log.error('Error processing agent', { agent: name, error: err.message });
         results[name] = { error: err.message, response: 'error' };
       }
     }

@@ -15,6 +15,9 @@ import { EngineRegistry, globalEngineRegistry } from '../../engines/registry.js'
 import { EngineOrchestrator, createOrchestrator } from '../../engines/orchestrator.js';
 import { loadPhilosophyEngines, areEnginesLoaded, getLoadStatus } from '../../engines/philosophy/loader.js';
 import { createLifecycle, HealthStatus } from '../lifecycle.js';
+import { createLogger } from '../../logger.js';
+
+const log = createLogger('EngineProvider');
 
 /**
  * Create engine registry lifecycle component
@@ -50,7 +53,7 @@ export function createEngineRegistryProvider(options = {}) {
       });
 
       if (!loadResult.success) {
-        console.warn(`[engine-registry] ${loadResult.failed} engines failed to load`);
+        log.warn('Some engines failed to load', { failed: loadResult.failed });
       }
     },
 
@@ -144,7 +147,7 @@ export function createEnginesProvider(options = {}) {
       orchestrator = createOrchestrator({ registry });
 
       if (loadResult.failed > 0) {
-        console.warn(`[engines] ${loadResult.failed} engines failed to load`);
+        log.warn('Some engines failed to load', { failed: loadResult.failed });
       }
     },
 

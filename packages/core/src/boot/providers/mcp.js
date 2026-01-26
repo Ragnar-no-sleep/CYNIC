@@ -13,6 +13,9 @@
 
 import { createLifecycle, HealthStatus } from '../lifecycle.js';
 import { registerProvider } from '../discovery.js';
+import { createLogger } from '../../logger.js';
+
+const log = createLogger('MCPProvider');
 
 /**
  * Register MCP-specific providers with the discovery system
@@ -48,7 +51,7 @@ export function registerMCPProviders(options = {}) {
         const result = await Promise.race([migrationPromise, timeoutPromise]);
         state.applied = result.applied || 0;
       } catch (error) {
-        console.warn('⚠️ Migration warning:', error.message);
+        log.warn('Migration warning', { error: error.message });
         state.error = error.message;
       }
     },
@@ -246,7 +249,7 @@ export function createMigrationsProvider(options = {}) {
         migrationResult = await Promise.race([migrationPromise, timeoutPromise]);
       } catch (error) {
         // Don't fail boot on migration error - graceful degradation
-        console.warn('⚠️ Migration warning:', error.message);
+        log.warn('Migration warning', { error: error.message });
         migrationResult = { applied: 0, error: error.message };
       }
     },

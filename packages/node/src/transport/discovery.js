@@ -14,7 +14,9 @@
 'use strict';
 
 import { EventEmitter } from 'events';
-import { PHI_INV, GOSSIP_FANOUT } from '@cynic/core';
+import { PHI_INV, GOSSIP_FANOUT, createLogger } from '@cynic/core';
+
+const log = createLogger('PeerDiscovery');
 
 /**
  * Default seed nodes (placeholder - should be configured)
@@ -210,12 +212,12 @@ export class PeerDiscovery extends EventEmitter {
     this.stats.bootstrapAttempts++;
 
     if (this.seedNodes.length === 0) {
-      console.log('[Discovery] No seed nodes configured');
+      log.info('No seed nodes configured');
       this.state = DiscoveryState.DISCOVERING;
       return;
     }
 
-    console.log(`[Discovery] Bootstrapping with ${this.seedNodes.length} seed nodes`);
+    log.info('Bootstrapping', { seedNodes: this.seedNodes.length });
 
     let connected = 0;
     for (const address of this.seedNodes) {
@@ -223,7 +225,7 @@ export class PeerDiscovery extends EventEmitter {
         await this._connectToAddress(address);
         connected++;
       } catch (error) {
-        console.warn(`[Discovery] Failed to connect to seed ${address}: ${error.message}`);
+        log.warn('Failed to connect to seed', { address, error: error.message });
       }
     }
 
