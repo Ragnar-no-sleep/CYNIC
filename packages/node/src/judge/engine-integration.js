@@ -288,13 +288,20 @@ export class EngineIntegration {
    */
   _buildConsensus(results) {
     if (results.length === 0) return null;
-    if (results.length === 1) return results[0].insight;
+
+    // Ensure insight is a string
+    const normalizeInsight = (insight) =>
+      typeof insight === 'string' ? insight : JSON.stringify(insight).slice(0, 200);
+
+    if (results.length === 1) return normalizeInsight(results[0].insight);
 
     // Find common themes
-    const topInsight = results[0].insight;
-    const supportingCount = results.filter(r =>
-      r.insight && r.insight.toLowerCase().includes(topInsight.split(' ')[0].toLowerCase())
-    ).length;
+    const topInsight = normalizeInsight(results[0].insight);
+    const firstWord = topInsight.split(' ')[0]?.toLowerCase() || '';
+    const supportingCount = results.filter(r => {
+      const text = normalizeInsight(r.insight);
+      return text && text.toLowerCase().includes(firstWord);
+    }).length;
 
     const consensusStrength = supportingCount / results.length;
 

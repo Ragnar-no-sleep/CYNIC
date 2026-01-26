@@ -62,7 +62,7 @@ export class CYNICJudge {
    * @param {boolean} [options.includeUnnameable=true] - Whether to include THE_UNNAMEABLE in dimensions
    * @param {Object} [options.eScoreProvider] - E-Score provider for vote weighting
    * @param {import('./engine-integration.js').EngineIntegration} [options.engineIntegration] - 73 philosophy engines
-   * @param {boolean} [options.consultEngines=false] - Whether to consult engines during judgment
+   * @param {boolean} [options.consultEngines] - Whether to consult engines during judgment (default: true if engineIntegration provided)
    * @param {DimensionRegistry} [options.dimensionRegistry] - Custom dimension registry (Phase 3 plugin system)
    */
   constructor(options = {}) {
@@ -84,7 +84,8 @@ export class CYNICJudge {
 
     // Engine integration (73 philosophy engines)
     this.engineIntegration = options.engineIntegration || null;
-    this.consultEngines = options.consultEngines || false;
+    // Enable by default if engineIntegration is provided
+    this.consultEngines = options.consultEngines ?? !!this.engineIntegration;
 
     // Stats tracking
     this.stats = {

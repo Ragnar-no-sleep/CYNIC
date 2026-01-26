@@ -138,8 +138,11 @@ export function adaptLegacyEngine(config) {
       this.status = EngineStatus.IDLE;
 
       // Normalize result to insight format
+      const insightText = result?.insight || result?.analysis || result?.conclusion || result?.summary
+        || (typeof result === 'string' ? result : JSON.stringify(result).slice(0, 200));
+
       return this.createInsight(
-        result?.insight || result?.analysis || result?.conclusion || result?.summary || String(result),
+        insightText,
         result?.confidence || PHI_INV * 0.8, // Default to 80% of max
         result?.reasoning || result?.steps || [],
         result?.metadata || {}
@@ -178,8 +181,13 @@ export function adaptLegacyEngine(config) {
       };
     }
 
+    // Extract meaningful string from input
+    const inputStr = typeof input === 'string'
+      ? input
+      : input?.summary || input?.question || input?.description || input?.content?.slice?.(0, 100) || JSON.stringify(input).slice(0, 100);
+
     return {
-      insight: `${this.name} provides perspective on: ${input}`,
+      insight: `${this.name} provides perspective on: ${inputStr}`,
       confidence: PHI_INV * 0.5,
       reasoning: ['General domain knowledge available'],
     };
