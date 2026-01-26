@@ -205,10 +205,14 @@ export function registerStandardProviders() {
     health: async () => ({ status: HealthStatus.HEALTHY }),
   });
 
-  // PostgreSQL provider
+  // PostgreSQL provider (optional - graceful degradation if not configured)
   registerProvider('postgres', {
     dependencies: ['config', 'logger'],
     create: async (deps) => {
+      if (!deps.config.database?.url) {
+        deps.logger?.info?.('PostgreSQL not configured - using in-memory fallback');
+        return null; // PostgreSQL is optional
+      }
       const { PostgresClient } = await lazyImport('@cynic/persistence');
       return new PostgresClient(deps.config.database);
     },

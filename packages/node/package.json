@@ -11,6 +11,7 @@
     ".": "./src/index.js",
     "./operator": "./src/operator/index.js",
     "./judge": "./src/judge/index.js",
+    "./judge/engine-integration.js": "./src/judge/engine-integration.js",
     "./state": "./src/state/index.js",
     "./transport": "./src/transport/index.js",
     "./api": "./src/api/index.js",
