@@ -9,6 +9,10 @@
 
 'use strict';
 
+import { createLogger } from '@cynic/core';
+
+const log = createLogger('LibraryCacheAdapter');
+
 /**
  * @typedef {Object} LibraryDoc
  * @property {string} library_id
@@ -39,7 +43,7 @@ export class LibraryCacheAdapter {
       try {
         return await this._repo.get(libraryId, query);
       } catch (err) {
-        console.error('Error getting library doc:', err.message);
+        log.error('Error getting library doc', { error: err.message });
       }
     }
     return null;
@@ -59,7 +63,7 @@ export class LibraryCacheAdapter {
       try {
         return await this._repo.set(libraryId, query, content, metadata, ttlHours);
       } catch (err) {
-        console.error('Error setting library doc:', err.message);
+        log.error('Error setting library doc', { error: err.message });
       }
     }
     return null;
@@ -76,7 +80,7 @@ export class LibraryCacheAdapter {
       try {
         return await this._repo.isCached(libraryId, query);
       } catch (err) {
-        console.error('Error checking library cache:', err.message);
+        log.error('Error checking library cache', { error: err.message });
       }
     }
     return false;
@@ -91,7 +95,7 @@ export class LibraryCacheAdapter {
       try {
         return await this._repo.cleanExpired();
       } catch (err) {
-        console.error('Error cleaning cache:', err.message);
+        log.error('Error cleaning cache', { error: err.message });
       }
     }
     return 0;
@@ -107,7 +111,7 @@ export class LibraryCacheAdapter {
       try {
         return await this._repo.invalidate(libraryId);
       } catch (err) {
-        console.error('Error invalidating cache:', err.message);
+        log.error('Error invalidating cache', { error: err.message });
       }
     }
     return 0;
@@ -122,7 +126,7 @@ export class LibraryCacheAdapter {
       try {
         return await this._repo.getStats();
       } catch (err) {
-        console.error('Error getting cache stats:', err.message);
+        log.error('Error getting cache stats', { error: err.message });
       }
     }
     return { totalEntries: 0, activeEntries: 0, uniqueLibraries: 0 };
@@ -138,7 +142,7 @@ export class LibraryCacheAdapter {
       try {
         return await this._repo.getTopLibraries(limit);
       } catch (err) {
-        console.error('Error getting top libraries:', err.message);
+        log.error('Error getting top libraries', { error: err.message });
       }
     }
     return [];

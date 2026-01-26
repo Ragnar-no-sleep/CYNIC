@@ -12,7 +12,9 @@
 'use strict';
 
 import { CYNICJudge, createCollectivePack, LearningService, createEScoreCalculator, JudgmentGraphIntegration, createEngineIntegration } from '@cynic/node';
-import { PeriodicScheduler, FibonacciIntervals, EngineRegistry, loadPhilosophyEngines, globalEventBus, EventType } from '@cynic/core';
+import { PeriodicScheduler, FibonacciIntervals, EngineRegistry, loadPhilosophyEngines, globalEventBus, EventType, createLogger } from '@cynic/core';
+
+const log = createLogger('ServiceInitializer');
 import { GraphOverlay } from '@cynic/persistence/graph';
 import { PersistenceManager } from '../persistence.js';
 import { SessionManager } from '../session-manager.js';
@@ -213,7 +215,7 @@ export class ServiceInitializer {
     this._busSubscriptions.push(
       globalEventBus.subscribe('poj:block:created', (event) => {
         const { slot, judgmentCount, blockHash } = event.payload || {};
-        console.error(`   [PoJ] Block created: slot=${slot}, judgments=${judgmentCount}`);
+        log.info('PoJ block created', { slot, judgmentCount });
         services.metrics?.recordEvent('poj_block_created', { slot, judgmentCount });
       })
     );
@@ -221,7 +223,7 @@ export class ServiceInitializer {
     this._busSubscriptions.push(
       globalEventBus.subscribe('poj:block:finalized', (event) => {
         const { slot, blockHash } = event.payload || {};
-        console.error(`   [PoJ] Block finalized: slot=${slot}`);
+        log.info('PoJ block finalized', { slot });
         services.metrics?.recordEvent('poj_block_finalized', { slot });
       })
     );
@@ -261,12 +263,12 @@ export class ServiceInitializer {
     this._busSubscriptions.push(
       globalEventBus.subscribe(EventType.ANOMALY_DETECTED, (event) => {
         const { type, severity, description } = event.payload || {};
-        console.error(`   *GROWL* Anomaly detected: ${type} (${severity})`);
+        log.warn('Anomaly detected', { type, severity });
         services.metrics?.recordEvent('anomaly_detected', { type, severity });
       })
     );
 
-    console.error(`   Bus: ${this._busSubscriptions.length} subscriptions active`);
+    log.debug('Bus subscriptions active', { count: this._busSubscriptions.length });
   }
 
   /**
@@ -280,7 +282,7 @@ export class ServiceInitializer {
         }
       }
       this._busSubscriptions = [];
-      console.error('   Bus: subscriptions cleaned up');
+      log.debug('Bus subscriptions cleaned up');
     }
   }
 
@@ -306,7 +308,7 @@ export class ServiceInitializer {
   async _createEngineRegistry() {
     const registry = new EngineRegistry();
     const result = loadPhilosophyEngines({ registry, silent: true });
-    console.error(`   Engines: ${result.loaded} philosophy engines loaded`);
+    log.info('Philosophy engines loaded', { count: result.loaded });
     return registry;
   }
 
@@ -347,12 +349,12 @@ export class ServiceInitializer {
       const verification = await pojChainManager.verifyIntegrity();
       if (verification.valid) {
         if (verification.blocksChecked > 0) {
-          console.error(`   PoJ Chain: verified ${verification.blocksChecked} blocks`);
+          log.info('PoJ chain verified', { blocksChecked: verification.blocksChecked });
         }
       } else {
-        console.error(`   *GROWL* PoJ Chain: INTEGRITY ERROR - ${verification.errors.length} invalid links!`);
+        log.error('PoJ chain integrity error', { errorCount: verification.errors.length });
         for (const err of verification.errors.slice(0, 3)) {
-          console.error(`     Block ${err.blockNumber}: expected ${err.expected?.slice(0, 16)}...`);
+          log.error('Invalid block link', { blockNumber: err.blockNumber, expected: err.expected?.slice(0, 16) });
         }
       }
     }
@@ -363,7 +365,7 @@ export class ServiceInitializer {
   async _createLibrarian(services) {
     const librarian = new LibrarianService(services.persistence);
     await librarian.initialize();
-    console.error('   Librarian: ready');
+    log.debug('Librarian ready');
     return librarian;
   }
 
@@ -373,7 +375,7 @@ export class ServiceInitializer {
       githubToken: process.env.GITHUB_TOKEN,
     });
     await discovery.init();
-    console.error('   Discovery: ready');
+    log.debug('Discovery ready');
     return discovery;
   }
 
@@ -383,7 +385,7 @@ export class ServiceInitializer {
       autoRefresh: true,
     });
     await ecosystem.init();
-    console.error('   Ecosystem: ready');
+    log.debug('Ecosystem ready');
     return ecosystem;
   }
 
@@ -394,7 +396,7 @@ export class ServiceInitializer {
       autoCheck: false,
     });
     await integrator.init();
-    console.error('   Integrator: ready');
+    log.debug('Integrator ready');
     return integrator;
   }
 
@@ -403,7 +405,7 @@ export class ServiceInitializer {
       basePath: this.config.dataDir ? `${this.config.dataDir}/graph` : './data/graph',
     });
     await graph.init();
-    console.error('   Graph: ready');
+    log.debug('Graph ready');
     return graph;
   }
 
@@ -417,7 +419,7 @@ export class ServiceInitializer {
       contextDepth: 2,
     });
     await graphIntegration.init();
-    console.error('   GraphIntegration: ready');
+    log.debug('GraphIntegration ready');
     return graphIntegration;
   }
 
@@ -438,9 +440,9 @@ export class ServiceInitializer {
     });
 
     if (awakening.success) {
-      console.error(`   Collective: ${awakening.greeting}`);
+      log.info('Collective awakened', { greeting: awakening.greeting });
     } else {
-      console.error('   Collective: ready (CYNIC dormant)');
+      log.debug('Collective ready (CYNIC dormant)');
     }
 
     return pack;
@@ -449,10 +451,10 @@ export class ServiceInitializer {
   _createScheduler() {
     const scheduler = new PeriodicScheduler({
       onError: this.config.onSchedulerError || ((task, error) => {
-        console.error(`🐕 [Scheduler] Task "${task.name}" failed: ${error.message}`);
+        log.error('Scheduler task failed', { task: task.name, error: error.message });
       }),
     });
-    console.error(`   Scheduler: ready`);
+    log.debug('Scheduler ready');
     return scheduler;
   }
 
@@ -467,7 +469,7 @@ export class ServiceInitializer {
       judge: services.judge,
       collective: services.collective,
     });
-    console.error('   Metrics: ready');
+    log.debug('Metrics ready');
     return metrics;
   }
 }

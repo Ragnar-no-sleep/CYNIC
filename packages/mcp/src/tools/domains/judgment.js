@@ -18,7 +18,10 @@ import {
   PHI_INV,
   PHI_INV_2,
   THRESHOLDS,
+  createLogger,
 } from '@cynic/core';
+
+const log = createLogger('JudgmentTools');
 import { enrichItem } from '../../item-enricher.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -215,20 +218,21 @@ export function createJudgeTool(judge, persistence = null, sessionManager = null
             }
           } catch (patternErr) {
             // Non-blocking - pattern extraction is best-effort
-            console.error('Pattern extraction error:', patternErr.message);
+            log.warn('Pattern extraction error', { error: patternErr.message });
           }
         } catch (e) {
           // Log but don't fail the judgment - persistence is best-effort
-          console.error('Error persisting judgment:', e.message);
+          log.error('Error persisting judgment', { error: e.message });
         }
       }
 
       // Build response with consistent ID
-      // DEBUG: Log CULTURE before building result (use console.error to ensure it appears in Render logs)
-      console.error(`[MCP JUDGE] ====== CULTURE SCORE CHECK ======`);
-      console.error(`[MCP JUDGE] judgment.axiomScores.CULTURE: ${judgment.axiomScores?.CULTURE}`);
-      console.error(`[MCP JUDGE] judgment.qScore: ${judgment.qScore}`);
-      console.error(`[MCP JUDGE] Full axiomScores: ${JSON.stringify(judgment.axiomScores)}`);
+      // Debug logging for CULTURE score tracking
+      log.debug('CULTURE score check', {
+        cultureScore: judgment.axiomScores?.CULTURE,
+        qScore: judgment.qScore,
+        axiomScores: judgment.axiomScores,
+      });
 
       const result = {
         requestId: judgmentId,
@@ -285,13 +289,15 @@ export function createJudgeTool(judge, persistence = null, sessionManager = null
           });
         } catch (e) {
           // Non-blocking - don't fail judgment for callback errors
-          console.error('Judgment callback error:', e.message);
+          log.warn('Judgment callback error', { error: e.message });
         }
       }
 
       // DEBUG: FINAL RETURN - log what we're actually returning
-      console.error(`[HANDLER RETURN] Returning result with CULTURE: ${result.axiomScores?.CULTURE}`);
-      console.error(`[HANDLER RETURN] Full axiomScores: ${JSON.stringify(result.axiomScores)}`);
+      log.debug('Handler return', {
+        cultureScore: result.axiomScores?.CULTURE,
+        axiomScores: result.axiomScores,
+      });
 
       return result;
     },
@@ -428,7 +434,7 @@ export function createRefineTool(judge, persistence = null) {
           });
         } catch (e) {
           // Non-blocking
-          console.error('Error storing refinement learnings:', e.message);
+          log.error('Error storing refinement learnings', { error: e.message });
         }
       }
 
@@ -529,7 +535,7 @@ export function createFeedbackTool(persistence = null, sessionManager = null) {
             }
           }
         } catch (e) {
-          console.error('Error storing feedback:', e.message);
+          log.error('Error storing feedback', { error: e.message });
         }
       }
 

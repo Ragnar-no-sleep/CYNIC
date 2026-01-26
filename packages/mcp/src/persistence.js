@@ -16,6 +16,10 @@
 
 'use strict';
 
+import { createLogger } from '@cynic/core';
+
+const log = createLogger('PersistenceManager');
+
 import {
   PostgresClient,
   RedisClient,
@@ -128,13 +132,13 @@ export class PersistenceManager {
         this._psychology = new PsychologyRepository(this.postgres);
 
         this._backend = 'postgres';
-        console.error('   PostgreSQL: connected');
+        log.info('PostgreSQL connected');
       } catch (err) {
-        console.error(`   PostgreSQL: ${err.message}`);
+        log.error('PostgreSQL error', { error: err.message });
         this.postgres = null;
       }
     } else {
-      console.error('   PostgreSQL: not configured (set CYNIC_DATABASE_URL or CYNIC_DB_HOST + CYNIC_DB_PASSWORD)');
+      log.debug('PostgreSQL not configured');
     }
 
     // Initialize Redis (optional, for caching/sessions)
@@ -143,12 +147,12 @@ export class PersistenceManager {
         this.redis = new RedisClient();
         await this.redis.connect();
         this.sessionStore = new SessionStore(this.redis);
-        console.error('   Redis: connected');
+        log.info('Redis connected');
       } catch (err) {
-        console.error(`   Redis: ${err.message}`);
+        log.error('Redis error', { error: err.message });
       }
     } else {
-      console.error('   Redis: not configured (CYNIC_REDIS_URL not set)');
+      log.debug('Redis not configured');
     }
 
     // Set up fallback storage if PostgreSQL not available
@@ -160,7 +164,7 @@ export class PersistenceManager {
       } else {
         this._fallback = new MemoryStore();
         this._backend = 'memory';
-        console.error('   Storage: in-memory (ephemeral)');
+        log.info('Storage: in-memory (ephemeral)');
       }
     }
 
@@ -374,7 +378,7 @@ export class PersistenceManager {
       try {
         await this._fallback.save();
       } catch (err) {
-        console.error('Error saving file storage:', err.message);
+        log.error('Error saving file storage', { error: err.message });
       }
     }
 
@@ -382,7 +386,7 @@ export class PersistenceManager {
       try {
         await this.postgres.close();
       } catch (err) {
-        console.error('Error closing PostgreSQL:', err.message);
+        log.error('Error closing PostgreSQL', { error: err.message });
       }
     }
 
@@ -390,7 +394,7 @@ export class PersistenceManager {
       try {
         await this.redis.close();
       } catch (err) {
-        console.error('Error closing Redis:', err.message);
+        log.error('Error closing Redis', { error: err.message });
       }
     }
 
@@ -408,7 +412,7 @@ export class PersistenceManager {
       try {
         return await this.postgres.query(sql, params);
       } catch (err) {
-        console.error('Error executing query:', err.message);
+        log.error('Error executing query', { error: err.message });
         return { rows: [] };
       }
     }

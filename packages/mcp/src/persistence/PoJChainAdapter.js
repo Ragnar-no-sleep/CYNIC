@@ -9,6 +9,10 @@
 
 'use strict';
 
+import { createLogger } from '@cynic/core';
+
+const log = createLogger('PoJChainAdapter');
+
 /**
  * @typedef {Object} PoJBlock
  * @property {string} block_hash
@@ -39,14 +43,14 @@ export class PoJChainAdapter {
       try {
         return await this._repo.create(block);
       } catch (err) {
-        console.error('Error storing PoJ block to PostgreSQL:', err.message);
+        log.error('Error storing PoJ block to PostgreSQL', { error: err.message });
       }
     }
     if (this._fallback) {
       try {
         return await this._fallback.storePoJBlock(block);
       } catch (err) {
-        console.error('Error storing PoJ block to fallback:', err.message);
+        log.error('Error storing PoJ block to fallback', { error: err.message });
       }
     }
     return null;
@@ -61,7 +65,7 @@ export class PoJChainAdapter {
       try {
         return await this._repo.getHead();
       } catch (err) {
-        console.error('Error getting PoJ head:', err.message);
+        log.error('Error getting PoJ head', { error: err.message });
       }
     }
     if (this._fallback) {
@@ -79,7 +83,7 @@ export class PoJChainAdapter {
       try {
         return await this._repo.getStats();
       } catch (err) {
-        console.error('Error getting PoJ stats:', err.message);
+        log.error('Error getting PoJ stats', { error: err.message });
       }
     }
     if (this._fallback) {
@@ -98,7 +102,7 @@ export class PoJChainAdapter {
       try {
         return await this._repo.findRecent(limit);
       } catch (err) {
-        console.error('Error getting recent PoJ blocks:', err.message);
+        log.error('Error getting recent PoJ blocks', { error: err.message });
       }
     }
     if (this._fallback) {
@@ -117,7 +121,7 @@ export class PoJChainAdapter {
       try {
         return await this._repo.findByNumber(slot);
       } catch (err) {
-        console.error('Error getting PoJ block by slot:', err.message);
+        log.error('Error getting PoJ block by slot', { error: err.message });
       }
     }
     if (this._fallback) {
@@ -135,7 +139,7 @@ export class PoJChainAdapter {
       try {
         return await this._repo.verifyIntegrity();
       } catch (err) {
-        console.error('Error verifying PoJ chain:', err.message);
+        log.error('Error verifying PoJ chain', { error: err.message });
       }
     }
     if (this._fallback) {

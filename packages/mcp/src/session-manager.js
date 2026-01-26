@@ -12,6 +12,9 @@
 'use strict';
 
 import crypto from 'crypto';
+import { createLogger } from '@cynic/core';
+
+const log = createLogger('SessionManager');
 
 /**
  * Generate session ID
@@ -68,7 +71,7 @@ export class SessionManager {
 
         return session;
       } catch (err) {
-        console.error('SessionManager: Redis error:', err.message);
+        log.warn('Redis error', { error: err.message });
       }
     }
 
@@ -109,7 +112,7 @@ export class SessionManager {
     // Create new session
     const session = await this.getOrCreateSession(userId, { project, ...metadata });
 
-    console.error(`🐕 Session started: ${session.sessionId.slice(0, 12)}... for ${userId.slice(0, 8)}...`);
+    log.info('Session started', { sessionId: session.sessionId.slice(0, 12), userId: userId.slice(0, 8) });
 
     return session;
   }
@@ -148,15 +151,14 @@ export class SessionManager {
     };
 
     // Persist session stats to PostgreSQL (if available)
-    // This would use a SessionRepository - for now, log it
-    console.error(`🐕 Session ended: ${sessionId.slice(0, 12)}... (${summary.judgmentCount} judgments, ${summary.digestCount} digests)`);
+    log.info('Session ended', { sessionId: sessionId.slice(0, 12), judgments: summary.judgmentCount, digests: summary.digestCount });
 
     // Remove from Redis (if available)
     if (this.persistence?.sessionStore) {
       try {
         await this.persistence.sessionStore.delete(sessionId);
       } catch (err) {
-        console.error('SessionManager: Error deleting from Redis:', err.message);
+        log.warn('Error deleting from Redis', { error: err.message });
       }
     }
 

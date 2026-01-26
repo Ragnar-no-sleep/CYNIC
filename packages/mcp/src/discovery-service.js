@@ -11,6 +11,9 @@
 'use strict';
 
 import { EventEmitter } from 'events';
+import { createLogger } from '@cynic/core';
+
+const log = createLogger('DiscoveryService');
 
 const PHI_INV = 0.618033988749895;
 const HEALTH_CHECK_INTERVAL = 61800; // φ × 1000ms
@@ -55,7 +58,7 @@ export class DiscoveryService extends EventEmitter {
     if (this._initialized) return;
 
     if (!this.persistence?.discovery) {
-      console.warn('[DiscoveryService] No discovery repository - running in limited mode');
+      log.warn('No discovery repository - running in limited mode');
     }
 
     this._initialized = true;
@@ -135,7 +138,7 @@ export class DiscoveryService extends EventEmitter {
     } catch (error) {
       // No .mcp.json or error - that's OK
       if (error.message !== 'File not found') {
-        console.warn(`[DiscoveryService] Error scanning ${sourceRepo} for MCP:`, error.message);
+        log.warn('Error scanning for MCP', { sourceRepo, error: error.message });
       }
     }
 
@@ -213,7 +216,7 @@ export class DiscoveryService extends EventEmitter {
       }
     } catch (error) {
       if (error.message !== 'File not found') {
-        console.warn(`[DiscoveryService] Error scanning ${sourceRepo} for plugin:`, error.message);
+        log.warn('Error scanning for plugin', { sourceRepo, error: error.message });
       }
     }
 
@@ -312,7 +315,7 @@ export class DiscoveryService extends EventEmitter {
         });
       }
     } catch (error) {
-      console.warn(`[DiscoveryService] Failed to discover node at ${endpoint}:`, error.message);
+      log.warn('Failed to discover node', { endpoint, error: error.message });
     }
 
     return null;
@@ -408,7 +411,7 @@ export class DiscoveryService extends EventEmitter {
       try {
         await this.runNodeHealthChecks();
       } catch (error) {
-        console.error('[DiscoveryService] Health check error:', error.message);
+        log.error('Health check error', { error: error.message });
       }
     }, this.options.healthCheckIntervalMs);
 

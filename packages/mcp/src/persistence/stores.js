@@ -11,6 +11,9 @@
 
 import fs from 'fs/promises';
 import path from 'path';
+import { createLogger } from '@cynic/core';
+
+const log = createLogger('FileStore');
 
 /**
  * In-memory fallback storage
@@ -274,12 +277,12 @@ export class FileStore extends MemoryStore {
       await fs.mkdir(this.dataDir, { recursive: true });
       const data = await fs.readFile(this.filePath, 'utf-8');
       await this.import(JSON.parse(data));
-      console.error(`   File storage: loaded from ${this.filePath}`);
+      log.info('File storage loaded', { path: this.filePath });
     } catch (err) {
       if (err.code !== 'ENOENT') {
-        console.error(`   File storage: ${err.message}`);
+        log.error('File storage error', { error: err.message });
       } else {
-        console.error(`   File storage: fresh start at ${this.filePath}`);
+        log.info('File storage fresh start', { path: this.filePath });
       }
     }
   }
@@ -328,7 +331,7 @@ export class FileStore extends MemoryStore {
       await fs.writeFile(this.filePath, JSON.stringify(data, null, 2));
       this._dirty = false;
     } catch (err) {
-      console.error('Error saving state:', err.message);
+      log.error('Error saving state', { error: err.message });
     }
   }
 }

@@ -11,6 +11,10 @@
 
 'use strict';
 
+import { createLogger } from '@cynic/core';
+
+const log = createLogger('LibrarianService');
+
 // Essential libraries for the CYNIC ecosystem
 const ECOSYSTEM_LIBRARIES = [
   // Solana ecosystem
@@ -80,15 +84,15 @@ export class LibrarianService {
       try {
         const cleaned = await this.persistence.cleanExpiredCache();
         if (cleaned > 0) {
-          console.error(`   Librarian: cleaned ${cleaned} expired entries`);
+          log.debug('Librarian cleaned expired entries', { count: cleaned });
         }
       } catch (err) {
-        console.error(`   Librarian: cleanup error: ${err.message}`);
+        log.warn('Librarian cleanup error', { error: err.message });
       }
     }
 
     this._initialized = true;
-    console.error('   Librarian: ready');
+    log.debug('Librarian ready');
   }
 
   /**
@@ -148,7 +152,7 @@ export class LibrarianService {
           };
         }
       } catch (err) {
-        console.error(`Librarian PostgreSQL error: ${err.message}`);
+        log.warn('Librarian PostgreSQL error', { error: err.message });
       }
     }
 
@@ -185,7 +189,7 @@ export class LibrarianService {
       }
     } catch (err) {
       this._stats.errors++;
-      console.error(`Librarian fetch error: ${err.message}`);
+      log.warn('Librarian fetch error', { error: err.message });
       return {
         content: null,
         source: 'error',
@@ -219,7 +223,7 @@ export class LibrarianService {
     if (this.persistence?.redis) {
       promises.push(
         this.persistence.redis.setLibraryDoc(libraryId, query, content)
-          .catch(err => console.error(`Redis cache error: ${err.message}`))
+          .catch(err => log.warn('Redis cache error', { error: err.message }))
       );
     }
 
@@ -227,7 +231,7 @@ export class LibrarianService {
     if (this.persistence?.libraryCache) {
       promises.push(
         this.persistence.setLibraryDoc(libraryId, query, content, metadata, this.ttlHours)
-          .catch(err => console.error(`PostgreSQL cache error: ${err.message}`))
+          .catch(err => log.warn('PostgreSQL cache error', { error: err.message }))
       );
     }
 
@@ -250,7 +254,7 @@ export class LibrarianService {
       errors: [],
     };
 
-    console.error(`   Librarian: pre-loading ${libraries.length} libraries...`);
+    log.info('Librarian pre-loading libraries', { count: libraries.length });
 
     for (const lib of libraries) {
       for (const query of queries) {
@@ -285,7 +289,7 @@ export class LibrarianService {
       }
     }
 
-    console.error(`   Librarian: pre-load complete - ${results.success} cached, ${results.skipped} skipped, ${results.failed} failed`);
+    log.info('Librarian pre-load complete', { cached: results.success, skipped: results.skipped, failed: results.failed });
     return results;
   }
 
@@ -303,7 +307,7 @@ export class LibrarianService {
         const count = await this.persistence.invalidateLibraryCache(normalizedId);
         return { invalidated: count, libraryId: normalizedId };
       } catch (err) {
-        console.error(`Librarian invalidate error: ${err.message}`);
+        log.warn('Librarian invalidate error', { error: err.message });
       }
     }
 
@@ -320,7 +324,7 @@ export class LibrarianService {
       try {
         cacheStats = await this.persistence.getLibraryCacheStats();
       } catch (err) {
-        console.error(`Librarian stats error: ${err.message}`);
+        log.warn('Librarian stats error', { error: err.message });
       }
     }
 
@@ -342,7 +346,7 @@ export class LibrarianService {
       try {
         return await this.persistence.getTopCachedLibraries(limit);
       } catch (err) {
-        console.error(`Librarian libraries error: ${err.message}`);
+        log.warn('Librarian libraries error', { error: err.message });
       }
     }
     return [];

@@ -9,6 +9,10 @@
 
 'use strict';
 
+import { createLogger } from '@cynic/core';
+
+const log = createLogger('JudgmentAdapter');
+
 /**
  * @typedef {Object} Judgment
  * @property {string} judgment_id
@@ -39,7 +43,7 @@ export class JudgmentAdapter {
       try {
         return await this._repo.create(judgment);
       } catch (err) {
-        console.error('Error storing judgment to PostgreSQL:', err.message);
+        log.error('Error storing judgment', { error: err.message });
       }
     }
     if (this._fallback) {
@@ -58,7 +62,7 @@ export class JudgmentAdapter {
       try {
         return await this._repo.findById(judgmentId);
       } catch (err) {
-        console.error('Error getting judgment from PostgreSQL:', err.message);
+        log.error('Error getting judgment', { error: err.message });
       }
     }
     if (this._fallback) {
@@ -78,7 +82,7 @@ export class JudgmentAdapter {
       try {
         return await this._repo.search(query, options);
       } catch (err) {
-        console.error('Error searching judgments:', err.message);
+        log.error('Error searching judgments', { error: err.message });
       }
     }
     if (this._fallback) {
@@ -97,7 +101,7 @@ export class JudgmentAdapter {
       try {
         return await this._repo.findRecent(limit);
       } catch (err) {
-        console.error('Error getting recent judgments:', err.message);
+        log.error('Error getting recent judgments', { error: err.message });
       }
     }
     if (this._fallback) {
@@ -116,7 +120,7 @@ export class JudgmentAdapter {
       try {
         return await this._repo.getStats(options);
       } catch (err) {
-        console.error('Error getting judgment stats:', err.message);
+        log.error('Error getting judgment stats', { error: err.message });
       }
     }
     if (this._fallback) {

@@ -11,6 +11,10 @@
  * @module tools/search-progressive
  */
 
+import { createLogger } from '@cynic/core';
+
+const log = createLogger('SearchProgressive');
+
 const SNIPPET_LENGTH = 100;
 
 /**
@@ -122,7 +126,7 @@ This approach saves ~10x tokens compared to fetching full results.`,
             });
           }
         } catch (e) {
-          console.error('[search-index] Error searching judgments:', e.message);
+          log.warn('Error searching judgments', { error: e.message });
         }
       }
 
@@ -144,7 +148,7 @@ This approach saves ~10x tokens compared to fetching full results.`,
             }
           }
         } catch (e) {
-          console.error('[search-index] Error searching patterns:', e.message);
+          log.warn('Error searching patterns', { error: e.message });
         }
       }
 
@@ -163,7 +167,7 @@ This approach saves ~10x tokens compared to fetching full results.`,
             });
           }
         } catch (e) {
-          console.error('[search-index] Error searching knowledge:', e.message);
+          log.warn('Error searching knowledge', { error: e.message });
         }
       }
 
@@ -283,7 +287,7 @@ Returns items before and after the anchor point for understanding the sequence o
             });
           }
         } catch (e) {
-          console.error('[timeline] Error collecting items:', e.message);
+          log.warn('Error collecting timeline items', { error: e.message });
         }
       }
 
@@ -403,7 +407,7 @@ Only use this for items you've already identified via brain_search_index or brai
               found = true;
             }
           } catch (e) {
-            console.error('[get_observations] Error fetching judgment:', e.message);
+            log.warn('Error fetching judgment', { error: e.message });
           }
         }
 
@@ -421,7 +425,7 @@ Only use this for items you've already identified via brain_search_index or brai
               found = true;
             }
           } catch (e) {
-            console.error('[get_observations] Error fetching pattern:', e.message);
+            log.warn('Error fetching pattern', { error: e.message });
           }
         }
 
@@ -439,7 +443,7 @@ Only use this for items you've already identified via brain_search_index or brai
               found = true;
             }
           } catch (e) {
-            console.error('[get_observations] Error fetching knowledge:', e.message);
+            log.warn('Error fetching knowledge', { error: e.message });
           }
         }
 

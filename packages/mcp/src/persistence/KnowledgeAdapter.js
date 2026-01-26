@@ -9,6 +9,10 @@
 
 'use strict';
 
+import { createLogger } from '@cynic/core';
+
+const log = createLogger('KnowledgeAdapter');
+
 /**
  * @typedef {Object} Knowledge
  * @property {string} knowledge_id
@@ -39,7 +43,7 @@ export class KnowledgeAdapter {
       try {
         return await this._repo.create(knowledge);
       } catch (err) {
-        console.error('Error storing knowledge:', err.message);
+        log.error('Error storing knowledge', { error: err.message });
       }
     }
     if (this._fallback) {
@@ -62,14 +66,14 @@ export class KnowledgeAdapter {
       } catch (err) {
         // If FTS fails (migration not run), try fallback search
         if (err.message.includes('search_vector') || err.message.includes('websearch_to_tsquery')) {
-          console.error('FTS not available, using fallback search');
+          log.warn('FTS not available, using fallback search');
           try {
             return await this._repo.searchFallback(query, options);
           } catch (fallbackErr) {
-            console.error('Error in fallback search:', fallbackErr.message);
+            log.error('Error in fallback search', { error: fallbackErr.message });
           }
         } else {
-          console.error('Error searching knowledge:', err.message);
+          log.error('Error searching knowledge', { error: err.message });
         }
       }
     }

@@ -9,6 +9,10 @@
 
 'use strict';
 
+import { createLogger } from '@cynic/core';
+
+const log = createLogger('TriggerAdapter');
+
 /**
  * @typedef {Object} Trigger
  * @property {string} trigger_id
@@ -39,7 +43,7 @@ export class TriggerAdapter {
       try {
         return await this._repo.findEnabled();
       } catch (err) {
-        console.error('Error getting enabled triggers:', err.message);
+        log.error('Error getting enabled triggers', { error: err.message });
       }
     }
     if (this._fallback?.triggersState?.triggers) {
@@ -57,7 +61,7 @@ export class TriggerAdapter {
       try {
         return await this._repo.findAll();
       } catch (err) {
-        console.error('Error getting all triggers:', err.message);
+        log.error('Error getting all triggers', { error: err.message });
       }
     }
     if (this._fallback?.triggersState?.triggers) {
@@ -76,7 +80,7 @@ export class TriggerAdapter {
       try {
         return await this._repo.create(trigger);
       } catch (err) {
-        console.error('Error creating trigger:', err.message);
+        log.error('Error creating trigger', { error: err.message });
       }
     }
     return null;
@@ -93,7 +97,7 @@ export class TriggerAdapter {
       try {
         return await this._repo.update(triggerId, updates);
       } catch (err) {
-        console.error('Error updating trigger:', err.message);
+        log.error('Error updating trigger', { error: err.message });
       }
     }
     return null;
@@ -109,7 +113,7 @@ export class TriggerAdapter {
       try {
         return await this._repo.enable(triggerId);
       } catch (err) {
-        console.error('Error enabling trigger:', err.message);
+        log.error('Error enabling trigger', { error: err.message });
       }
     }
     return null;
@@ -125,7 +129,7 @@ export class TriggerAdapter {
       try {
         return await this._repo.disable(triggerId);
       } catch (err) {
-        console.error('Error disabling trigger:', err.message);
+        log.error('Error disabling trigger', { error: err.message });
       }
     }
     return null;
@@ -141,7 +145,7 @@ export class TriggerAdapter {
       try {
         return await this._repo.delete(triggerId);
       } catch (err) {
-        console.error('Error deleting trigger:', err.message);
+        log.error('Error deleting trigger', { error: err.message });
       }
     }
     return false;
@@ -157,7 +161,7 @@ export class TriggerAdapter {
       try {
         return await this._repo.recordExecution(execution);
       } catch (err) {
-        console.error('Error recording trigger execution:', err.message);
+        log.error('Error recording trigger execution', { error: err.message });
       }
     }
     return null;
@@ -173,7 +177,7 @@ export class TriggerAdapter {
       try {
         return await this._repo.storeEvent(event);
       } catch (err) {
-        console.error('Error storing trigger event:', err.message);
+        log.error('Error storing trigger event', { error: err.message });
       }
     }
     return null;
@@ -188,7 +192,7 @@ export class TriggerAdapter {
       try {
         return await this._repo.getStats();
       } catch (err) {
-        console.error('Error getting trigger stats:', err.message);
+        log.error('Error getting trigger stats', { error: err.message });
       }
     }
     return { totalTriggers: 0, enabledTriggers: 0 };
@@ -203,7 +207,7 @@ export class TriggerAdapter {
       try {
         return await this._repo.getActiveSummary();
       } catch (err) {
-        console.error('Error getting active triggers summary:', err.message);
+        log.error('Error getting active triggers summary', { error: err.message });
       }
     }
     return [];
@@ -219,7 +223,7 @@ export class TriggerAdapter {
       try {
         return await this._repo.countExecutionsLastMinute(triggerId);
       } catch (err) {
-        console.error('Error checking trigger rate limit:', err.message);
+        log.error('Error checking trigger rate limit', { error: err.message });
       }
     }
     return 0;

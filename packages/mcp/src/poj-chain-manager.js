@@ -24,7 +24,10 @@
 'use strict';
 
 import crypto from 'crypto';
+import { createLogger } from '@cynic/core';
 import { OperatorRegistry } from './operator-registry.js';
+
+const log = createLogger('PoJChainManager');
 
 /**
  * Anchor status for blocks
@@ -172,13 +175,13 @@ export class PoJChainManager {
       this._head = await this.persistence.getPoJHead();
       if (this._head) {
         const backend = this.persistence.pojBlocks ? 'PostgreSQL' : 'fallback';
-        console.error(`   PoJ Chain: resumed at slot ${this._head.slot} (${this._head.judgment_count || 0} judgments) [${backend}]`);
+        log.info('PoJ chain resumed', { slot: this._head.slot, judgments: this._head.judgment_count || 0, backend });
       } else {
         // Create genesis block
         await this._createGenesisBlock();
       }
     } else {
-      console.error('   PoJ Chain: no persistence available (CYNIC cannot verify itself!)');
+      log.warn('PoJ chain: no persistence available (CYNIC cannot verify itself!)');
     }
 
     this._initialized = true;
@@ -202,7 +205,7 @@ export class PoJChainManager {
     const stored = await this.persistence.storePoJBlock(genesis);
     if (stored) {
       this._head = stored;
-      console.error('   PoJ Chain: genesis block created');
+      log.info('PoJ chain genesis block created');
     }
   }
 
@@ -322,7 +325,7 @@ export class PoJChainManager {
           });
         }
 
-        console.error(`🔗 PoJ Block #${block.slot} created: ${judgments.length} judgments`);
+        log.info('PoJ block created', { slot: block.slot, judgments: judgments.length });
 
         // Emit event for SSE broadcast
         if (this._onBlockCreated) {
@@ -336,14 +339,14 @@ export class PoJChainManager {
             });
           } catch (e) {
             // Non-blocking - don't fail block creation for callback errors
-            console.error('Block callback error:', e.message);
+            log.warn('Block callback error', { error: e.message });
           }
         }
 
         return stored;
       }
     } catch (err) {
-      console.error('Error creating PoJ block:', err.message);
+      log.error('Error creating PoJ block', { error: err.message });
       // Put judgments back in pending
       this._pendingJudgments.unshift(...judgments);
     }
@@ -378,9 +381,9 @@ export class PoJChainManager {
         timestamp: block.timestamp,
       });
 
-      console.error(`⚓ PoJ Block #${block.slot} queued for Solana anchoring`);
+      log.info('PoJ block queued for anchoring', { slot: block.slot });
     } catch (err) {
-      console.error(`Error queuing block for anchor: ${err.message}`);
+      log.error('Error queuing block for anchor', { error: err.message });
       this._anchorStatus.set(block.hash, {
         status: AnchorStatus.FAILED,
         slot: block.slot,
@@ -429,7 +432,7 @@ export class PoJChainManager {
               anchoredAt: result.timestamp,
             });
             this._stats.blocksAnchored++;
-            console.error(`⚓ PoJ Block #${slot} anchored to Solana: ${result.signature.slice(0, 16)}...`);
+            log.info('PoJ block anchored', { slot, signature: result.signature.slice(0, 16) });
             break;
           }
         }
@@ -542,7 +545,7 @@ export class PoJChainManager {
         };
         this._stats.blocksReceived++;
 
-        console.error(`🔗 PoJ Block #${block.slot} received from ${(block.operator_name || block.operator || 'unknown').slice(0, 16)}`);
+        log.info('PoJ block received', { slot: block.slot, operator: (block.operator_name || block.operator || 'unknown').slice(0, 16) });
         return { accepted: true };
       }
     } catch (err) {

@@ -15,6 +15,9 @@
 import { createServer } from 'http';
 import { readFile } from 'fs/promises';
 import { join, extname } from 'path';
+import { createLogger } from '@cynic/core';
+
+const log = createLogger('HttpAdapter');
 
 // MIME types for static files
 const MIME_TYPES = {
@@ -107,7 +110,7 @@ export class HttpAdapter {
       });
 
       this._server.listen(this.port, () => {
-        console.error(`   HTTP server: listening on port ${this.port}`);
+        log.info('HTTP server listening', { port: this.port });
         resolve();
       });
     });
@@ -133,7 +136,7 @@ export class HttpAdapter {
 
     // Wait for active requests with timeout
     if (this._activeRequests.size > 0) {
-      console.error(`   Waiting for ${this._activeRequests.size} active requests...`);
+      log.debug('Waiting for active requests', { count: this._activeRequests.size });
       const deadline = Date.now() + timeout;
 
       while (this._activeRequests.size > 0 && Date.now() < deadline) {
@@ -141,14 +144,14 @@ export class HttpAdapter {
       }
 
       if (this._activeRequests.size > 0) {
-        console.error(`   Force closing ${this._activeRequests.size} requests`);
+        log.warn('Force closing requests', { count: this._activeRequests.size });
       }
     }
 
     // Close server
     return new Promise((resolve) => {
       this._server.close(() => {
-        console.error('   HTTP server: closed');
+        log.info('HTTP server closed');
         resolve();
       });
     });
@@ -219,7 +222,7 @@ export class HttpAdapter {
       await this._routeRequest(req, res, url);
 
     } catch (err) {
-      console.error('HTTP error:', err.message);
+      log.error('HTTP error', { error: err.message });
       if (!res.headersSent) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Internal server error' }));

@@ -9,6 +9,10 @@
 
 'use strict';
 
+import { createLogger } from '@cynic/core';
+
+const log = createLogger('PsychologyAdapter');
+
 /**
  * @typedef {Object} PsychologyState
  * @property {string} user_id
@@ -39,7 +43,7 @@ export class PsychologyAdapter {
       try {
         return await this._repo.syncPsychology(userId, data);
       } catch (err) {
-        console.error('Error syncing psychology:', err.message);
+        log.error('Error syncing psychology', { error: err.message });
       }
     }
     return null;
@@ -56,7 +60,7 @@ export class PsychologyAdapter {
       try {
         return await this._repo.loadPsychology(userId);
       } catch (err) {
-        console.error('Error loading psychology:', err.message);
+        log.error('Error loading psychology', { error: err.message });
       }
     }
     return null;
@@ -73,7 +77,7 @@ export class PsychologyAdapter {
       try {
         await this._repo.recordIntervention(userId, intervention);
       } catch (err) {
-        console.error('Error recording intervention:', err.message);
+        log.error('Error recording intervention', { error: err.message });
       }
     }
   }
@@ -88,7 +92,7 @@ export class PsychologyAdapter {
       try {
         return await this._repo.getInterventionEffectiveness(userId);
       } catch (err) {
-        console.error('Error getting intervention effectiveness:', err.message);
+        log.error('Error getting intervention effectiveness', { error: err.message });
       }
     }
     return null;
@@ -105,7 +109,7 @@ export class PsychologyAdapter {
       try {
         await this._repo.recordLearningObservation(userId, observation);
       } catch (err) {
-        console.error('Error recording learning observation:', err.message);
+        log.error('Error recording learning observation', { error: err.message });
       }
     }
   }
@@ -120,7 +124,7 @@ export class PsychologyAdapter {
       try {
         return await this._repo.getCalibrationStats(userId);
       } catch (err) {
-        console.error('Error getting calibration stats:', err.message);
+        log.error('Error getting calibration stats', { error: err.message });
       }
     }
     return null;
@@ -135,7 +139,7 @@ export class PsychologyAdapter {
       try {
         return await this._repo.getStats();
       } catch (err) {
-        console.error('Error getting psychology stats:', err.message);
+        log.error('Error getting psychology stats', { error: err.message });
       }
     }
     return { totalUsers: 0, totalSessions: 0, avgAccuracy: 0 };
@@ -151,7 +155,7 @@ export class PsychologyAdapter {
       try {
         return await this._repo.getTopPerformers(limit);
       } catch (err) {
-        console.error('Error getting top performers:', err.message);
+        log.error('Error getting top performers', { error: err.message });
       }
     }
     return [];
