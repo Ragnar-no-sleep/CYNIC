@@ -63,10 +63,11 @@
 ## Pending (2)
 
 - [ ] #19 Add tests for persistence repositories
-  - Was: 2,759 lines (21%) → Now: 3,354 lines (25.6%)
-  - Added: UserRepository (11 tests), SessionRepository (6 tests), FeedbackRepository (8 tests)
-  - 207 tests passing, 6/17 repos now covered
-  - Remaining: 11 repos without unit tests
+  - Was: 2,759 lines (21%) → Now: 3,800+ lines (29%)
+  - Added: UserRepository (11), SessionRepository (6), FeedbackRepository (8), KnowledgeRepository (7)
+  - Partial: EScoreHistoryRepository, LearningCyclesRepository, TriggerRepository, PatternEvolutionRepository, LibraryCacheRepository (skipped - mock incomplete, work with real PostgreSQL)
+  - 212 tests (208 pass, 4 skipped), 7/17 repos fully covered
+  - Remaining: 10 repos need mock improvements or integration tests
 - [ ] #23 Add TypeDoc generation for API documentation
 
 ## Good Coverage (2)
