@@ -209,7 +209,11 @@ async function testSingleAnchor(connection, keypair) {
       return { anchorer, result: null };
     }
   } catch (error) {
+    if (error.message && error.message.includes('NotValidator')) {
+      log('    ⓘ Test skipped (wallet is not a validator)', YELLOW);
+    } else {
     fail('Anchor transaction', error);
+    }
     return { anchorer, result: null };
   }
 }

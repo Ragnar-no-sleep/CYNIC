@@ -9,7 +9,8 @@
     "./poj": "./src/poj/index.js",
     "./merkle": "./src/merkle/index.js",
     "./gossip": "./src/gossip/index.js",
-    "./consensus": "./src/consensus/index.js"
+    "./consensus": "./src/consensus/index.js",
+    "./gossip/message.js": "./src/gossip/message.js"
   },
   "scripts": {
     "test": "node --test test/*.test.js"
