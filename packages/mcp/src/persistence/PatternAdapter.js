@@ -9,6 +9,10 @@
 
 'use strict';
 
+import { createLogger } from '@cynic/core';
+
+const log = createLogger('PatternAdapter');
+
 /**
  * @typedef {Object} Pattern
  * @property {string} pattern_id
@@ -40,7 +44,7 @@ export class PatternAdapter {
       try {
         return await this._repo.upsert(pattern);
       } catch (err) {
-        console.error('Error upserting pattern:', err.message);
+        log.error('Error upserting pattern', { error: err.message });
       }
     }
     if (this._fallback) {
@@ -65,7 +69,7 @@ export class PatternAdapter {
         }
         return await this._repo.getTopPatterns(limit);
       } catch (err) {
-        console.error('Error getting patterns:', err.message);
+        log.error('Error getting patterns', { error: err.message });
       }
     }
     if (this._fallback) {

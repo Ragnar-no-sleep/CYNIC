@@ -15,6 +15,9 @@ import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
 import { EventEmitter } from 'events';
+import { createLogger } from '@cynic/core';
+
+const log = createLogger('IntegratorService');
 
 const PHI_INV = 0.618033988749895;
 
@@ -470,10 +473,10 @@ export class IntegratorService extends EventEmitter {
       try {
         const report = await this.checkSync();
         if (report.drifts.length > 0) {
-          console.error(`[IntegratorService] Detected ${report.drifts.length} drifts`);
+          log.warn('Detected drifts', { count: report.drifts.length });
         }
       } catch (err) {
-        console.error('[IntegratorService] Auto-check error:', err.message);
+        log.error('Auto-check error', { error: err.message });
       }
     }, this.options.checkIntervalMs);
 

@@ -16,7 +16,9 @@
 
 'use strict';
 
-import { PHI_INV, PHI_INV_2 } from '@cynic/core';
+import { PHI_INV, PHI_INV_2, createLogger } from '@cynic/core';
+
+const log = createLogger('BaseAgent');
 
 /**
  * Agent trigger types
@@ -153,13 +155,13 @@ export class BaseAgent {
           });
         } catch (err) {
           // Don't fail the decision if persistence fails
-          console.error(`[${this.name}] Persistence error: ${err.message}`);
+          log.error('Persistence error', { agent: this.name, error: err.message });
         }
       }
 
       return decision;
     } catch (err) {
-      console.error(`[${this.name}] Error:`, err.message);
+      log.error('Agent error', { agent: this.name, error: err.message });
       return {
         response: AgentResponse.ALLOW,
         error: err.message,

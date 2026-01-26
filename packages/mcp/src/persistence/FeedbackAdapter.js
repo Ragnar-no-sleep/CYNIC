@@ -9,6 +9,10 @@
 
 'use strict';
 
+import { createLogger } from '@cynic/core';
+
+const log = createLogger('FeedbackAdapter');
+
 /**
  * @typedef {Object} Feedback
  * @property {string} feedback_id
@@ -55,11 +59,11 @@ export class FeedbackAdapter {
               await this._profiles.updateJudgmentPatterns(feedback.userId, feedback.itemType);
             }
           } catch (profileErr) {
-            console.error('Error updating user learning profile:', profileErr.message);
+            log.error('Error updating user learning profile', { error: profileErr.message });
           }
         }
       } catch (err) {
-        console.error('Error storing feedback:', err.message);
+        log.error('Error storing feedback', { error: err.message });
       }
     }
 
