@@ -1,6 +1,6 @@
 # CYNIC Development Roadmap
 
-> **Last Updated**: 2026-01-21
+> **Last Updated**: 2026-01-26
 > **Status**: Active Development
 
 ---
@@ -48,9 +48,11 @@ CYNIC development follows a phased approach, building from core functionality to
   - Pattern detection
   - Dimension discovery
 
-- **Solana Integration**
-  - @cynic/anchor: Block anchoring
-  - @cynic/burns: Burn verification
+- **Solana Integration** ✅
+  - @cynic/anchor: Block anchoring + PoJ integration ✅
+  - @cynic/burns: Burn verification ✅
+  - Anchor program deployed on devnet (G3Yana...)
+  - E2E tests passing (real devnet transactions)
 
 ---
 
@@ -66,7 +68,7 @@ CYNIC development follows a phased approach, building from core functionality to
 | Solana anchoring | ✅ | Basic anchoring queue |
 | Burn verification | ✅ | On-chain verification |
 | E-Score calculation | ✅ | 7-dimension φ-weighted (identity package) |
-| Unit test coverage | ✅ | 1713 tests across 9 packages |
+| Unit test coverage | ✅ | 2056 tests across 15 packages |
 
 ### Phase 2: Dashboard
 
@@ -144,7 +146,7 @@ CYNIC development follows a phased approach, building from core functionality to
 
 ## Contributing
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
+See [docs/INDEX.md](./docs/INDEX.md) for guidelines and documentation.
 
 Priority areas:
 1. Test coverage

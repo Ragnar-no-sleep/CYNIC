@@ -125,7 +125,7 @@ Min doubt: 38.2%
 
 ## Contributing
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) (coming soon).
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
 
 ---
 

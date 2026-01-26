@@ -505,24 +505,23 @@ PHILOSOPHY_ENGINE_CATALOG = [
 ]
 ```
 
-### Current Status: ⚠️ DISCONNECTED
+### Current Status: ✅ CONNECTED (via Boot System)
 
-**loadPhilosophyEngines() is DEFINED but NEVER CALLED from**:
-- ❌ hooks (no imports from @cynic/core)
-- ❌ MCP server (not in ServiceInitializer)
-- ❌ CYNICNode (not in constructor)
-- ❌ CLI commands (not in start.js)
+**loadPhilosophyEngines() is NOW CALLED from**:
+- ✅ Boot providers (`packages/core/src/boot/providers/engines.js`)
+- ✅ Boot discovery (`packages/core/src/boot/discovery.js`)
+- ✅ EngineOrchestratorProvider wires 73 engines at startup
 
-**Search results**:
+**Integration points**:
 ```
-Grep for "loadPhilosophyEngines":
-- packages/core/src/engines/index.js:50     [EXPORT]
-- packages/core/src/engines/philosophy/loader.js:51   [DEFINE]
-- packages/core/src/engines/philosophy/loader.js:195  [INTERNAL USE]
-- packages/core/src/engines/philosophy/index.js:49    [RE-EXPORT]
+packages/core/src/boot/providers/engines.js:48   loadPhilosophyEngines()
+packages/core/src/boot/providers/engines.js:139  loadPhilosophyEngines()
+packages/core/src/boot/discovery.js:266          loadPhilosophyEngines()
 ```
 
-**Conclusion**: The new engine system is **implemented but not wired**.
+**Conclusion**: The engine system is **implemented AND wired** via bootCYNIC().
+
+*Updated 2026-01-26*
 
 ---
 
@@ -712,9 +711,9 @@ MCP server receives request
 | CYNICJudge | Judge | ✓ LIVE | ← Node uses |
 | Persistence | Layer | ✓ LIVE | ← Node stores |
 | **Engine System** | | | |
-| @cynic/core/engines | System | ⚠️ BUILT | ❌ DISCONNECTED |
-| loadPhilosophyEngines() | Loader | ⚠️ BUILT | ❌ NEVER CALLED |
-| EngineOrchestrator | Orchestrator | ⚠️ BUILT | ❌ NEVER USED |
+| @cynic/core/engines | System | ✅ LIVE | ✅ CONNECTED |
+| loadPhilosophyEngines() | Loader | ✅ LIVE | ✅ Called via Boot |
+| EngineOrchestrator | Orchestrator | ✅ LIVE | ✅ Wired via Boot |
 
 ---
 
@@ -1003,15 +1002,16 @@ The engine system was previously ORPHANED:
 │ 73 Philosophy Engines   │
 │ (all cataloged, ready)  │
 └─────────────────────────┘
-         ❌  ← Was ORPHANED
-         ⟂
-      ╱    ╲
-   ╱        ╲
+         ✅  ← NOW CONNECTED
+         │
+    bootCYNIC()
+         │
+      ╱  │  ╲
+   ╱     │     ╲
 ┌───────┐  ┌───────┐  ┌───────┐
 │ Hooks │  │  MCP  │  │ Node  │
-│  ✗    │  │  ✗    │  │  ✗    │
+│  ✅   │  │  ✅   │  │  ✅   │
 └───────┘  └───────┘  └───────┘
 
-Status: NOW CONNECTED via Boot System
-Next: Wire hooks + MCP + Node to use bootCYNIC()
+Status: ✅ CONNECTED via Boot System (2026-01-26)
 ```
