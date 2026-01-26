@@ -14,6 +14,9 @@ import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
 import { EventEmitter } from 'events';
+import { createLogger } from '@cynic/core';
+
+const log = createLogger('EcosystemService');
 
 const PHI_INV = 0.618033988749895;
 
@@ -91,7 +94,7 @@ export class EcosystemService extends EventEmitter {
 
     // Check if persistence supports ecosystem docs
     if (!this.persistence?.ecosystemDocs) {
-      console.warn('[EcosystemService] No ecosystem docs repository - running in memory-only mode');
+      log.warn('No ecosystem docs repository - running in memory-only mode');
       this._memoryCache = new Map();
     }
 
@@ -186,7 +189,7 @@ export class EcosystemService extends EventEmitter {
         digest = await this.options.digestGenerator(content, docSpec);
         this.stats.digestsGenerated++;
       } catch (err) {
-        console.warn(`[EcosystemService] Failed to generate digest for ${docSpec.project}/${docSpec.docType}:`, err.message);
+        log.warn('Failed to generate digest', { project: docSpec.project, docType: docSpec.docType, error: err.message });
       }
     }
 
@@ -437,7 +440,7 @@ export class EcosystemService extends EventEmitter {
           this.emit('refreshed', results);
         }
       } catch (err) {
-        console.error('[EcosystemService] Auto-refresh error:', err.message);
+        log.error('Auto-refresh error', { error: err.message });
       }
     }, this.options.refreshIntervalMs);
 

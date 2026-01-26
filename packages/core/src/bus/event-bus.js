@@ -13,6 +13,9 @@
 
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
+import { createLogger } from '../logger.js';
+
+const log = createLogger('EventBus');
 
 /**
  * Standard CYNIC event types
@@ -135,7 +138,7 @@ export class CYNICEventBus extends EventEmitter {
           return event; // Middleware blocked the event
         }
       } catch (error) {
-        console.error('[EventBus] Middleware error:', error.message);
+        log.error('Middleware error', { error: error.message });
       }
     }
 
@@ -165,7 +168,7 @@ export class CYNICEventBus extends EventEmitter {
       try {
         handler(event);
       } catch (error) {
-        console.error(`[EventBus] Handler error for ${type}:`, error.message);
+        log.error('Handler error', { type, error: error.message });
         this.publish(EventType.COMPONENT_ERROR, {
           eventType: type,
           error: error.message,
@@ -196,7 +199,7 @@ export class CYNICEventBus extends EventEmitter {
       try {
         handler(event);
       } catch (error) {
-        console.error(`[EventBus] Handler error for ${type}:`, error.message);
+        log.error('Handler error', { type, error: error.message });
       }
     };
 

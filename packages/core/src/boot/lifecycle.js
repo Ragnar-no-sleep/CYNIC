@@ -12,6 +12,9 @@
 'use strict';
 
 import { CYNICError, ErrorCode } from '../errors.js';
+import { createLogger } from '../logger.js';
+
+const log = createLogger('Lifecycle');
 
 /**
  * Lifecycle states
@@ -170,7 +173,7 @@ export class Lifecycle {
       this.#setState(LifecycleState.STOPPED);
     } catch (error) {
       // Log but don't throw - we're shutting down anyway
-      console.error(`Error stopping ${this.name}:`, error.message);
+      log.error('Error stopping component', { name: this.name, error: error.message });
       this.#setState(LifecycleState.STOPPED);
     }
   }

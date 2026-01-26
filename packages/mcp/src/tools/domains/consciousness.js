@@ -16,7 +16,10 @@ import {
   PHI_INV,
   EMERGENCE,
   THRESHOLDS,
+  createLogger,
 } from '@cynic/core';
+
+const log = createLogger('ConsciousnessTools');
 
 /**
  * Create patterns tool definition
@@ -83,7 +86,7 @@ export function createPatternsTool(judge, persistence = null) {
             });
           }
         } catch (e) {
-          console.error('Error getting patterns:', e.message);
+          log.error('Error getting patterns', { error: e.message });
         }
       }
 
@@ -198,7 +201,7 @@ export function createMilestoneHistoryTool(persistence = null) {
                 [entry.score, JSON.stringify(entry.dimensions)]
               );
             } catch (e) {
-              console.error('Error storing milestone:', e.message);
+              log.error('Error storing milestone', { error: e.message });
               memoryHistory.push(entry);
             }
           } else {
@@ -553,7 +556,7 @@ export function createEmergenceTool(judge, persistence = null) {
             indicators.novelBehavior = Math.min(100, Math.round((anomalyCount / EMERGENCE.ANOMALIES_FOR_MAX) * 100));
           } catch (e) {
             // Use defaults if persistence fails
-            console.error('Error calculating indicators:', e.message);
+            log.error('Error calculating indicators', { error: e.message });
           }
         }
 

@@ -11,6 +11,10 @@
 
 'use strict';
 
+import { createLogger } from '@cynic/core';
+
+const log = createLogger('ToolRegistry');
+
 /**
  * @typedef {Object} ToolDefinition
  * @property {string} name - Tool name (e.g., 'brain_cynic_judge')
@@ -108,7 +112,7 @@ export class ToolRegistry {
       if (factory.requires) {
         const missing = factory.requires.filter(dep => !options[dep]);
         if (missing.length > 0) {
-          console.error(`   Tool factory '${name}' skipped: missing ${missing.join(', ')}`);
+          log.debug('Tool factory skipped', { factory: name, missing });
           continue;
         }
       }
@@ -124,7 +128,7 @@ export class ToolRegistry {
           }
         }
       } catch (err) {
-        console.error(`   Tool factory '${name}' error:`, err.message);
+        log.error('Tool factory error', { factory: name, error: err.message });
       }
     }
 
@@ -153,7 +157,7 @@ export class ToolRegistry {
         const createdTools = Array.isArray(created) ? created : [created];
         tools.push(...createdTools.filter(t => t && t.name));
       } catch (err) {
-        console.error(`   Tool factory '${name}' error:`, err.message);
+        log.error('Tool factory error', { factory: name, error: err.message });
       }
     }
 

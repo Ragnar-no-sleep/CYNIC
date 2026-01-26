@@ -11,6 +11,10 @@
 
 'use strict';
 
+import { createLogger } from '@cynic/core';
+
+const log = createLogger('KnowledgeTools');
+
 /**
  * Create digest tool definition
  * @param {Object} persistence - PersistenceManager instance (handles fallback automatically)
@@ -86,7 +90,7 @@ export function createDigestTool(persistence = null, sessionManager = null) {
             await sessionManager.incrementCounter('digestCount');
           }
         } catch (e) {
-          console.error('Error storing digest:', e.message);
+          log.error('Error storing digest', { error: e.message });
         }
       }
 
@@ -135,7 +139,7 @@ export function createSearchTool(persistence = null) {
             if (results.length >= limit) break;
           }
         } catch (e) {
-          console.error('Error searching judgments:', e.message);
+          log.error('Error searching judgments', { error: e.message });
         }
       }
 
@@ -153,7 +157,7 @@ export function createSearchTool(persistence = null) {
             });
           }
         } catch (e) {
-          console.error('Error searching knowledge:', e.message);
+          log.error('Error searching knowledge', { error: e.message });
         }
       }
 

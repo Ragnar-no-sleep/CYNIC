@@ -13,6 +13,9 @@
 
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { join, relative, basename, dirname } from 'node:path';
+import { createLogger } from '@cynic/core';
+
+const log = createLogger('CodeAnalyzer');
 
 /**
  * Code Analyzer Service
@@ -170,7 +173,7 @@ export class CodeAnalyzer {
         }
       }
     } catch (err) {
-      console.error('Error scanning packages:', err.message);
+      log.error('Error scanning packages', { error: err.message });
     }
 
     return packages;
@@ -254,7 +257,7 @@ export class CodeAnalyzer {
         }
       }
     } catch (err) {
-      console.error(`Error scanning directory ${dirPath}:`, err.message);
+      log.error('Error scanning directory', { path: dirPath, error: err.message });
     }
 
     return modules;
@@ -289,7 +292,7 @@ export class CodeAnalyzer {
         exports,
       };
     } catch (err) {
-      console.error(`Error parsing file ${filePath}:`, err.message);
+      log.error('Error parsing file', { path: filePath, error: err.message });
       return null;
     }
   }

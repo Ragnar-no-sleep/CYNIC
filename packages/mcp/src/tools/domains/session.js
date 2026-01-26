@@ -13,7 +13,9 @@
 
 'use strict';
 
-import { PHI_INV } from '@cynic/core';
+import { PHI_INV, createLogger } from '@cynic/core';
+
+const log = createLogger('SessionTools');
 
 // φ⁻² = 0.382 (secondary threshold)
 const PHI_INV_2 = 0.382;
@@ -349,7 +351,7 @@ export function createProfileSyncTool(persistence) {
           timestamp: Date.now(),
         };
       } catch (err) {
-        console.error('Profile sync error:', err.message);
+        log.error('Profile sync error', { userId, error: err.message });
         return {
           success: false,
           error: err.message,
@@ -417,7 +419,7 @@ export function createProfileLoadTool(persistence) {
           timestamp: Date.now(),
         };
       } catch (err) {
-        console.error('Profile load error:', err.message);
+        log.error('Profile load error', { userId, error: err.message });
         return {
           success: false,
           profile: null,

@@ -13,6 +13,9 @@
 
 import { EventEmitter } from 'node:events';
 import { CYNICError, ErrorCode } from '../errors.js';
+import { createLogger } from '../logger.js';
+
+const log = createLogger('BootManager');
 import { LifecycleState, HealthStatus } from './lifecycle.js';
 
 /**
@@ -435,12 +438,12 @@ export class BootManager extends EventEmitter {
    */
   #setupSignalHandlers() {
     const gracefulShutdown = async (signal) => {
-      console.log(`\nReceived ${signal}, initiating graceful shutdown...`);
+      log.info('Received signal, initiating graceful shutdown', { signal });
       try {
         await this.shutdown();
         process.exit(0);
       } catch (error) {
-        console.error('Error during shutdown:', error.message);
+        log.error('Error during shutdown', { error: error.message });
         process.exit(1);
       }
     };
