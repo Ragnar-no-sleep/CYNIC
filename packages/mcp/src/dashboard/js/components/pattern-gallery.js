@@ -214,7 +214,8 @@ export class PatternGallery {
       const cat = p.category || 'default';
       categoryCount[cat] = (categoryCount[cat] || 0) + 1;
       totalFrequency += p.total || p.frequency || 1;
-      avgConfidence += p.confidence || 0.5;
+      const conf = parseFloat(p.confidence);
+      avgConfidence += isNaN(conf) ? 0.5 : conf;
     });
 
     if (this.patterns.length > 0) {

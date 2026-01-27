@@ -440,7 +440,7 @@ export class LiveView {
    */
   _renderJudgmentBadge(data) {
     const verdict = escapeHtml(data.verdict || 'UNKNOWN');
-    const score = data.Q ?? data.score ?? 0;
+    const score = data.Q ?? data.qScore ?? data.score ?? 0;
     const judgmentId = escapeHtml(data.id || data.judgmentId || '');
     return `
       <div class="judgment-badge verdict-${verdict.toLowerCase()}">
@@ -505,7 +505,7 @@ export class LiveView {
    */
   _renderJudgmentDetail(data) {
     const verdict = escapeHtml(data.verdict || 'UNKNOWN');
-    const score = data.Q ?? data.score ?? 0;
+    const score = data.Q ?? data.qScore ?? data.score ?? 0;
 
     let breakdownHtml = '';
     if (data.breakdown) {

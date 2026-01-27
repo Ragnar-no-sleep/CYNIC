@@ -450,3 +450,38 @@
   font-size: var(--font-size-xs);
   color: var(--text-secondary);
 }
+
+/* ═══════════════════════════════════════════════════════════
+   OPERATOR LAYOUT
+   ═══════════════════════════════════════════════════════════ */
+
+.operator-layout {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  position: relative;
+  z-index: var(--z-base);
+}
+
+.operator-section {
+  position: relative;
+  z-index: 1;
+}
+
+.operator-middle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-lg);
+}
+
+@media (max-width: 1200px) {
+  .operator-middle {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Pattern section z-index fix */
+.pattern-section {
+  position: relative;
+  z-index: 2;
+}

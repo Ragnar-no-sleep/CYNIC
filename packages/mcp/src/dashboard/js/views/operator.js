@@ -119,11 +119,12 @@ export class OperatorView {
       this.api.collectiveStatus(true),
     ]);
 
-    // Update metrics
+    // Update metrics from health result (judge stats)
     if (healthResult.success && healthResult.result) {
       const h = healthResult.result;
-      this.metricsCards.updateCard('judgments', h.stats?.judgments || 0);
-      this.metricsCards.updateCard('qScore', h.stats?.avgQScore || 0);
+      // judge.getStats() returns: { totalJudgments, avgScore, verdicts, anomaliesDetected }
+      this.metricsCards.updateCard('judgments', h.judge?.totalJudgments || 0);
+      this.metricsCards.updateCard('qScore', h.judge?.avgScore || 0);
     }
 
     // Update chain
