@@ -508,14 +508,103 @@ export class MCPServer {
    * Route: GET / or /health
    * @private
    */
-  _handleHealthRequest(_req, res) {
-    HttpAdapter.sendJson(res, 200, {
-      status: 'healthy',
+  async _handleHealthRequest(_req, res) {
+    const checks = {
+      database: { status: 'unknown' },
+      redis: { status: 'unknown' },
+      pojChain: { status: 'unknown' },
+      judge: { status: 'unknown' },
+      anchoring: { status: 'unknown' },
+    };
+
+    let overallHealthy = true;
+
+    // Check PostgreSQL
+    try {
+      if (this.persistence?.postgres) {
+        const dbHealth = await this.persistence.postgres.healthCheck?.() ||
+          await this.persistence.postgres.query?.('SELECT 1');
+        checks.database = { status: 'healthy' };
+      } else {
+        checks.database = { status: 'not_configured' };
+      }
+    } catch (err) {
+      checks.database = { status: 'unhealthy', error: err.message };
+      overallHealthy = false;
+    }
+
+    // Check Redis
+    try {
+      if (this.persistence?.redis) {
+        await this.persistence.redis.ping?.();
+        checks.redis = { status: 'healthy' };
+      } else {
+        checks.redis = { status: 'not_configured' };
+      }
+    } catch (err) {
+      checks.redis = { status: 'unhealthy', error: err.message };
+      overallHealthy = false;
+    }
+
+    // Check PoJ Chain
+    try {
+      if (this.pojChainManager) {
+        const pojStatus = this.pojChainManager.getStatus();
+        checks.pojChain = {
+          status: pojStatus.initialized ? 'healthy' : 'initializing',
+          slot: pojStatus.headSlot,
+          pending: pojStatus.pendingJudgments,
+        };
+      } else {
+        checks.pojChain = { status: 'not_configured' };
+      }
+    } catch (err) {
+      checks.pojChain = { status: 'unhealthy', error: err.message };
+      overallHealthy = false;
+    }
+
+    // Check Judge
+    try {
+      if (this.judge) {
+        checks.judge = {
+          status: 'healthy',
+          engines: this.judge.engineRegistry?.getRegisteredEngineIds?.()?.length || 0,
+        };
+      } else {
+        checks.judge = { status: 'not_configured' };
+      }
+    } catch (err) {
+      checks.judge = { status: 'unhealthy', error: err.message };
+      overallHealthy = false;
+    }
+
+    // Check Anchoring
+    try {
+      if (this.anchorQueue) {
+        const stats = this.anchorQueue.getStats?.() || {};
+        checks.anchoring = {
+          status: 'healthy',
+          enabled: true,
+          pending: stats.queueLength || 0,
+          anchored: stats.totalAnchored || 0,
+        };
+      } else {
+        checks.anchoring = { status: 'disabled' };
+      }
+    } catch (err) {
+      checks.anchoring = { status: 'unhealthy', error: err.message };
+    }
+
+    const statusCode = overallHealthy ? 200 : 503;
+    HttpAdapter.sendJson(res, statusCode, {
+      status: overallHealthy ? 'healthy' : 'unhealthy',
       server: this.name,
       version: this.version,
       tools: Object.keys(this.tools).length,
       uptime: process.uptime(),
       phi: PHI_INV,
+      checks,
+      timestamp: Date.now(),
     });
   }
 
