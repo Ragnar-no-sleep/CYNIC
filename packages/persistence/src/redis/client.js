@@ -587,6 +587,133 @@ export class RedisClient {
   }
 
   // ==========================================================================
+  // CACHE PATTERNS
+  // ==========================================================================
+
+  /**
+   * Cache-aside pattern: Get from cache or compute and store
+   * @param {string} key - Cache key
+   * @param {Function} compute - Async function to compute value if not cached
+   * @param {number} [ttl] - TTL in seconds
+   * @returns {Promise<{value: any, cached: boolean}>}
+   */
+  async getOrCompute(key, compute, ttl = TTL.PATTERN_CACHE) {
+    // Try cache first
+    const cached = await this.get(key);
+    if (cached !== null) {
+      return { value: cached, cached: true };
+    }
+
+    // Compute and store
+    const value = await compute();
+    if (value !== null && value !== undefined) {
+      await this.set(key, value, ttl);
+    }
+    return { value, cached: false };
+  }
+
+  /**
+   * Write-through pattern: Update cache and return
+   * @param {string} key - Cache key
+   * @param {any} value - Value to cache
+   * @param {number} [ttl] - TTL in seconds
+   */
+  async writeThrough(key, value, ttl = TTL.PATTERN_CACHE) {
+    await this.set(key, value, ttl);
+    return value;
+  }
+
+  /**
+   * Invalidate cache entries by pattern
+   * @param {string} pattern - Glob pattern (e.g., 'cynic:lib:*')
+   * @returns {Promise<number>} Number of keys deleted
+   */
+  async invalidatePattern(pattern) {
+    return this._executeProtected(async () => {
+      const keys = [];
+      for await (const key of this.scan(pattern)) {
+        keys.push(key);
+      }
+      if (keys.length === 0) return 0;
+      return this.client.del(...keys);
+    });
+  }
+
+  /**
+   * Invalidate cache entries by prefix
+   * @param {string} prefix - Key prefix (e.g., 'cynic:lib:solana')
+   * @returns {Promise<number>} Number of keys deleted
+   */
+  async invalidatePrefix(prefix) {
+    return this.invalidatePattern(`${prefix}*`);
+  }
+
+  /**
+   * Refresh TTL if key exists (touch without modifying value)
+   * @param {string} key - Cache key
+   * @param {number} [ttl] - New TTL
+   * @returns {Promise<boolean>} True if key existed and was touched
+   */
+  async touch(key, ttl = TTL.PATTERN_CACHE) {
+    return this._executeProtected(async () => {
+      const result = await this.client.expire(key, ttl);
+      return result === 1;
+    });
+  }
+
+  /**
+   * Get remaining TTL for a key
+   * @param {string} key - Cache key
+   * @returns {Promise<number>} TTL in seconds (-1 if no expiry, -2 if not exists)
+   */
+  async getTTL(key) {
+    return this._executeProtected(() => this.client.ttl(key));
+  }
+
+  /**
+   * Cache with stale-while-revalidate pattern
+   * Returns stale value immediately, recomputes in background
+   * @param {string} key - Cache key
+   * @param {Function} compute - Async function to compute fresh value
+   * @param {number} [ttl] - TTL in seconds
+   * @param {number} [staleThreshold] - Seconds before TTL to consider stale (default: 20% of TTL)
+   * @returns {Promise<{value: any, stale: boolean}>}
+   */
+  async getStaleWhileRevalidate(key, compute, ttl = TTL.PATTERN_CACHE, staleThreshold = null) {
+    const threshold = staleThreshold ?? Math.floor(ttl * 0.2);
+
+    const [cached, remaining] = await Promise.all([
+      this.get(key),
+      this.getTTL(key),
+    ]);
+
+    // Not cached - compute synchronously
+    if (cached === null) {
+      const value = await compute();
+      if (value !== null && value !== undefined) {
+        await this.set(key, value, ttl);
+      }
+      return { value, stale: false };
+    }
+
+    // Check if stale (TTL below threshold)
+    const isStale = remaining > 0 && remaining < threshold;
+
+    if (isStale) {
+      // Return stale value, recompute in background
+      compute().then(async (value) => {
+        if (value !== null && value !== undefined) {
+          await this.set(key, value, ttl);
+        }
+      }).catch(() => {}); // Ignore background errors
+
+      return { value: cached, stale: true };
+    }
+
+    return { value: cached, stale: false };
+  }
+
+  // ==========================================================================
   // HELPERS
   // ==========================================================================
 
