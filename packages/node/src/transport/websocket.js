@@ -362,7 +362,8 @@ export class WebSocketTransport extends EventEmitter {
     // This prevents temp IDs from leaking to the application layer
 
     ws.on('message', (data) => {
-      this._handleMessage(data, tempId);
+      // Use conn.peerId (not tempId) so we get the real ID after identity verification
+      this._handleMessage(data, conn.peerId);
     });
 
     ws.on('close', (code, reason) => {
