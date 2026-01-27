@@ -323,6 +323,10 @@ export async function startCommand(options) {
   transport.on('peer:disconnected', ({ peerId, code, reason }) => {
     const id = (peerId || '').slice(0, 12);
     console.log(chalk.red('  [PEER] ') + `Disconnected: ${chalk.gray(id)}... code=${code} reason=${reason || 'none'}`);
+    // Remove validator to keep consensus accurate
+    if (peerId) {
+      consensus.removeValidator(peerId);
+    }
   });
 
   transport.on('peer:error', ({ error }) => {
