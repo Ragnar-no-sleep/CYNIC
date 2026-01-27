@@ -29,6 +29,7 @@ import cynic, {
   getThermodynamics,
   getEmergence,
   getPhysicsBridge,
+  getTotalMemory,
 } from '../lib/index.js';
 
 // =============================================================================
@@ -281,6 +282,44 @@ async function main() {
         userId: user.userId,
         project: detectEcosystem().currentProject?.name
       });
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // TOTAL MEMORY: Store insights as memories and lessons
+    // "φ remembers everything"
+    // ═══════════════════════════════════════════════════════════════════════════
+    const totalMemory = getTotalMemory();
+    if (totalMemory && insights.length > 0) {
+      try {
+        await totalMemory.init();
+
+        for (const insight of insights) {
+          // Store recurring errors as lessons learned
+          if (insight.type === 'recurring_error') {
+            await totalMemory.rememberLesson(user.userId, {
+              category: 'bug',
+              mistake: insight.description,
+              correction: insight.suggestion || 'Address the root cause',
+              prevention: 'Monitor for this pattern',
+              severity: 'medium',
+            });
+          }
+
+          // Store other insights as key moments
+          else {
+            await totalMemory.rememberConversation(user.userId, 'insight', insight.description, {
+              importance: 0.6,
+              context: {
+                type: insight.type,
+                project: detectEcosystem().currentProject?.name,
+              },
+            });
+          }
+        }
+      } catch (e) {
+        // Total Memory storage failed - continue (non-critical)
+        console.error('[CYNIC] Total Memory storage failed:', e.message);
+      }
     }
 
     // Get final todo stats

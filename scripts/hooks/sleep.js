@@ -25,6 +25,7 @@ import cynic, {
   endBrainSession,
   getConsciousness,
   getPsychology,
+  getTotalMemory,
 } from '../lib/index.js';
 
 // =============================================================================
@@ -123,10 +124,12 @@ function formatSleepMessage(profile, summary, syncFailures = []) {
   const profileFailed = syncFailures.some(f => f.type === 'profile');
   const consciousnessFailed = syncFailures.some(f => f.type === 'consciousness');
   const psychologyFailed = syncFailures.some(f => f.type === 'psychology');
+  const totalMemoryFailed = syncFailures.some(f => f.type === 'total_memory');
 
   lines.push(`   💾 Profile: ${profileFailed ? '⚠️  Local file (sync failed)' : '✅ PostgreSQL'}`);
   lines.push(`   🧠 Consciousness: ${consciousnessFailed ? '⚠️  Local file (sync failed)' : '✅ PostgreSQL'}`);
   lines.push(`   💭 Psychology: ${psychologyFailed ? '⚠️  Local file (sync failed)' : '✅ PostgreSQL'}`);
+  lines.push(`   📚 Total Memory: ${totalMemoryFailed ? '⚠️  Sync failed' : '✅ PostgreSQL'}`);
   lines.push(`   ⛓️  Judgments: PoJ Chain`);
   lines.push('');
 
@@ -137,7 +140,8 @@ function formatSleepMessage(profile, summary, syncFailures = []) {
     for (const failure of syncFailures) {
       const icon = failure.type === 'profile' ? '👤' :
                    failure.type === 'consciousness' ? '🧠' :
-                   failure.type === 'psychology' ? '💭' : '❓';
+                   failure.type === 'psychology' ? '💭' :
+                   failure.type === 'total_memory' ? '📚' : '❓';
       lines.push(`   ${icon} ${failure.type}: ${failure.error || 'sync failed'}`);
     }
     lines.push('   📁 Local file backup saved');
@@ -276,6 +280,46 @@ async function main() {
       if (!psychologyResult.success) {
         syncFailures.push({ type: 'psychology', error: psychologyResult.error?.message || 'connection failed' });
         console.error('[CYNIC] Psychology sync failed - local files remain as backup');
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // TOTAL MEMORY: Store session summary and update goal progress
+    // "φ remembers everything"
+    // ═══════════════════════════════════════════════════════════════════════════
+    const totalMemory = getTotalMemory();
+    if (totalMemory) {
+      try {
+        await totalMemory.init();
+
+        // Store session summary as memory
+        await totalMemory.storeSessionSummary(user.userId, {
+          sessionId: hookContext.sessionId || process.env.CYNIC_SESSION_ID,
+          toolsUsed: summary.toolsUsed,
+          errorsEncountered: summary.errorsEncountered,
+          topTools: summary.topTools.map(t => t.tool),
+          duration: summary.duration,
+          project: detectProject(),
+        });
+
+        // Update goal progress based on session activity
+        await totalMemory.updateGoalProgress(user.userId, {
+          toolsUsed: summary.toolsUsed,
+          errorsEncountered: summary.errorsEncountered,
+          errorsFixed: summary.errorsEncountered > 0 ? 1 : 0, // Assume some were fixed
+          testsRun: summary.topTools.some(t => t.tool?.includes('test')) ? 1 : 0,
+        });
+
+        // Schedule background analysis task for next daemon run
+        await totalMemory.scheduleTask(user.userId, 'analyze_patterns', {
+          sessionId: hookContext.sessionId,
+          toolsUsed: summary.toolsUsed,
+          topTools: summary.topTools,
+        }, { priority: 40 });
+
+      } catch (e) {
+        syncFailures.push({ type: 'total_memory', error: e.message || 'storage failed' });
+        console.error('[CYNIC] Total Memory sync failed:', e.message);
       }
     }
 

@@ -34,6 +34,7 @@ import cynic, {
   getSignalCollector,
   getPsychology,
   getContributorDiscovery,
+  getTotalMemory,
 } from '../lib/index.js';
 
 import path from 'path';
@@ -232,6 +233,43 @@ async function main() {
     const ecosystem = detectEcosystem();
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // TOTAL MEMORY: Load memories, decisions, lessons, notifications, goals
+    // "φ remembers everything" - CYNIC's Total Memory system
+    // ═══════════════════════════════════════════════════════════════════════════
+    let totalMemoryData = null;
+    const totalMemory = getTotalMemory();
+
+    if (totalMemory) {
+      try {
+        await totalMemory.init();
+
+        // Load in parallel for speed
+        const [memories, notifications, goals] = await Promise.race([
+          Promise.all([
+            totalMemory.loadSessionMemories(user.userId, {
+              projectPath: ecosystem.currentProject?.path,
+              projectName: ecosystem.currentProject?.name,
+              recentTopics: profile.memory?.recentTopics || [],
+            }),
+            totalMemory.getPendingNotifications(user.userId, 5),
+            totalMemory.getActiveGoals(user.userId),
+          ]),
+          new Promise(resolve => setTimeout(() => resolve([null, [], []]), 3000))
+        ]);
+
+        totalMemoryData = { memories, notifications, goals };
+
+        // Mark notifications as delivered
+        if (notifications?.length > 0) {
+          totalMemory.markNotificationsDelivered(notifications.map(n => n.id)).catch(() => {});
+        }
+      } catch (e) {
+        // Total Memory load failed - continue without
+        console.error('[CYNIC] Total Memory load failed:', e.message);
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // MCP: Load relevant context from brain memory
     // "Le chien se souvient" - CYNIC remembers
     // ═══════════════════════════════════════════════════════════════════════════
@@ -318,10 +356,78 @@ async function main() {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // BRAIN MEMORY: Inject relevant memories from MCP
+    // TOTAL MEMORY: Inject notifications, goals, and memories
+    // "φ remembers everything"
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (totalMemoryData) {
+      try {
+        const lines = message.split('\n');
+        const insertIdx = lines.findIndex(l => l.includes('CYNIC is AWAKE'));
+
+        // Proactive notifications (delivered at session start)
+        if (totalMemoryData.notifications?.length > 0) {
+          const notifLines = ['', '── 📬 NOTIFICATIONS ───────────────────────────────────────'];
+          for (const n of totalMemoryData.notifications.slice(0, 3)) {
+            const icon = n.notificationType === 'warning' ? '⚠️' :
+                         n.notificationType === 'achievement' ? '🏆' :
+                         n.notificationType === 'reminder' ? '🔔' : '💡';
+            notifLines.push(`   ${icon} ${n.title}`);
+            if (n.message && n.message.length < 60) {
+              notifLines.push(`      ${n.message}`);
+            }
+          }
+          if (insertIdx > 0) {
+            lines.splice(insertIdx, 0, ...notifLines, '');
+          }
+        }
+
+        // Active goals
+        if (totalMemoryData.goals?.length > 0) {
+          const goalLines = ['', '── 🎯 ACTIVE GOALS ────────────────────────────────────────'];
+          for (const g of totalMemoryData.goals.slice(0, 3)) {
+            const progress = Math.round((g.progress || 0) * 100);
+            const bar = '█'.repeat(Math.floor(progress / 10)) + '░'.repeat(10 - Math.floor(progress / 10));
+            goalLines.push(`   [${bar}] ${progress}% ${g.title}`);
+          }
+          if (totalMemoryData.goals.length > 3) {
+            goalLines.push(`   ... +${totalMemoryData.goals.length - 3} more goals`);
+          }
+          if (insertIdx > 0) {
+            lines.splice(insertIdx, 0, ...goalLines, '');
+          }
+        }
+
+        // Relevant memories (decisions, lessons)
+        const memories = totalMemoryData.memories;
+        if (memories?.decisions?.length > 0 || memories?.lessons?.length > 0) {
+          const memLines = ['', '── 🧠 RELEVANT MEMORIES ───────────────────────────────────'];
+
+          // Show relevant decisions
+          for (const d of (memories.decisions || []).slice(0, 2)) {
+            memLines.push(`   📋 ${d.title}`);
+          }
+
+          // Show relevant lessons (self-correction)
+          for (const l of (memories.lessons || []).slice(0, 2)) {
+            memLines.push(`   ⚠️ Lesson: ${l.mistake?.substring(0, 50)}...`);
+          }
+
+          if (insertIdx > 0) {
+            lines.splice(insertIdx, 0, ...memLines, '');
+          }
+        }
+
+        message = lines.join('\n');
+      } catch (e) {
+        // Total Memory injection failed - continue without
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // BRAIN MEMORY: Inject relevant memories from MCP (legacy)
     // "Le chien n'oublie jamais"
     // ═══════════════════════════════════════════════════════════════════════════
-    if (brainMemory?.success && brainMemory?.result?.entries?.length > 0) {
+    if (brainMemory?.success && brainMemory?.result?.entries?.length > 0 && !totalMemoryData?.memories) {
       try {
         const memoryLines = ['', '── MEMORY ─────────────────────────────────────────────────'];
         for (const entry of brainMemory.result.entries.slice(0, 3)) {
