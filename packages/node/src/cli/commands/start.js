@@ -86,7 +86,7 @@ export async function startCommand(options) {
   console.log();
 
   // Build HTTP handler for API endpoints
-  const httpHandler = (req, res) => {
+  const httpHandler = async (req, res) => {
     // CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
