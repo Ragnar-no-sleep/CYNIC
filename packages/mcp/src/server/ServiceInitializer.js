@@ -339,10 +339,20 @@ export class ServiceInitializer {
   }
 
   async _createPoJChainManager(services) {
+    // P2P consensus configuration from environment
+    const p2pNodeUrl = process.env.CYNIC_P2P_NODE_URL || this.config.p2pNodeUrl;
+    const p2pEnabled = p2pNodeUrl && (process.env.CYNIC_P2P_ENABLED !== 'false');
+
     const pojChainManager = new PoJChainManager(services.persistence, {
       onBlockCreated: this.config.onBlockCreated,
+      p2pNodeUrl,
+      p2pEnabled,
     });
     await pojChainManager.initialize();
+
+    if (p2pEnabled) {
+      log.info('PoJ P2P consensus enabled', { nodeUrl: p2pNodeUrl });
+    }
 
     // Verify chain integrity at startup
     if (services.persistence?.pojBlocks) {

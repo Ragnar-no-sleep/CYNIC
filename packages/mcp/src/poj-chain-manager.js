@@ -91,6 +91,8 @@ export class PoJChainManager {
    * @param {Object} [options.anchorQueue] - AnchorQueue instance for Solana anchoring
    * @param {boolean} [options.autoAnchor=true] - Auto-anchor blocks to Solana
    * @param {Function} [options.onBlockCreated] - Callback when new block is created
+   * @param {string} [options.p2pNodeUrl] - P2P node URL for distributed consensus
+   * @param {boolean} [options.p2pEnabled=false] - Enable P2P consensus for blocks
    */
   constructor(persistence, options = {}) {
     this.persistence = persistence;
@@ -105,6 +107,10 @@ export class PoJChainManager {
     // Solana anchoring support
     this._anchorQueue = options.anchorQueue || null;
     this._autoAnchor = options.autoAnchor ?? true;
+
+    // P2P consensus support (φ-BFT distributed finalization)
+    this._p2pNodeUrl = options.p2pNodeUrl || null;
+    this._p2pEnabled = options.p2pEnabled ?? false;
 
     // Event callbacks for SSE integration
     this._onBlockCreated = options.onBlockCreated || null;
@@ -325,6 +331,13 @@ export class PoJChainManager {
           });
         }
 
+        // Propose to P2P network for distributed consensus (φ-BFT)
+        if (this._p2pEnabled) {
+          this._proposeToP2P(block).catch(err => {
+            log.warn('P2P propose failed (non-blocking)', { error: err.message });
+          });
+        }
+
         log.info('PoJ block created', { slot: block.slot, judgments: judgments.length });
 
         // Emit event for SSE broadcast
@@ -391,6 +404,57 @@ export class PoJChainManager {
       });
       this._stats.anchorsFailed++;
     }
+  }
+
+  /**
+   * Propose block to P2P network for distributed consensus
+   * @param {Object} block - Block to propose
+   * @private
+   */
+  async _proposeToP2P(block) {
+    if (!this._p2pNodeUrl || !this._p2pEnabled) return null;
+
+    try {
+      const response = await fetch(`${this._p2pNodeUrl}/propose`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'POJ_BLOCK',
+          slot: block.slot,
+          hash: block.hash,
+          judgments_root: block.judgments_root,
+          judgment_count: block.judgments?.length || 0,
+          prev_hash: block.prev_hash,
+          timestamp: block.timestamp,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`P2P propose failed: ${response.status}`);
+      }
+
+      const result = await response.json();
+      log.info('PoJ block proposed to P2P', {
+        slot: block.slot,
+        p2pSlot: result.slot,
+        finalized: result.finalizedSlot >= result.slot,
+      });
+
+      return result;
+    } catch (err) {
+      log.error('P2P propose error', { slot: block.slot, error: err.message });
+      return null;
+    }
+  }
+
+  /**
+   * Set P2P node URL for distributed consensus
+   * @param {string} url - P2P node URL (e.g., https://cynic-node-daemon.onrender.com)
+   */
+  setP2PNode(url) {
+    this._p2pNodeUrl = url;
+    this._p2pEnabled = true;
+    log.info('P2P consensus enabled', { url });
   }
 
   /**
