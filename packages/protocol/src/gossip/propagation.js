@@ -73,13 +73,20 @@ export class GossipProtocol {
     this.peerManager.markMessageSeen(message.id);
 
     // Update peer activity
-    this.peerManager.updateActivity(fromPeerId, 'received');
+    // Note: fromPeerId is the raw publicKey from transport, but peers are keyed by phiSaltedHash(publicKey)
+    // So we need to look up by publicKey first
+    const peer = this.peerManager.getPeerByPublicKey(fromPeerId);
+    if (peer) {
+      this.peerManager.updateActivity(peer.id, 'received');
+    }
 
     // Verify signature for important messages
     if (message.type !== MessageType.HEARTBEAT) {
       if (!verifyMessage(message)) {
         log.warn('Invalid message signature', { fromPeerId });
-        this.peerManager.recordFailure(fromPeerId);
+        if (peer) {
+          this.peerManager.recordFailure(peer.id);
+        }
         return;
       }
     }
