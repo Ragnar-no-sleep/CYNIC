@@ -154,13 +154,17 @@ export class AutonomousGoalsRepository extends BaseRepository {
    * @param {string} goalId - Goal UUID
    * @param {number} progress - Progress value (0-1)
    * @param {string} [note] - Progress note
-   * @returns {Promise<void>}
+   * @returns {Promise<Object|null>} Updated goal
    */
   async updateProgress(goalId, progress, note = null) {
-    await this.db.query(
-      'SELECT update_goal_progress($1, $2, $3)',
-      [goalId, progress, note]
-    );
+    const { rows } = await this.db.query(`
+      UPDATE autonomous_goals
+      SET progress = $2,
+          updated_at = NOW()
+      WHERE id = $1
+      RETURNING *
+    `, [goalId, progress]);
+    return rows[0] ? this._formatRow(rows[0]) : null;
   }
 
   /**

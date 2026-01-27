@@ -12,7 +12,13 @@
 
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import 'dotenv/config';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
+import dotenv from 'dotenv';
+
+// Load .env from monorepo root
+const __dirname = dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: resolve(__dirname, '../../../.env') });
 
 // Total Memory repositories
 import { ConversationMemoriesRepository, MemoryType } from '../src/postgres/repositories/conversation-memories.js';

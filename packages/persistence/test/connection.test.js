@@ -9,7 +9,14 @@
 
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert';
-import 'dotenv/config';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
+import dotenv from 'dotenv';
+
+// Load .env from monorepo root
+const __dirname = dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: resolve(__dirname, '../../../.env') });
+
 import { PostgresClient } from '../src/postgres/client.js';
 import { RedisClient } from '../src/redis/client.js';
 
