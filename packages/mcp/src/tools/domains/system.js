@@ -504,7 +504,7 @@ export function createConsensusTool(collective) {
       try {
         // Use eventBus.requestConsensus if available
         if (collective.eventBus.requestConsensus) {
-          const result = await collective.eventBus.requestConsensus('keter', {
+          const result = await collective.eventBus.requestConsensus('cynic', {
             question,
             options: ['APPROVE', 'REJECT'],
             context,
