@@ -99,7 +99,8 @@ const PACKAGES = {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Run npm test for a package safely (no shell)
+ * Run tests for a package using node --test directly
+ * (npm test --workspace doesn't capture output properly on Windows)
  */
 function runPackageTest(pkgName) {
   // Validate package name (alphanumeric only)
@@ -107,11 +108,30 @@ function runPackageTest(pkgName) {
     throw new Error(`Invalid package name: ${pkgName}`);
   }
 
-  const result = spawnSync('npm', ['test', `--workspace=packages/${pkgName}`], {
-    cwd: PROJECT_ROOT,
-    timeout: 60000,
+  const pkgPath = path.join(PROJECT_ROOT, 'packages', pkgName);
+  const testDir = path.join(pkgPath, 'test');
+
+  // Check if test directory exists
+  if (!fs.existsSync(testDir)) {
+    return { stdout: '', stderr: 'No test directory', status: 1 };
+  }
+
+  // Find test files
+  const testFiles = fs.readdirSync(testDir)
+    .filter(f => f.endsWith('.test.js'))
+    .map(f => path.join(testDir, f));
+
+  if (testFiles.length === 0) {
+    return { stdout: '', stderr: 'No test files', status: 1 };
+  }
+
+  // Run node --test directly (120s timeout for large packages like node/mcp)
+  const result = spawnSync('node', ['--test', ...testFiles], {
+    cwd: pkgPath,
+    timeout: 120000,
     encoding: 'utf8',
-    stdio: ['pipe', 'pipe', 'pipe']
+    stdio: ['pipe', 'pipe', 'pipe'],
+    env: { ...process.env, NODE_OPTIONS: '' }, // Clear NODE_OPTIONS to avoid conflicts
   });
 
   return {
@@ -162,19 +182,27 @@ function scanPackage(pkgName) {
     const result = runPackageTest(pkgName);
     const output = result.stdout + result.stderr;
 
+    // Parse node --test output format
     const testsMatch = output.match(/ℹ tests (\d+)/);
     const passMatch = output.match(/ℹ pass (\d+)/);
     const failMatch = output.match(/ℹ fail (\d+)/);
 
+    const tests = parseInt(testsMatch?.[1] || '0', 10);
+    const pass = parseInt(passMatch?.[1] || '0', 10);
+    const fail = parseInt(failMatch?.[1] || '0', 10);
+
+    // Package is healthy if: has tests, all pass, no failures, exit code 0
+    const healthy = tests > 0 && fail === 0 && result.status === 0;
+
     return {
       name: pkgName,
       exists: true,
-      tests: parseInt(testsMatch?.[1] || '0', 10),
-      pass: parseInt(passMatch?.[1] || '0', 10),
-      fail: parseInt(failMatch?.[1] || '0', 10),
+      tests,
+      pass,
+      fail,
       description: PACKAGES[pkgName]?.description || '',
       critical: PACKAGES[pkgName]?.critical || false,
-      healthy: failMatch?.[1] === '0' && result.status === 0,
+      healthy,
     };
   } catch (error) {
     return {
