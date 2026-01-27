@@ -119,6 +119,8 @@ class App {
    * Initialize views
    */
   async _initViews() {
+    const initialMode = router.getMode();
+
     // Operator view
     this.views.operator = new OperatorView({ api });
     this.views.operator.render(document.getElementById('view-operator'));
@@ -131,13 +133,24 @@ class App {
     this.views.arch = new ArchView({ api });
     this.views.arch.render(document.getElementById('view-arch'));
 
-    // Live view
+    // Live view (only connect SSE if starting on live mode)
     this.views.live = new LiveView();
     this.views.live.init(document.getElementById('view-live'));
+    if (initialMode !== 'live') {
+      // Disconnect SSE if not starting on live mode to save resources
+      this.views.live.disconnect();
+    }
 
-    // Knowledge view (3D graph visualization)
+    // Knowledge view (3D graph visualization - stop if not starting on knowledge mode)
     this.views.knowledge = new KnowledgeView({ api });
     this.views.knowledge.init(document.getElementById('view-knowledge'));
+    if (initialMode !== 'knowledge') {
+      // Disconnect SSE and stop simulation if not starting on knowledge mode
+      this.views.knowledge.disconnect();
+      if (this.views.knowledge.simulation) {
+        this.views.knowledge.simulation.stop();
+      }
+    }
 
     // Memory view (Phase 16: Total Memory - search, decisions, lessons, timeline)
     this.views.memory = new MemoryView({ api });
@@ -150,6 +163,9 @@ class App {
     // Singularity view (index, milestones, comparison)
     this.views.singularity = new SingularityView({ api });
     this.views.singularity.render(document.getElementById('view-singularity'));
+
+    // Set initial previous mode for lifecycle tracking
+    this._previousMode = initialMode;
   }
 
   /**
@@ -233,10 +249,65 @@ class App {
 
   /**
    * Handle mode change
+   * Properly cleanup previous view and initialize new view
    */
   _onModeChange(mode) {
-    // Views are shown/hidden via CSS .view.active class (toggled by router)
-    // Just update sidebar navigation
+    const previousMode = this._previousMode || 'operator';
+    this._previousMode = mode;
+
+    // Cleanup previous view (pause SSE, clear timers, etc.)
+    const previousView = this.views[previousMode];
+    if (previousView && previousMode !== mode) {
+      // Call onLeave lifecycle method if it exists
+      if (typeof previousView.onLeave === 'function') {
+        try {
+          previousView.onLeave();
+        } catch (err) {
+          console.error(`Error in ${previousMode} view onLeave:`, err);
+        }
+      }
+      // For LiveView specifically, disconnect SSE when leaving
+      if (previousMode === 'live' && typeof previousView.disconnect === 'function') {
+        previousView.disconnect();
+      }
+      // For KnowledgeView, disconnect SSE and stop simulation
+      if (previousMode === 'knowledge') {
+        if (typeof previousView.disconnect === 'function') {
+          previousView.disconnect();
+        }
+        if (previousView.simulation && typeof previousView.simulation.stop === 'function') {
+          previousView.simulation.stop();
+        }
+      }
+    }
+
+    // Initialize new view
+    const currentView = this.views[mode];
+    if (currentView) {
+      // Call onEnter lifecycle method if it exists
+      if (typeof currentView.onEnter === 'function') {
+        try {
+          currentView.onEnter();
+        } catch (err) {
+          console.error(`Error in ${mode} view onEnter:`, err);
+        }
+      }
+      // For LiveView specifically, reconnect SSE when entering
+      if (mode === 'live' && typeof currentView.connectSSE === 'function') {
+        currentView.connectSSE();
+      }
+      // For KnowledgeView, reconnect SSE and restart simulation
+      if (mode === 'knowledge') {
+        if (typeof currentView._connectSSE === 'function') {
+          currentView._connectSSE();
+        }
+        if (currentView.simulation && typeof currentView.simulation.restart === 'function') {
+          currentView.simulation.restart();
+        }
+      }
+    }
+
+    // Update sidebar navigation
     this.components.sidebar.setActiveNav(mode);
   }
 

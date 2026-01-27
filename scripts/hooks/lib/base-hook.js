@@ -55,6 +55,11 @@ export const Decision = Object.freeze({
  */
 export class BaseHook {
   /**
+   * Default timeout for hook handlers (5 seconds)
+   */
+  static DEFAULT_TIMEOUT_MS = 5000;
+
+  /**
    * Create a hook
    *
    * @param {string} name - Hook name for logging
@@ -62,12 +67,14 @@ export class BaseHook {
    * @param {Object} [options] - Hook options
    * @param {boolean} [options.blocking=false] - Whether hook blocks execution
    * @param {boolean} [options.silent=true] - Suppress logging
+   * @param {number} [options.timeoutMs=5000] - Handler timeout in milliseconds
    */
   constructor(name, hookType, options = {}) {
     this._name = name;
     this._hookType = hookType;
     this._blocking = options.blocking ?? false;
     this._silent = options.silent ?? true;
+    this._timeoutMs = options.timeoutMs ?? BaseHook.DEFAULT_TIMEOUT_MS;
     this._startTime = Date.now();
   }
 
@@ -250,19 +257,55 @@ export class BaseHook {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // Timeout Utilities
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Wrap a promise with a timeout
+   *
+   * @param {Promise} promise - Promise to wrap
+   * @param {number} timeoutMs - Timeout in milliseconds
+   * @param {string} [operation='operation'] - Operation name for error message
+   * @returns {Promise} Promise that rejects on timeout
+   */
+  async _withTimeout(promise, timeoutMs, operation = 'operation') {
+    let timeoutId;
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(new Error(`Hook ${operation} timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+    });
+
+    try {
+      const result = await Promise.race([promise, timeoutPromise]);
+      clearTimeout(timeoutId);
+      return result;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      throw error;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // Runner
   // ═══════════════════════════════════════════════════════════════════════════
 
   /**
    * Run the hook
-   * Reads context, calls handle(), writes response
+   * Reads context, calls handle() with timeout, writes response
    *
    * @returns {Promise<void>}
    */
   async run() {
     try {
       const context = await this.readContext();
-      const response = await this.handle(context);
+
+      // Run handler with timeout protection
+      const response = await this._withTimeout(
+        this.handle(context),
+        this._timeoutMs,
+        'handler'
+      );
 
       if (response) {
         this.respond(response);
@@ -271,11 +314,16 @@ export class BaseHook {
       // Exit successfully
       process.exit(0);
     } catch (error) {
-      this.log('error', 'Hook failed', { error: error.message, stack: error.stack });
+      const isTimeout = error.message?.includes('timed out');
+      this.log('error', isTimeout ? 'Hook timed out' : 'Hook failed', {
+        error: error.message,
+        stack: error.stack,
+        timeoutMs: this._timeoutMs,
+      });
 
       // For blocking hooks, fail safe by allowing
       if (this._blocking) {
-        this.respond(this.allow({ reason: 'error_failsafe' }));
+        this.respond(this.allow({ reason: isTimeout ? 'timeout_failsafe' : 'error_failsafe' }));
       }
 
       process.exit(1);
@@ -291,6 +339,7 @@ export class BaseHook {
  * @param {string} options.type - Hook type
  * @param {Function} options.handler - Handler function (context) => response
  * @param {boolean} [options.blocking=false] - Whether blocking
+ * @param {number} [options.timeoutMs=5000] - Handler timeout in milliseconds
  *
  * @example
  * runHook({
@@ -303,11 +352,11 @@ export class BaseHook {
  * });
  */
 export async function runHook(options) {
-  const { name, type, handler, blocking = false } = options;
+  const { name, type, handler, blocking = false, timeoutMs } = options;
 
   class InlineHook extends BaseHook {
     constructor() {
-      super(name, type, { blocking });
+      super(name, type, { blocking, timeoutMs });
     }
 
     async handle(context) {

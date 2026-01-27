@@ -72,6 +72,8 @@ export class LiveView {
       onReplayTick: (event, index) => this._onReplayTick(event, index),
     });
     this.showTimeline = false;  // Toggle state
+    // Cleanup interval for stale pending tools
+    this._cleanupIntervalId = null;
   }
 
   /**
@@ -187,12 +189,14 @@ export class LiveView {
       this.eventSource.onopen = () => {
         this.isConnected = true;
         this._updateStatus();
+        this._startCleanupInterval();
         console.log('🔴 [SSE] ✅ CONNECTED - readyState:', this.eventSource.readyState);
       };
 
       this.eventSource.onerror = (err) => {
         this.isConnected = false;
         this._updateStatus();
+        this._stopCleanupInterval();
         console.error('🔴 [SSE] ❌ ERROR - readyState:', this.eventSource?.readyState);
         console.error('🔴 [SSE] Error details:', err);
       };
@@ -243,6 +247,7 @@ export class LiveView {
       this.eventSource = null;
     }
     this.isConnected = false;
+    this._stopCleanupInterval();
     this._updateStatus();
   }
 
@@ -1403,14 +1408,95 @@ export class LiveView {
   }
 
   /**
-   * Cleanup
+   * Cleanup stale pending tools (older than 60 seconds)
+   * Prevents memory leaks from orphaned tool_pre events
+   */
+  _cleanupStalePendingTools() {
+    const staleThreshold = 60000; // 60 seconds
+    const now = Date.now();
+    let cleaned = 0;
+
+    for (const [toolUseId, pending] of this.pendingTools.entries()) {
+      if (now - pending.startTime > staleThreshold) {
+        this.pendingTools.delete(toolUseId);
+        cleaned++;
+      }
+    }
+
+    if (cleaned > 0) {
+      console.log(`🔴 [Live] Cleaned ${cleaned} stale pending tools`);
+      this._updateThinkingIndicator();
+    }
+  }
+
+  /**
+   * Start stale cleanup interval
+   */
+  _startCleanupInterval() {
+    // Clean up stale entries every 30 seconds
+    this._cleanupIntervalId = setInterval(() => {
+      this._cleanupStalePendingTools();
+    }, 30000);
+  }
+
+  /**
+   * Stop stale cleanup interval
+   */
+  _stopCleanupInterval() {
+    if (this._cleanupIntervalId) {
+      clearInterval(this._cleanupIntervalId);
+      this._cleanupIntervalId = null;
+    }
+  }
+
+  /**
+   * Cleanup - clear all state to prevent memory leaks
    */
   destroy() {
+    // Stop SSE connection
     this.disconnect();
+
+    // Stop cleanup interval
+    this._stopCleanupInterval();
+
+    // Clear event timeline
     if (this.eventTimeline) {
       this.eventTimeline.destroy();
+      this.eventTimeline = null;
     }
+
+    // Clear all collections to release memory
+    this.pendingTools.clear();
+    this.recentTools = [];
+    this.observations = [];
+
+    // Clear session
+    this.session = null;
+    this.sessionLoading = false;
+
+    // Reset stats
+    this.stats = {
+      totalReceived: 0,
+      judgments: 0,
+      patterns: 0,
+      blocks: 0,
+      events: 0,
+      tools: 0,
+    };
+
+    // Clear filters
+    this.filters = {
+      types: ['judgment', 'pattern', 'digest', 'event', 'block', 'tool'],
+      search: '',
+    };
+
+    // Clear selection
+    this.selectedId = null;
+
+    // Clear container reference
     this.container = null;
+
+    console.log('🔴 [Live] Destroyed and cleaned up');
   }
 }
 
