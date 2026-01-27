@@ -1129,6 +1129,42 @@ export class CollectiveScout extends BaseAgent {
   }
 
   /**
+   * Vote on consensus request from Scout's exploration perspective
+   * @param {string} question - The question to vote on
+   * @param {Object} context - Context for the decision
+   * @returns {Object} Vote result
+   */
+  voteOnConsensus(question, context = {}) {
+    const questionLower = (question || '').toLowerCase();
+
+    // Scout cares about discovery, exploration, opportunities
+    const explorationPatterns = ['explore', 'discover', 'investigate', 'search', 'find', 'opportunity'];
+    const stagnationPatterns = ['ignore', 'skip', 'avoid', 'block exploration', 'no research'];
+
+    const isExplorationFocused = explorationPatterns.some(p => questionLower.includes(p));
+    const isStagnating = stagnationPatterns.some(p => questionLower.includes(p));
+
+    if (isExplorationFocused) {
+      return {
+        vote: 'approve',
+        reason: '*ears perk* Scout approves - exploration expands our knowledge territory.',
+      };
+    }
+
+    if (isStagnating) {
+      return {
+        vote: 'reject',
+        reason: '*whine* Scout rejects - blocking discovery limits our potential.',
+      };
+    }
+
+    return {
+      vote: 'abstain',
+      reason: '*sniff* Scout abstains - no direct impact on exploration.',
+    };
+  }
+
+  /**
    * Get agent summary
    * @returns {Object} Summary
    */

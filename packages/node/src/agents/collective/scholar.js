@@ -880,6 +880,27 @@ export class CollectiveScholar extends BaseAgent {
   }
 
   /**
+   * Vote on consensus request (knowledge perspective)
+   * @override
+   */
+  voteOnConsensus(question, context = {}) {
+    const questionLower = (question || '').toLowerCase();
+    const knowledgePatterns = ['learn', 'knowledge', 'document', 'understand', 'explain'];
+    const isKnowledgeRelated = knowledgePatterns.some(p => questionLower.includes(p));
+
+    if (isKnowledgeRelated) {
+      return { vote: 'approve', reason: '*pages turn* Scholar approves - knowledge expansion is always good.' };
+    }
+    if (questionLower.includes('delete') && questionLower.includes('document')) {
+      return { vote: 'reject', reason: '*growl* Scholar rejects - knowledge must be preserved.' };
+    }
+    if (context?.domain === 'memory' || context?.domain === 'learning') {
+      return { vote: 'approve', reason: '*nod* Scholar supports memory and learning initiatives.' };
+    }
+    return { vote: 'abstain', reason: 'Scholar researches before deciding.' };
+  }
+
+  /**
    * Get scholar summary
    * @returns {Object} Summary
    */

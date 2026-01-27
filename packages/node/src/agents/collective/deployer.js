@@ -1087,6 +1087,43 @@ export class CollectiveDeployer extends BaseAgent {
   }
 
   /**
+   * Vote on consensus request from Deployer's infrastructure perspective
+   * @param {string} question - The question to vote on
+   * @param {Object} context - Context for the decision
+   * @returns {Object} Vote result
+   */
+  voteOnConsensus(question, context = {}) {
+    const questionLower = (question || '').toLowerCase();
+
+    // Deployer cares about production stability, deployment safety, rollbacks
+    const safetyPatterns = ['deploy', 'release', 'rollback', 'canary', 'staged', 'backup'];
+    const dangerPatterns = ['force deploy', 'skip validation', 'no rollback', 'direct to prod', 'yolo'];
+
+    const isSafe = safetyPatterns.some(p => questionLower.includes(p)) &&
+                   !dangerPatterns.some(p => questionLower.includes(p));
+    const isDangerous = dangerPatterns.some(p => questionLower.includes(p));
+
+    if (isDangerous) {
+      return {
+        vote: 'reject',
+        reason: '*GROWL* Deployer rejects - unsafe deployment practice threatens production.',
+      };
+    }
+
+    if (isSafe || questionLower.includes('test') || questionLower.includes('staging')) {
+      return {
+        vote: 'approve',
+        reason: '*tail wag* Deployer approves - safe deployment practices maintained.',
+      };
+    }
+
+    return {
+      vote: 'abstain',
+      reason: '*ears flat* Deployer abstains - no direct infrastructure impact.',
+    };
+  }
+
+  /**
    * Get agent summary
    * @returns {Object} Summary statistics
    */

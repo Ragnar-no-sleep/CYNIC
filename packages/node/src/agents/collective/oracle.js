@@ -958,6 +958,42 @@ export class CollectiveOracle extends BaseAgent {
   }
 
   /**
+   * Vote on consensus request from Oracle's visibility/insight perspective
+   * @param {string} question - The question to vote on
+   * @param {Object} context - Context for the decision
+   * @returns {Object} Vote result
+   */
+  voteOnConsensus(question, context = {}) {
+    const questionLower = (question || '').toLowerCase();
+
+    // Oracle cares about visibility, monitoring, insights, patterns
+    const visibilityPatterns = ['monitor', 'observe', 'track', 'metric', 'visibility', 'insight', 'dashboard'];
+    const blindnessPatterns = ['hide', 'obscure', 'no logging', 'silent', 'disable monitoring'];
+
+    const enhancesVisibility = visibilityPatterns.some(p => questionLower.includes(p));
+    const reducesVisibility = blindnessPatterns.some(p => questionLower.includes(p));
+
+    if (enhancesVisibility) {
+      return {
+        vote: 'approve',
+        reason: '*eyes gleam* Oracle approves - enhances visibility into the system.',
+      };
+    }
+
+    if (reducesVisibility) {
+      return {
+        vote: 'reject',
+        reason: '*GROWL* Oracle rejects - flying blind is dangerous.',
+      };
+    }
+
+    return {
+      vote: 'abstain',
+      reason: '*gaze into distance* Oracle abstains - no visibility impact detected.',
+    };
+  }
+
+  /**
    * Get agent summary
    * @returns {Object} Summary
    */

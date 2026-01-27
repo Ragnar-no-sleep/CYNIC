@@ -640,6 +640,42 @@ export class CollectiveJanitor extends BaseAgent {
   }
 
   /**
+   * Vote on consensus request from Janitor's code quality perspective
+   * @param {string} question - The question to vote on
+   * @param {Object} context - Context for the decision
+   * @returns {Object} Vote result
+   */
+  voteOnConsensus(question, context = {}) {
+    const questionLower = (question || '').toLowerCase();
+
+    // Janitor cares about code quality, cleanliness, technical debt
+    const qualityPatterns = ['clean', 'refactor', 'quality', 'debt', 'lint', 'format'];
+    const messyPatterns = ['hack', 'quick fix', 'workaround', 'temporary', 'skip tests'];
+
+    const isQualityFocused = qualityPatterns.some(p => questionLower.includes(p));
+    const isMessy = messyPatterns.some(p => questionLower.includes(p));
+
+    if (isQualityFocused) {
+      return {
+        vote: 'approve',
+        reason: '*sniff* Janitor approves - quality-focused approach aligns with clean foundations.',
+      };
+    }
+
+    if (isMessy) {
+      return {
+        vote: 'reject',
+        reason: '*GROWL* Janitor rejects - this introduces technical debt. Clean it properly.',
+      };
+    }
+
+    return {
+      vote: 'abstain',
+      reason: '*yawn* Janitor abstains - no strong quality implications either way.',
+    };
+  }
+
+  /**
    * Get agent summary
    * @returns {Object} Summary of Janitor state
    */

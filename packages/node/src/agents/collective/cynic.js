@@ -1077,6 +1077,24 @@ export class CollectiveCynic extends BaseAgent {
   // ═══════════════════════════════════════════════════════════════════════════
 
   /**
+   * Vote on consensus request (philosophical Keter perspective)
+   * @override
+   */
+  voteOnConsensus(question, context = {}) {
+    const questionLower = (question || '').toLowerCase();
+
+    // Safety-related questions - tend toward caution
+    if (questionLower.includes('delete') || questionLower.includes('remove') || questionLower.includes('dangerous')) {
+      return { vote: 'reject', reason: 'Keter counsels caution. Irreversible actions require certainty we cannot have.' };
+    }
+    // Progress is good if risk is managed
+    if (context?.risk === 'low' && questionLower.includes('proceed')) {
+      return { vote: 'approve', reason: '*tail wag* Keter approves - φ guides this path.' };
+    }
+    return { vote: 'abstain', reason: 'φ doute de φ - insufficient information to decide.' };
+  }
+
+  /**
    * Get CYNIC summary
    * @returns {Object} Summary
    */

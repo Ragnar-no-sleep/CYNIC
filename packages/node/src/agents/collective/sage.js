@@ -972,6 +972,25 @@ export class CollectiveSage extends BaseAgent {
   }
 
   /**
+   * Vote on consensus request (wisdom perspective)
+   * @override
+   */
+  voteOnConsensus(question, context = {}) {
+    const questionLower = (question || '').toLowerCase();
+
+    if (questionLower.includes('rush') || questionLower.includes('quick') || questionLower.includes('fast')) {
+      return { vote: 'reject', reason: '*strokes beard* Sage counsels patience. Haste makes waste.' };
+    }
+    if (questionLower.includes('proceed') || context?.risk === 'low') {
+      return { vote: 'approve', reason: '*wise nod* Sage approves - the path seems aligned with φ.' };
+    }
+    if (context?.risk === 'critical') {
+      return { vote: 'reject', reason: '*frown* Sage advises against critical risk without more preparation.' };
+    }
+    return { vote: 'abstain', reason: 'Sage contemplates...' };
+  }
+
+  /**
    * Get sage summary
    * @returns {Object} Summary
    */

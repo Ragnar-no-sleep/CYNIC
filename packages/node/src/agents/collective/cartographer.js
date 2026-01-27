@@ -914,6 +914,42 @@ export class CollectiveCartographer extends BaseAgent {
   }
 
   /**
+   * Vote on consensus request from Cartographer's reality-mapping perspective
+   * @param {string} question - The question to vote on
+   * @param {Object} context - Context for the decision
+   * @returns {Object} Vote result
+   */
+  voteOnConsensus(question, context = {}) {
+    const questionLower = (question || '').toLowerCase();
+
+    // Cartographer cares about ecosystem coherence, mapping reality, connections
+    const coherencePatterns = ['ecosystem', 'map', 'structure', 'connect', 'dependency', 'sync'];
+    const fragmentationPatterns = ['isolate', 'fragment', 'break connection', 'orphan', 'drift'];
+
+    const isCoherent = coherencePatterns.some(p => questionLower.includes(p));
+    const isFragmenting = fragmentationPatterns.some(p => questionLower.includes(p));
+
+    if (isCoherent) {
+      return {
+        vote: 'approve',
+        reason: '*tail wag* Cartographer approves - maintains ecosystem coherence.',
+      };
+    }
+
+    if (isFragmenting) {
+      return {
+        vote: 'reject',
+        reason: '*GROWL* Cartographer rejects - this fragments the reality map.',
+      };
+    }
+
+    return {
+      vote: 'abstain',
+      reason: '*head tilt* Cartographer abstains - no significant mapping implications.',
+    };
+  }
+
+  /**
    * Get agent summary
    * @returns {Object} Summary
    */

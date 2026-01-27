@@ -483,7 +483,7 @@ export function createConsensusTool(collective) {
       required: ['question'],
     },
     handler: async (params) => {
-      const { question, context = {}, requiredVotes = 3, timeout = 10000 } = params;
+      const { question, context = {} } = params;
 
       if (!collective) {
         return {
@@ -493,71 +493,65 @@ export function createConsensusTool(collective) {
         };
       }
 
-      if (!collective.eventBus) {
-        return {
-          status: 'error',
-          message: '*sniff* EventBus not available on collective.',
-          timestamp: Date.now(),
-        };
-      }
-
       try {
-        // Use eventBus.requestConsensus if available
-        if (collective.eventBus.requestConsensus) {
-          const result = await collective.eventBus.requestConsensus('cynic', {
-            question,
-            options: ['APPROVE', 'REJECT'],
-            context,
-            requiredVotes,
-            timeout,
-          });
+        // Poll all 11 Sefirot directly using voteOnConsensus
+        const allAgents = [
+          'guardian', 'analyst', 'scholar', 'architect', 'sage',
+          'cynic', 'janitor', 'scout', 'cartographer', 'oracle', 'deployer',
+        ];
 
-          return {
-            status: 'completed',
-            approved: result.approved,
-            reason: result.reason,
-            votes: result.votes,
-            threshold: PHI_INV,
-            timestamp: Date.now(),
-          };
-        }
-
-        // Fallback: Manual voting simulation via agents
         const votes = [];
-        const agentNames = ['guardian', 'analyst', 'scholar', 'architect', 'sage'];
 
-        for (const agentName of agentNames) {
+        for (const agentName of allAgents) {
           const agent = collective[agentName];
-          if (agent && agent.vote) {
+          if (agent && typeof agent.voteOnConsensus === 'function') {
             try {
-              const vote = await agent.vote(question, context);
-              votes.push({ agent: agentName, vote: vote.decision, reason: vote.reason });
+              const result = agent.voteOnConsensus(question, context);
+              votes.push({
+                agent: agentName,
+                vote: result.vote?.toUpperCase?.() || 'ABSTAIN',
+                reason: result.reason || 'No reason provided',
+              });
             } catch (e) {
-              votes.push({ agent: agentName, vote: 'ABSTAIN', reason: e.message });
+              votes.push({ agent: agentName, vote: 'ABSTAIN', reason: `Error: ${e.message}` });
             }
+          } else {
+            // Agent doesn't have voteOnConsensus - use default abstain
+            votes.push({ agent: agentName, vote: 'ABSTAIN', reason: 'No voting method available' });
           }
         }
 
-        // Calculate consensus (φ⁻¹ = 61.8% threshold)
+        // Calculate consensus (only count approve/reject, not abstain)
         const approveCount = votes.filter(v => v.vote === 'APPROVE').length;
         const rejectCount = votes.filter(v => v.vote === 'REJECT').length;
-        const totalVotes = votes.length;
-        const approvalRatio = totalVotes > 0 ? approveCount / totalVotes : 0;
-        const approved = approvalRatio >= PHI_INV;
+        const decidingVotes = approveCount + rejectCount;
+
+        // φ⁻² = 38.2% veto threshold - if rejects exceed this, veto
+        const vetoThreshold = PHI_INV_2;
+        const hasVeto = decidingVotes > 0 && (rejectCount / decidingVotes) > vetoThreshold;
+
+        // φ⁻¹ = 61.8% approval threshold
+        const approvalRatio = decidingVotes > 0 ? approveCount / decidingVotes : 0;
+        const approved = !hasVeto && approvalRatio >= PHI_INV;
 
         return {
           status: 'completed',
           approved,
-          reason: approved
-            ? `Consensus reached (${(approvalRatio * 100).toFixed(1)}% approval)`
-            : `Consensus not reached (${(approvalRatio * 100).toFixed(1)}% approval, need ${(PHI_INV * 100).toFixed(1)}%)`,
+          reason: hasVeto
+            ? `Vetoed (${rejectCount} rejects exceed ${(vetoThreshold * 100).toFixed(1)}% threshold)`
+            : approved
+              ? `Consensus reached (${(approvalRatio * 100).toFixed(1)}% approval)`
+              : `Consensus not reached (${(approvalRatio * 100).toFixed(1)}% approval, need ${(PHI_INV * 100).toFixed(1)}%)`,
           votes,
           stats: {
             approve: approveCount,
             reject: rejectCount,
-            total: totalVotes,
-            ratio: approvalRatio,
-            threshold: PHI_INV,
+            abstain: votes.filter(v => v.vote === 'ABSTAIN').length,
+            total: votes.length,
+            decidingVotes,
+            approvalRatio,
+            vetoThreshold,
+            consensusThreshold: PHI_INV,
           },
           timestamp: Date.now(),
         };

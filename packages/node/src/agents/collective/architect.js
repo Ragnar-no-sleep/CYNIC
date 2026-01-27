@@ -909,6 +909,29 @@ export class CollectiveArchitect extends BaseAgent {
   }
 
   /**
+   * Vote on consensus request (design perspective)
+   * @override
+   */
+  voteOnConsensus(question, context = {}) {
+    const questionLower = (question || '').toLowerCase();
+    const designPatterns = ['refactor', 'architect', 'design', 'structure', 'pattern'];
+    const isDesignRelated = designPatterns.some(p => questionLower.includes(p));
+
+    if (isDesignRelated) {
+      if (questionLower.includes('simplify') || questionLower.includes('clean')) {
+        return { vote: 'approve', reason: '*blueprints rustle* Architect approves - simplification aligns with φ principles.' };
+      }
+      if (questionLower.includes('complex') || questionLower.includes('add layer')) {
+        return { vote: 'reject', reason: '*frown* Architect rejects - unnecessary complexity violates voluntary poverty.' };
+      }
+    }
+    if (context?.domain === 'deployment' || context?.domain === 'infrastructure') {
+      return { vote: 'approve', reason: '*nod* Architect defers to Deployer on infrastructure matters.' };
+    }
+    return { vote: 'abstain', reason: 'Architect considers structural implications.' };
+  }
+
+  /**
    * Get architect summary
    * @returns {Object} Summary
    */

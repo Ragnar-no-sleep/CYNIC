@@ -240,6 +240,22 @@ export class BaseAgent {
       invocations: this.stats.invocations,
     };
   }
+
+  /**
+   * Vote on consensus request (can be overridden by subclasses)
+   * Default implementation returns ABSTAIN with neutral reasoning
+   *
+   * @param {string} question - The consensus question
+   * @param {Object} context - Additional context (risk, domain, etc.)
+   * @returns {Object} Vote result: { vote: 'approve'|'reject'|'abstain', reason: string }
+   */
+  voteOnConsensus(question, context = {}) {
+    // Default: abstain unless subclass overrides
+    return {
+      vote: 'abstain',
+      reason: `${this.name} abstains - no specific opinion on this matter.`,
+    };
+  }
 }
 
 export default BaseAgent;

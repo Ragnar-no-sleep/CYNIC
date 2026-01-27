@@ -1226,6 +1226,23 @@ export class CollectiveAnalyst extends BaseAgent {
   }
 
   /**
+   * Vote on consensus request (behavioral analysis perspective)
+   * @override
+   */
+  voteOnConsensus(question, context = {}) {
+    const currentProfile = this.profileCalculator?.getProfile?.() || {};
+    const errorRate = this.errorRate || 0;
+
+    if (errorRate > PHI_INV) {
+      return { vote: 'reject', reason: `*observes* Analyst detects elevated error rate (${(errorRate * 100).toFixed(1)}%), counsels caution.` };
+    }
+    if (currentProfile.level >= 3 && errorRate < PHI_INV_2) {
+      return { vote: 'approve', reason: '*nod* Analyst sees positive patterns, approves.' };
+    }
+    return { vote: 'abstain', reason: 'Analyst observes, awaiting more data.' };
+  }
+
+  /**
    * Get analyst summary
    * @returns {Object} Summary
    */

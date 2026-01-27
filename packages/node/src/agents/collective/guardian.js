@@ -1050,6 +1050,25 @@ export class CollectiveGuardian extends BaseAgent {
   }
 
   /**
+   * Vote on consensus request (security perspective)
+   * @override
+   */
+  voteOnConsensus(question, context = {}) {
+    const questionLower = (question || '').toLowerCase();
+    const riskPatterns = ['delete', 'remove', 'force', 'danger', 'risky', 'critical', 'destructive'];
+    const isRisky = riskPatterns.some(p => questionLower.includes(p));
+    const contextRisk = context?.risk || 'unknown';
+
+    if (isRisky || contextRisk === 'critical' || contextRisk === 'high') {
+      return { vote: 'reject', reason: '*GROWL* Guardian rejects - security risk detected.' };
+    }
+    if (contextRisk === 'low' || questionLower.includes('safe') || questionLower.includes('proceed')) {
+      return { vote: 'approve', reason: '*sniff* Guardian approves - no immediate threat detected.' };
+    }
+    return { vote: 'abstain', reason: '*ears perk* Guardian abstains - borderline risk.' };
+  }
+
+  /**
    * Clear history
    */
   clear() {
