@@ -303,7 +303,7 @@ export class MCPServer {
         // Create anchor queue with anchorer
         this.anchorQueue = new AnchorQueue({
           anchorer,
-          batchSize: 5,
+          batchSize: 100,
           intervalMs: 61800,
           autoStart: true,
         });
