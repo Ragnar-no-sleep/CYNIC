@@ -279,7 +279,7 @@ export async function startCommand(options) {
   const consensus = new ConsensusEngine({
     publicKey: keypair.publicKey,
     privateKey: keypair.privateKey,
-    eScore: 0.5, // Default E-Score
+    eScore: 50, // Default E-Score (0-100 scale)
     burned: 0, // Default burn
     uptime: 1.0, // Full uptime initially
   });
