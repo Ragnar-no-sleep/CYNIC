@@ -19,6 +19,7 @@ export { knowledgeFactory } from './knowledge.js';
 export { automationFactory } from './automation.js';
 export { codeFactory } from './code.js';
 export { orchestrationFactory } from './orchestration.js';
+export { memoryFactory } from './memory.js';
 
 /**
  * All domain factories for bulk registration
@@ -44,6 +45,7 @@ export async function getAllFactories() {
     { automationFactory },
     { codeFactory },
     { orchestrationFactory },
+    { memoryFactory },
   ] = await Promise.all([
     import('./judgment.js'),
     import('./ecosystem.js'),
@@ -55,6 +57,7 @@ export async function getAllFactories() {
     import('./automation.js'),
     import('./code.js'),
     import('./orchestration.js'),
+    import('./memory.js'),
   ]);
 
   return [
@@ -68,5 +71,6 @@ export async function getAllFactories() {
     knowledgeFactory,
     automationFactory,
     codeFactory,
+    memoryFactory,  // Total Memory tools
   ];
 }

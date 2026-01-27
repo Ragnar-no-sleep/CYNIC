@@ -436,6 +436,20 @@ export function getEmergence() {
   return _emergence || null;
 }
 
+// Total Memory module (Phase 16)
+let _totalMemory = null;
+
+export function getTotalMemory() {
+  if (_totalMemory === null) {
+    try {
+      _totalMemory = require('./total-memory.cjs');
+    } catch (e) {
+      _totalMemory = false;
+    }
+  }
+  return _totalMemory || null;
+}
+
 // More module getters for observe hook
 let _selfRefinement = null;
 let _harmonyAnalyzer = null;

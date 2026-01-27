@@ -15,3 +15,14 @@ export {
   LessonCategory,
   LessonSeverity,
 } from './memory-retriever.js';
+
+export {
+  Embedder,
+  MockEmbedder,
+  OpenAIEmbedder,
+  EmbedderType,
+  EMBEDDING_DIMENSIONS,
+  createEmbedder,
+  getEmbedder,
+  resetEmbedder,
+} from './embedder.js';
