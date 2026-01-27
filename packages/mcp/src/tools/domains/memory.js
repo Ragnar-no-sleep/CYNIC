@@ -782,6 +782,169 @@ export function createNotificationsTool(notificationsRepo) {
 }
 
 /**
+ * Create tasks management tool
+ * @param {Object} tasksRepo - AutonomousTasksRepository instance
+ * @returns {Object} Tool definition
+ */
+export function createTasksTool(tasksRepo) {
+  return {
+    name: 'brain_tasks',
+    description: 'Manage CYNIC\'s autonomous background tasks. List pending, running, or completed tasks.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['list', 'status', 'retry', 'cancel'],
+          description: 'Action to perform',
+        },
+        userId: {
+          type: 'string',
+          description: 'User ID (defaults to current session user)',
+        },
+        status: {
+          type: 'string',
+          enum: ['pending', 'running', 'completed', 'failed', 'all'],
+          description: 'Filter by status (for list)',
+        },
+        taskId: {
+          type: 'string',
+          description: 'Task ID (for status/retry/cancel)',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum tasks to return (default: 20)',
+        },
+      },
+      required: ['action'],
+    },
+    handler: async (params, context) => {
+      const {
+        action,
+        userId = context?.userId || 'default',
+        status = 'all',
+        taskId,
+        limit = 20,
+      } = params;
+
+      if (!tasksRepo) {
+        return {
+          success: false,
+          error: 'TasksRepository not available',
+          timestamp: Date.now(),
+        };
+      }
+
+      try {
+        switch (action) {
+          case 'list': {
+            let tasks;
+            if (status === 'all') {
+              tasks = await tasksRepo.findByUser(userId, { limit });
+            } else {
+              tasks = await tasksRepo.findByStatus(status, { userId, limit });
+            }
+
+            return {
+              success: true,
+              action: 'list',
+              tasks: tasks.map(t => ({
+                id: t.id,
+                type: t.taskType,
+                status: t.status,
+                priority: t.priority,
+                scheduledFor: t.scheduledFor,
+                createdAt: t.createdAt,
+                retryCount: t.retryCount,
+              })),
+              message: `*sniff* Found ${tasks.length} tasks.`,
+              timestamp: Date.now(),
+            };
+          }
+
+          case 'status': {
+            if (!taskId) throw new Error('taskId required for status');
+
+            const task = await tasksRepo.findById(taskId);
+            if (!task) {
+              return {
+                success: false,
+                error: 'Task not found',
+                timestamp: Date.now(),
+              };
+            }
+
+            return {
+              success: true,
+              action: 'status',
+              task: {
+                id: task.id,
+                type: task.taskType,
+                status: task.status,
+                priority: task.priority,
+                payload: task.payload,
+                result: task.result,
+                error: task.errorMessage,
+                scheduledFor: task.scheduledFor,
+                startedAt: task.startedAt,
+                completedAt: task.completedAt,
+                retryCount: task.retryCount,
+              },
+              timestamp: Date.now(),
+            };
+          }
+
+          case 'retry': {
+            if (!taskId) throw new Error('taskId required for retry');
+
+            const task = await tasksRepo.markForRetry(taskId);
+
+            return {
+              success: true,
+              action: 'retry',
+              task: {
+                id: task.id,
+                status: task.status,
+                retryCount: task.retryCount,
+              },
+              message: `*tail wag* Task marked for retry.`,
+              timestamp: Date.now(),
+            };
+          }
+
+          case 'cancel': {
+            if (!taskId) throw new Error('taskId required for cancel');
+
+            const task = await tasksRepo.updateStatus(taskId, 'cancelled');
+
+            return {
+              success: true,
+              action: 'cancel',
+              task: {
+                id: task.id,
+                status: task.status,
+              },
+              message: `*nod* Task cancelled.`,
+              timestamp: Date.now(),
+            };
+          }
+
+          default:
+            throw new Error(`Unknown action: ${action}`);
+        }
+      } catch (error) {
+        log.error('Tasks operation failed', { error: error.message });
+        return {
+          success: false,
+          error: error.message,
+          timestamp: Date.now(),
+        };
+      }
+    },
+  };
+}
+
+/**
  * Factory for memory domain tools
  */
 export const memoryFactory = {
@@ -795,7 +958,7 @@ export const memoryFactory = {
    * @returns {Object[]} Tool definitions
    */
   create(options) {
-    const { memoryRetriever, goalsRepo, notificationsRepo } = options;
+    const { memoryRetriever, goalsRepo, tasksRepo, notificationsRepo } = options;
 
     const tools = [];
 
@@ -810,6 +973,11 @@ export const memoryFactory = {
     // Goals tool
     if (goalsRepo) {
       tools.push(createGoalsTool(goalsRepo));
+    }
+
+    // Tasks tool
+    if (tasksRepo) {
+      tools.push(createTasksTool(tasksRepo));
     }
 
     // Notifications tool

@@ -426,13 +426,11 @@ export class AutonomyView {
   async _loadGoals() {
     if (!this.api) return;
     try {
-      const result = await this.api.call('brain_search', {
-        query: 'active goals',
-        searchType: 'goals',
-        limit: 20,
+      const result = await this.api.callTool('brain_goals', {
+        action: 'list',
       });
-      if (result?.goals) {
-        this.goals = result.goals;
+      if (result?.success && result?.result?.goals) {
+        this.goals = result.result.goals;
         if (this.activeTab === 'goals') {
           this._renderActiveTab();
         }
@@ -448,13 +446,13 @@ export class AutonomyView {
   async _loadTasks() {
     if (!this.api) return;
     try {
-      const result = await this.api.call('brain_search', {
-        query: 'pending tasks',
-        searchType: 'tasks',
+      const result = await this.api.callTool('brain_tasks', {
+        action: 'list',
+        status: 'all',
         limit: 50,
       });
-      if (result?.tasks) {
-        this.tasks = result.tasks;
+      if (result?.success && result?.result?.tasks) {
+        this.tasks = result.result.tasks;
         if (this.activeTab === 'tasks') {
           this._renderActiveTab();
         }
@@ -470,13 +468,11 @@ export class AutonomyView {
   async _loadNotifications() {
     if (!this.api) return;
     try {
-      const result = await this.api.call('brain_search', {
-        query: 'recent notifications',
-        searchType: 'notifications',
-        limit: 30,
+      const result = await this.api.callTool('brain_notifications', {
+        action: 'list',
       });
-      if (result?.notifications) {
-        this.notifications = result.notifications;
+      if (result?.success && result?.result?.notifications) {
+        this.notifications = result.result.notifications;
         if (this.activeTab === 'notifications') {
           this._renderActiveTab();
         }

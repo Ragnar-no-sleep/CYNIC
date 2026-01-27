@@ -402,6 +402,59 @@ export class API {
   async emergence(action = 'scan') {
     return this.callTool('brain_emergence', { action });
   }
+
+  // ─────────────────────────────────────────────────────────────────
+  // Phase 16: Total Memory APIs
+  // ─────────────────────────────────────────────────────────────────
+
+  /**
+   * Search Total Memory (memories, decisions, lessons)
+   */
+  async memorySearch(query, options = {}) {
+    return this.callTool('brain_memory_search', { query, ...options });
+  }
+
+  /**
+   * Store in Total Memory
+   */
+  async memoryStore(type, data) {
+    return this.callTool('brain_memory_store', { type, ...data });
+  }
+
+  /**
+   * Get memory statistics
+   */
+  async memoryStats() {
+    return this.callTool('brain_memory_stats', {});
+  }
+
+  /**
+   * Self-correction check
+   */
+  async selfCorrection(action) {
+    return this.callTool('brain_self_correction', { action });
+  }
+
+  /**
+   * Goals management
+   */
+  async goals(action, options = {}) {
+    return this.callTool('brain_goals', { action, ...options });
+  }
+
+  /**
+   * Tasks management
+   */
+  async tasks(action, options = {}) {
+    return this.callTool('brain_tasks', { action, ...options });
+  }
+
+  /**
+   * Notifications management
+   */
+  async notifications(action, options = {}) {
+    return this.callTool('brain_notifications', { action, ...options });
+  }
 }
 
 // Create singleton instance
