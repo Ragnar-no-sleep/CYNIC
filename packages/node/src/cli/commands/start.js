@@ -143,6 +143,15 @@ export async function startCommand(options) {
       const pendingBlockDetails = [];
       for (const [blockHash, record] of consensus.blocks) {
         if (record.status === 'VOTING' || record.status === 'PROPOSED' || record.status === 'CONFIRMED') {
+          // Get vote details
+          const voteDetails = [];
+          for (const [voter, vote] of record.votes || []) {
+            voteDetails.push({
+              voter: voter.slice(-16), // Last 16 chars (unique part)
+              type: vote.vote,
+              weight: vote.weight,
+            });
+          }
           pendingBlockDetails.push({
             hash: blockHash.slice(0, 16),
             slot: record.slot,
@@ -152,7 +161,7 @@ export async function startCommand(options) {
             totalWeight: record.totalWeight,
             confirmations: record.confirmations,
             voteCount: record.votes?.size || 0,
-            voters: Array.from(record.votes?.keys() || []).map(v => v.slice(0, 12)),
+            votes: voteDetails,
           });
         }
       }
