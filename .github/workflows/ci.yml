@@ -137,7 +137,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup Solana
-        uses: solana-developers/github-actions/setup-all@v1
+        uses: solana-developers/github-actions/setup-all@v0.2.4
         with:
           solana-cli-version: '2.1.15'
           anchor-version: '0.32.1'
@@ -192,7 +192,7 @@ jobs:
           path: target/deploy
 
       - name: Setup Solana
-        uses: solana-developers/github-actions/setup-all@v1
+        uses: solana-developers/github-actions/setup-all@v0.2.4
         with:
           solana-cli-version: '2.1.15'
           anchor-version: '0.32.1'

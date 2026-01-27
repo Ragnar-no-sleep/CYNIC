@@ -9,6 +9,7 @@
 
 'use strict';
 
+import { readFileSync } from 'fs';
 import pg from 'pg';
 import { createLogger } from '@cynic/core';
 
@@ -78,7 +79,6 @@ function getSSLConfig(connectionString) {
     // Load CA certificate if provided
     if (process.env.CYNIC_DB_SSL_CA) {
       try {
-        const { readFileSync } = require('fs');
         sslConfig.ca = readFileSync(process.env.CYNIC_DB_SSL_CA, 'utf8');
       } catch (err) {
         log.warn('Failed to load SSL CA', { error: err.message });

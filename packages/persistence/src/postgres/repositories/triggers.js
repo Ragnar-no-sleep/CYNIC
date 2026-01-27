@@ -546,30 +546,6 @@ export class TriggerRepository extends BaseRepository {
     return rows.map(r => this._mapTrigger(r));
   }
 
-  /**
-   * Get trigger statistics
-   * @returns {Promise<Object>}
-   */
-  async getStats() {
-    const { rows } = await this.db.query(`
-      SELECT
-        COUNT(*) as total,
-        COUNT(*) FILTER (WHERE enabled = TRUE) as enabled,
-        COUNT(DISTINCT trigger_type) as types,
-        SUM(activation_count) as total_activations,
-        (SELECT COUNT(*) FROM trigger_executions WHERE executed_at > NOW() - INTERVAL '24 hours') as executions_24h
-      FROM triggers_registry
-    `);
-
-    const stats = rows[0];
-    return {
-      total: parseInt(stats.total),
-      enabled: parseInt(stats.enabled),
-      types: parseInt(stats.types),
-      totalActivations: parseInt(stats.total_activations) || 0,
-      executions24h: parseInt(stats.executions_24h) || 0,
-    };
-  }
 }
 
 export default TriggerRepository;

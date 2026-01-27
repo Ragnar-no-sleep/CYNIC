@@ -90,16 +90,9 @@ export class BootManager extends EventEmitter {
    */
   #bootCompletedAt = null;
 
-  /**
-   * Whether signal handlers are enabled
-   * @type {boolean}
-   */
-  #handleSignals = false;
-
   constructor(options = {}) {
     super();
     const { handleSignals = false } = options;
-    this.#handleSignals = handleSignals;
     if (handleSignals) {
       this.#setupSignalHandlers();
     }

@@ -11,6 +11,7 @@
 
 'use strict';
 
+import { EventEmitter } from 'node:events';
 import { globalEventBus, CYNICEvent, EventType } from './event-bus.js';
 
 /**
@@ -186,7 +187,6 @@ export function withBusConnectivity(BaseClass, options = {}) {
  * @returns {EventEmitter} Bus-connected emitter
  */
 export function createBusEmitter(namespace, options = {}) {
-  const { EventEmitter } = require('node:events');
   const emitter = new EventEmitter();
   connectToBus(emitter, { ...options, namespace });
   return emitter;
