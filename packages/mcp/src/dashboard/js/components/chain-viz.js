@@ -311,9 +311,9 @@ export class ChainViz {
 
       try {
         const result = await this.api.chain('block', { blockNumber });
-        if (result.success && result.result) {
-          block.judgments = result.result.judgments || [];
-          block.avgQScore = result.result.avgQScore || this._calculateAvgQScore(block.judgments);
+        if (result.success && result.result?.block) {
+          block.judgments = result.result.block.judgments || [];
+          block.avgQScore = result.result.block.avgQScore || this._calculateAvgQScore(block.judgments);
         }
       } catch (err) {
         console.error('Failed to load block judgments:', err);
