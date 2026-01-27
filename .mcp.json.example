@@ -1,13 +1,70 @@
 {
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "_meta": {
+    "philosophy": "Don't trust. Verify. Don't extract. Burn.",
+    "version": "1.1.0",
+    "maintainer": "asdfasdfa-ecosystem",
+    "security": {
+      "principle": "Least privilege + cryptographic verification",
+      "audit": "All MCP calls logged to CYNIC",
+      "isolation": "Each server runs in isolated process"
+    }
+  },
   "mcpServers": {
     "cynic": {
+      "type": "stdio",
       "command": "node",
       "args": ["packages/mcp/bin/mcp.js"],
-      "cwd": "/workspaces/CYNIC-new",
       "env": {
         "MCP_MODE": "stdio",
-        "NODE_ENV": "development"
-      }
+        "CYNIC_DATABASE_URL": "${CYNIC_DATABASE_URL}",
+        "CYNIC_REDIS_URL": "${CYNIC_REDIS_URL}"
+      },
+      "_description": "CYNIC Collective Consciousness - Multi-dimensional judgment engine"
+    },
+    "solana-dev": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@anthropic-ai/solana-dev-mcp"],
+      "env": {
+        "SOLANA_RPC_URL": "https://devnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}"
+      },
+      "_description": "Solana Foundation - RPC tools, dev prompts",
+      "_source": "https://github.com/solana-foundation/solana-dev-mcp"
+    },
+    "solana-agent": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "solana-mcp"],
+      "env": {
+        "RPC_URL": "https://devnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}",
+        "SOLANA_PRIVATE_KEY": "${SOLANA_DEVNET_PRIVATE_KEY}"
+      },
+      "_description": "Solana Agent Kit - Token deploy, NFT mint, trading",
+      "_source": "https://github.com/sendaifun/solana-mcp"
+    },
+    "github": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
+      },
+      "_description": "GitHub - PRs, issues, commits, code review",
+      "_source": "https://github.com/modelcontextprotocol/servers"
+    },
+    "notion": {
+      "type": "http",
+      "url": "https://mcp.notion.com/mcp",
+      "_description": "Roadmap, documentation, knowledge base"
+    },
+    "render": {
+      "type": "http",
+      "url": "https://mcp.render.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${RENDER_API_KEY}"
+      },
+      "_description": "Production infrastructure - logs, deploys, services"
     }
   }
 }
