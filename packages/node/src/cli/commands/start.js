@@ -20,6 +20,7 @@ import {
   ConsensusEngine,
   ConsensusGossip,
   SlotManager,
+  hashBlock,
 } from '@cynic/protocol';
 import { PHI_INV } from '@cynic/core';
 
@@ -107,7 +108,7 @@ export async function startCommand(options) {
         version: '0.1.0',
         nodeId,
         greek: 'κυνικός',
-        endpoints: ['/health', '/status', '/peers', '/consensus'],
+        endpoints: ['/health', '/status', '/peers', '/consensus', '/propose'],
       }));
     }
 
@@ -159,6 +160,45 @@ export async function startCommand(options) {
       const cState = consensus.getState();
       res.writeHead(200);
       return res.end(JSON.stringify({ state: cState, bridge: cStats }));
+    }
+
+    // Propose block (for testing consensus)
+    if (url === '/propose' && req.method === 'POST') {
+      try {
+        const slotInfo = slotManager.getSlotInfo();
+        const testBlock = {
+          type: 'JUDGMENT',
+          slot: slotInfo.slot,
+          timestamp: Date.now(),
+          previous_hash: '0'.repeat(64),
+          proposer: keypair.publicKey,
+          judgments: [{
+            id: `jdg_test_${Date.now()}`,
+            itemHash: `item_${Date.now()}`,
+            globalScore: Math.round(50 + Math.random() * 50),
+            verdict: 'WAG',
+          }],
+          merkle_root: '0'.repeat(64),
+        };
+        testBlock.hash = hashBlock(testBlock);
+
+        // Propose to local consensus
+        consensus.proposeBlock(testBlock);
+
+        // Broadcast via gossip bridge
+        await consensusGossip.proposeBlock(testBlock);
+
+        res.writeHead(200);
+        return res.end(JSON.stringify({
+          success: true,
+          blockHash: testBlock.hash,
+          slot: testBlock.slot,
+          validators: consensus.validators.size,
+        }));
+      } catch (err) {
+        res.writeHead(500);
+        return res.end(JSON.stringify({ error: err.message }));
+      }
     }
 
     // 404
@@ -235,6 +275,13 @@ export async function startCommand(options) {
     console.log(chalk.green('  [PEER] ') + `${direction} Connected: ${chalk.cyan(id)}...`);
     if (publicKey) {
       gossip.addPeer(createPeerInfo({ publicKey, address: '' }));
+      // Register peer as validator for consensus
+      consensus.registerValidator({
+        publicKey,
+        eScore: 50, // Default E-Score for peers
+        burned: 0,
+        uptime: 1.0,
+      });
     }
   });
 
@@ -258,6 +305,19 @@ export async function startCommand(options) {
     try {
       await transport.startServer();
       console.log(chalk.green('  [OK]   ') + `Server listening on ${chalk.bold(`${host}:${port}`)}`);
+
+      // Register self as validator
+      consensus.registerValidator({
+        publicKey: keypair.publicKey,
+        eScore: 50, // Default E-Score
+        burned: 0,
+        uptime: 1.0,
+      });
+      console.log(chalk.green('  [OK]   ') + `Registered as validator`);
+
+      // Start consensus engine (transitions from INITIALIZING to PARTICIPATING)
+      consensus.start();
+      console.log(chalk.green('  [OK]   ') + `Consensus engine started (φ-BFT)`);
 
       // Start consensus-gossip bridge
       consensusGossip.start();
