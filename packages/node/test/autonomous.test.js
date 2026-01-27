@@ -14,7 +14,12 @@ import assert from 'node:assert/strict';
 
 import {
   AUTONOMOUS_CONSTANTS,
+  GOAL_TYPES,
   DogGoalTypes,
+  getDogsForGoalType,
+  getGoalTypesForDog,
+  calculateGoalScore,
+  getAllMetrics,
   createAutonomousCapabilities,
   DogAutonomousBehaviors,
 } from '../src/agents/collective/autonomous.js';
@@ -412,5 +417,162 @@ describe('CollectivePack with autonomous capabilities', () => {
     assert.ok(pack.janitor.autonomous);
     assert.ok(pack.scholar.autonomous);
     assert.ok(pack.sage.autonomous);
+  });
+});
+
+// =============================================================================
+// GOAL_TYPES TESTS (Phase 4: Collective Enhancement)
+// =============================================================================
+
+describe('GOAL_TYPES', () => {
+  it('has five goal type categories', () => {
+    const types = Object.keys(GOAL_TYPES);
+    assert.deepEqual(types.sort(), ['LEARNING', 'MAINTENANCE', 'MONITORING', 'QUALITY', 'SECURITY']);
+  });
+
+  it('QUALITY has correct structure', () => {
+    const quality = GOAL_TYPES.QUALITY;
+    assert.equal(quality.name, 'Code Quality');
+    assert.ok(quality.description);
+    assert.ok(Array.isArray(quality.metrics));
+    assert.ok(quality.metrics.includes('test_coverage'));
+    assert.ok(quality.metrics.includes('lint_score'));
+    assert.deepEqual(quality.dogs, ['Ralph', 'Max']);
+    assert.equal(quality.targetWeight, PHI_INV);
+  });
+
+  it('LEARNING has correct structure', () => {
+    const learning = GOAL_TYPES.LEARNING;
+    assert.equal(learning.name, 'Learning');
+    assert.ok(learning.metrics.includes('lessons_applied'));
+    assert.ok(learning.metrics.includes('mistakes_prevented'));
+    assert.deepEqual(learning.dogs, ['Archie', 'Luna']);
+    assert.equal(learning.targetWeight, PHI_INV_2);
+  });
+
+  it('SECURITY has correct structure', () => {
+    const security = GOAL_TYPES.SECURITY;
+    assert.equal(security.name, 'Security');
+    assert.ok(security.metrics.includes('vulnerabilities_fixed'));
+    assert.deepEqual(security.dogs, ['Shadow']);
+    assert.equal(security.targetWeight, PHI_INV);
+  });
+
+  it('MAINTENANCE has correct structure', () => {
+    const maintenance = GOAL_TYPES.MAINTENANCE;
+    assert.equal(maintenance.name, 'Maintenance');
+    assert.ok(maintenance.metrics.includes('tech_debt_reduced'));
+    assert.deepEqual(maintenance.dogs, ['Max', 'Ralph']);
+  });
+
+  it('MONITORING has correct structure', () => {
+    const monitoring = GOAL_TYPES.MONITORING;
+    assert.equal(monitoring.name, 'Monitoring');
+    assert.ok(monitoring.metrics.includes('health_checks'));
+    assert.deepEqual(monitoring.dogs, ['Shadow', 'Ralph']);
+  });
+});
+
+// =============================================================================
+// GOAL_TYPES HELPER FUNCTIONS TESTS
+// =============================================================================
+
+describe('getDogsForGoalType', () => {
+  it('returns dogs for QUALITY', () => {
+    const dogs = getDogsForGoalType('QUALITY');
+    assert.deepEqual(dogs, ['Ralph', 'Max']);
+  });
+
+  it('returns dogs for SECURITY', () => {
+    const dogs = getDogsForGoalType('security');
+    assert.deepEqual(dogs, ['Shadow']);
+  });
+
+  it('returns empty array for unknown type', () => {
+    const dogs = getDogsForGoalType('UNKNOWN');
+    assert.deepEqual(dogs, []);
+  });
+});
+
+describe('getGoalTypesForDog', () => {
+  it('returns goal types for Ralph', () => {
+    const types = getGoalTypesForDog('Ralph');
+    assert.ok(types.includes('QUALITY'));
+    assert.ok(types.includes('MAINTENANCE'));
+    assert.ok(types.includes('MONITORING'));
+  });
+
+  it('returns goal types for Shadow', () => {
+    const types = getGoalTypesForDog('Shadow');
+    assert.ok(types.includes('SECURITY'));
+    assert.ok(types.includes('MONITORING'));
+  });
+
+  it('returns goal types for Luna', () => {
+    const types = getGoalTypesForDog('Luna');
+    assert.ok(types.includes('LEARNING'));
+  });
+
+  it('is case insensitive', () => {
+    const types = getGoalTypesForDog('RALPH');
+    assert.ok(types.includes('QUALITY'));
+  });
+
+  it('returns empty array for unknown dog', () => {
+    const types = getGoalTypesForDog('Unknown');
+    assert.deepEqual(types, []);
+  });
+});
+
+describe('calculateGoalScore', () => {
+  it('calculates weighted score for QUALITY', () => {
+    const score = calculateGoalScore('QUALITY', {
+      test_coverage: 0.8,
+      lint_score: 0.9,
+      complexity: 0.7,
+    });
+
+    // Average: (0.8 + 0.9 + 0.7) / 3 = 0.8
+    // Weighted: 0.8 * PHI_INV ≈ 0.494
+    assert.ok(score > 0.4 && score < 0.6);
+  });
+
+  it('handles partial metrics', () => {
+    const score = calculateGoalScore('QUALITY', {
+      test_coverage: 0.8,
+    });
+
+    // 0.8 * PHI_INV ≈ 0.494
+    assert.ok(score > 0.4 && score < 0.6);
+  });
+
+  it('returns 0 for unknown goal type', () => {
+    const score = calculateGoalScore('UNKNOWN', { metric: 0.8 });
+    assert.equal(score, 0);
+  });
+
+  it('returns 0 for empty metrics', () => {
+    const score = calculateGoalScore('QUALITY', {});
+    assert.equal(score, 0);
+  });
+});
+
+describe('getAllMetrics', () => {
+  it('returns all unique metrics', () => {
+    const metrics = getAllMetrics();
+
+    assert.ok(Array.isArray(metrics));
+    assert.ok(metrics.includes('test_coverage'));
+    assert.ok(metrics.includes('lint_score'));
+    assert.ok(metrics.includes('vulnerabilities_fixed'));
+    assert.ok(metrics.includes('lessons_applied'));
+    assert.ok(metrics.includes('tech_debt_reduced'));
+    assert.ok(metrics.includes('health_checks'));
+  });
+
+  it('has no duplicates', () => {
+    const metrics = getAllMetrics();
+    const unique = new Set(metrics);
+    assert.equal(metrics.length, unique.size);
   });
 });

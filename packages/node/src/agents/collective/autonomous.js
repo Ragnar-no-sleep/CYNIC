@@ -39,6 +39,50 @@ export const AUTONOMOUS_CONSTANTS = {
 };
 
 /**
+ * High-level goal categories with metrics
+ *
+ * Each category has associated dogs responsible for tracking and metrics to measure.
+ * Used by AutonomousDaemon for goal management and progress tracking.
+ */
+export const GOAL_TYPES = {
+  QUALITY: {
+    name: 'Code Quality',
+    description: 'Maintain and improve code quality standards',
+    metrics: ['test_coverage', 'lint_score', 'complexity', 'duplication'],
+    dogs: ['Ralph', 'Max'],
+    targetWeight: PHI_INV, // 61.8% weight in composite score
+  },
+  LEARNING: {
+    name: 'Learning',
+    description: 'Learn from mistakes and apply lessons',
+    metrics: ['lessons_applied', 'mistakes_prevented', 'patterns_recognized'],
+    dogs: ['Archie', 'Luna'],
+    targetWeight: PHI_INV_2, // 38.2% weight
+  },
+  SECURITY: {
+    name: 'Security',
+    description: 'Maintain security posture and fix vulnerabilities',
+    metrics: ['vulnerabilities_fixed', 'audit_score', 'threats_blocked'],
+    dogs: ['Shadow'],
+    targetWeight: PHI_INV, // Security is critical
+  },
+  MAINTENANCE: {
+    name: 'Maintenance',
+    description: 'Reduce tech debt and keep dependencies updated',
+    metrics: ['tech_debt_reduced', 'dependencies_updated', 'dead_code_removed'],
+    dogs: ['Max', 'Ralph'],
+    targetWeight: PHI_INV_2,
+  },
+  MONITORING: {
+    name: 'Monitoring',
+    description: 'Continuous system and ecosystem monitoring',
+    metrics: ['health_checks', 'alerts_resolved', 'uptime'],
+    dogs: ['Shadow', 'Ralph'],
+    targetWeight: PHI_INV_2,
+  },
+};
+
+/**
  * Autonomous goal types for each Dog
  */
 export const DogGoalTypes = {
@@ -68,6 +112,66 @@ export const DogGoalTypes = {
     goals: ['user_insights', 'learning_tracking', 'proactive_guidance'],
   },
 };
+
+/**
+ * Get dogs responsible for a goal type
+ * @param {string} goalType - Goal type key (QUALITY, LEARNING, etc.)
+ * @returns {string[]} Dog names
+ */
+export function getDogsForGoalType(goalType) {
+  const type = GOAL_TYPES[goalType.toUpperCase()];
+  return type?.dogs || [];
+}
+
+/**
+ * Get goal types a dog is responsible for
+ * @param {string} dogName - Dog name (Ralph, Max, etc.)
+ * @returns {string[]} Goal type keys
+ */
+export function getGoalTypesForDog(dogName) {
+  const normalized = dogName.toLowerCase();
+  return Object.entries(GOAL_TYPES)
+    .filter(([_, type]) => type.dogs.some(d => d.toLowerCase() === normalized))
+    .map(([key]) => key);
+}
+
+/**
+ * Calculate weighted goal score from metrics
+ * @param {string} goalType - Goal type key
+ * @param {Object} metrics - Metric values (0-1 each)
+ * @returns {number} Weighted score (0-1)
+ */
+export function calculateGoalScore(goalType, metrics) {
+  const type = GOAL_TYPES[goalType.toUpperCase()];
+  if (!type) return 0;
+
+  const metricNames = type.metrics;
+  let total = 0;
+  let count = 0;
+
+  for (const name of metricNames) {
+    if (metrics[name] !== undefined) {
+      total += metrics[name];
+      count++;
+    }
+  }
+
+  return count > 0 ? (total / count) * (type.targetWeight || 0.5) : 0;
+}
+
+/**
+ * Get all metrics across all goal types
+ * @returns {string[]} All unique metric names
+ */
+export function getAllMetrics() {
+  const metrics = new Set();
+  for (const type of Object.values(GOAL_TYPES)) {
+    for (const metric of type.metrics) {
+      metrics.add(metric);
+    }
+  }
+  return Array.from(metrics);
+}
 
 /**
  * Autonomous capabilities mixin
@@ -553,7 +657,12 @@ export const DogAutonomousBehaviors = {
 
 export default {
   AUTONOMOUS_CONSTANTS,
+  GOAL_TYPES,
   DogGoalTypes,
+  getDogsForGoalType,
+  getGoalTypesForDog,
+  calculateGoalScore,
+  getAllMetrics,
   createAutonomousCapabilities,
   DogAutonomousBehaviors,
 };
