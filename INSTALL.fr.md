@@ -50,8 +50,10 @@ cp .env.example .env
 Pour le développement local, les valeurs par défaut suffisent généralement.
 
 Pour la production, configurer :
-- `CYNIC_DATABASE_URL` - PostgreSQL
+- `CYNIC_DATABASE_URL` - Connexion PostgreSQL
 - `CYNIC_REDIS_URL` - Redis (optionnel)
+
+Voir [docs/CONFIGURATION.md](./docs/CONFIGURATION.md) pour toutes les options.
 
 ---
 
@@ -87,7 +89,7 @@ Modifier le chemin `cwd` dans `.mcp.json` pour pointer vers ton installation :
 
 Le dossier `.claude/` contient le plugin qui donne à Claude l'identité CYNIC.
 
-### Option A : Automatique (recommandé)
+#### Option A : Automatique (recommandé)
 
 Ouvrir Claude Code dans le dossier CYNIC - le plugin se charge automatiquement :
 
@@ -96,7 +98,7 @@ cd /chemin/vers/CYNIC
 claude
 ```
 
-### Option B : Installation globale
+#### Option B : Installation globale
 
 Pour avoir CYNIC disponible partout :
 
@@ -184,9 +186,16 @@ CYNIC opère selon 4 axiomes fondamentaux :
 
 ## Ressources
 
+- [GETTING-STARTED.md](./GETTING-STARTED.md) - Vue d'ensemble rapide
 - [README.md](./README.md) - Vue d'ensemble du protocole
 - [ROADMAP.md](./ROADMAP.md) - Feuille de route
 - [docs/](./docs/) - Documentation technique
+
+---
+
+## Traductions
+
+- 🇬🇧 [INSTALL.md](./INSTALL.md) - English version
 
 ---
 
