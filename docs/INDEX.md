@@ -37,6 +37,7 @@
 | Document | Description |
 |----------|-------------|
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | 4-layer protocol design |
+| [BOOT-SEQUENCE.md](./BOOT-SEQUENCE.md) | MCP server boot sequence and lifecycle |
 | [DOGS.md](./DOGS.md) | Agent system (V1 + V2 Collective) |
 | [GLOSSARY.md](./GLOSSARY.md) | Terms and definitions |
 | [architecture/PARALLEL_DOGS.md](./architecture/PARALLEL_DOGS.md) | Detailed parallel agent implementation |
