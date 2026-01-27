@@ -63,7 +63,7 @@ export function createPoJChainTool(pojChainManager, persistence = null) {
 
       switch (action) {
         case 'status': {
-          log.debug('PoJ chain status check', { hasAnchorQueue: !!pojChainManager._anchorQueue, isEnabled: pojChainManager.isAnchoringEnabled });
+          console.error(`[DEBUG] PoJ status check: _anchorQueue=${!!pojChainManager._anchorQueue}, isAnchoringEnabled=${pojChainManager.isAnchoringEnabled}`);
           const status = pojChainManager.getStatus();
           return {
             action: 'status',
