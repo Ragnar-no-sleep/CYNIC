@@ -15,6 +15,121 @@ import { createLogger } from '@cynic/core';
 
 const log = createLogger('FileStore');
 
+// Lock timeout in ms (stale lock detection)
+const LOCK_TIMEOUT = 30000; // 30 seconds
+const LOCK_RETRY_DELAY = 100; // 100ms between retries
+const LOCK_MAX_RETRIES = 50; // Max 5 seconds total wait
+
+/**
+ * Simple file-based lock mechanism
+ * Uses .lock file with PID and timestamp for stale detection
+ */
+class FileLock {
+  constructor(lockPath) {
+    this.lockPath = lockPath;
+    this.locked = false;
+  }
+
+  /**
+   * Acquire lock with retry
+   */
+  async acquire(maxRetries = LOCK_MAX_RETRIES) {
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        // Try to create lock file exclusively
+        const lockData = JSON.stringify({
+          pid: process.pid,
+          timestamp: Date.now(),
+          hostname: process.env.HOSTNAME || 'local',
+        });
+
+        await fs.writeFile(this.lockPath, lockData, { flag: 'wx' });
+        this.locked = true;
+        return true;
+      } catch (err) {
+        if (err.code === 'EEXIST') {
+          // Lock exists - check if stale
+          const isStale = await this._checkStale();
+          if (isStale) {
+            // Remove stale lock and retry immediately
+            try {
+              await fs.unlink(this.lockPath);
+              log.warn('Removed stale lock file');
+              continue;
+            } catch {
+              // Another process may have removed it
+            }
+          }
+
+          // Wait before retry
+          if (attempt < maxRetries - 1) {
+            await new Promise(r => setTimeout(r, LOCK_RETRY_DELAY));
+          }
+        } else {
+          // Unexpected error - don't retry
+          throw err;
+        }
+      }
+    }
+
+    log.warn('Failed to acquire lock after max retries');
+    return false;
+  }
+
+  /**
+   * Release lock
+   */
+  async release() {
+    if (!this.locked) return;
+
+    try {
+      // Only delete if we own it (check PID)
+      const data = await fs.readFile(this.lockPath, 'utf-8');
+      const lock = JSON.parse(data);
+
+      if (lock.pid === process.pid) {
+        await fs.unlink(this.lockPath);
+      }
+    } catch (err) {
+      // Lock file may not exist (already released)
+      if (err.code !== 'ENOENT') {
+        log.warn('Error releasing lock', { error: err.message });
+      }
+    }
+
+    this.locked = false;
+  }
+
+  /**
+   * Check if existing lock is stale
+   */
+  async _checkStale() {
+    try {
+      const data = await fs.readFile(this.lockPath, 'utf-8');
+      const lock = JSON.parse(data);
+
+      // Check timestamp
+      if (Date.now() - lock.timestamp > LOCK_TIMEOUT) {
+        return true;
+      }
+
+      // On same machine, check if process is alive
+      if (!lock.hostname || lock.hostname === (process.env.HOSTNAME || 'local')) {
+        try {
+          process.kill(lock.pid, 0); // Signal 0 = check existence
+          return false; // Process is alive
+        } catch {
+          return true; // Process is dead
+        }
+      }
+
+      return false; // Different machine, can't verify - assume alive
+    } catch {
+      return true; // Can't read lock - assume stale
+    }
+  }
+}
+
 /**
  * In-memory fallback storage
  * Used when neither PostgreSQL nor file storage is configured
@@ -262,28 +377,44 @@ export class MemoryStore {
 
 /**
  * File-based storage adapter
- * Uses MemoryStore + periodic file sync
+ * Uses MemoryStore + periodic file sync with file locking
  */
 export class FileStore extends MemoryStore {
   constructor(dataDir) {
     super();
     this.dataDir = dataDir;
     this.filePath = path.join(dataDir, 'cynic-state.json');
+    this.lockPath = path.join(dataDir, 'cynic-state.lock');
     this._dirty = false;
+    this._lock = new FileLock(this.lockPath);
   }
 
   async initialize() {
     try {
       await fs.mkdir(this.dataDir, { recursive: true });
-      const data = await fs.readFile(this.filePath, 'utf-8');
-      await this.import(JSON.parse(data));
-      log.info('File storage loaded', { path: this.filePath });
+
+      // Acquire lock before reading (for consistency)
+      const acquired = await this._lock.acquire();
+      if (!acquired) {
+        log.warn('Could not acquire lock for initialization - using fresh state');
+        return;
+      }
+
+      try {
+        const data = await fs.readFile(this.filePath, 'utf-8');
+        await this.import(JSON.parse(data));
+        log.info('File storage loaded', { path: this.filePath });
+      } finally {
+        await this._lock.release();
+      }
     } catch (err) {
       if (err.code !== 'ENOENT') {
         log.error('File storage error', { error: err.message });
       } else {
         log.info('File storage fresh start', { path: this.filePath });
       }
+      // Release lock if held
+      await this._lock.release();
     }
   }
 
@@ -326,12 +457,28 @@ export class FileStore extends MemoryStore {
 
   async save() {
     if (!this._dirty) return;
+
+    // Acquire lock before writing
+    const acquired = await this._lock.acquire();
+    if (!acquired) {
+      log.warn('Could not acquire lock for save - data not persisted');
+      return;
+    }
+
     try {
       const data = await this.export();
-      await fs.writeFile(this.filePath, JSON.stringify(data, null, 2));
+
+      // Write to temp file first, then rename (atomic on most filesystems)
+      const tempPath = this.filePath + '.tmp';
+      await fs.writeFile(tempPath, JSON.stringify(data, null, 2));
+      await fs.rename(tempPath, this.filePath);
+
       this._dirty = false;
     } catch (err) {
       log.error('Error saving state', { error: err.message });
+      // Keep _dirty = true so we retry on next save
+    } finally {
+      await this._lock.release();
     }
   }
 }

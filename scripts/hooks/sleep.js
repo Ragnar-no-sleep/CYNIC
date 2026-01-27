@@ -87,7 +87,7 @@ function getTopTools(profile) {
     .map(([tool, count]) => ({ tool, count }));
 }
 
-function formatSleepMessage(profile, summary) {
+function formatSleepMessage(profile, summary, syncFailures = []) {
   const lines = [];
 
   lines.push('');
@@ -117,23 +117,51 @@ function formatSleepMessage(profile, summary) {
     lines.push('');
   }
 
-  // Storage info
+  // Storage info with sync status
   lines.push('── STORAGE ────────────────────────────────────────────────');
-  lines.push(`   💾 Profile: PostgreSQL (cross-session)`);
-  lines.push(`   🧠 Consciousness: PostgreSQL (learning loop persisted)`);
-  lines.push(`   📚 Learnings: PostgreSQL (auto-persisted)`);
+
+  const profileFailed = syncFailures.some(f => f.type === 'profile');
+  const consciousnessFailed = syncFailures.some(f => f.type === 'consciousness');
+  const psychologyFailed = syncFailures.some(f => f.type === 'psychology');
+
+  lines.push(`   💾 Profile: ${profileFailed ? '⚠️  Local file (sync failed)' : '✅ PostgreSQL'}`);
+  lines.push(`   🧠 Consciousness: ${consciousnessFailed ? '⚠️  Local file (sync failed)' : '✅ PostgreSQL'}`);
+  lines.push(`   💭 Psychology: ${psychologyFailed ? '⚠️  Local file (sync failed)' : '✅ PostgreSQL'}`);
   lines.push(`   ⛓️  Judgments: PoJ Chain`);
   lines.push('');
+
+  // Sync failure warnings
+  if (syncFailures.length > 0) {
+    lines.push('── ⚠️  SYNC WARNINGS ───────────────────────────────────────');
+    lines.push('   Some data may not persist to next session:');
+    for (const failure of syncFailures) {
+      const icon = failure.type === 'profile' ? '👤' :
+                   failure.type === 'consciousness' ? '🧠' :
+                   failure.type === 'psychology' ? '💭' : '❓';
+      lines.push(`   ${icon} ${failure.type}: ${failure.error || 'sync failed'}`);
+    }
+    lines.push('   📁 Local file backup saved');
+    lines.push('');
+  }
 
   // Profile update
   lines.push('── MEMORY ─────────────────────────────────────────────────');
   const sessions = profile.stats?.sessions || 0;
-  lines.push(`   Total sessions: ${sessions}`);
-  lines.push(`   Profile synced: ✅ Will remember you next time`);
+  const remoteTotals = profile._remoteTotals || {};
+  const totalSessions = (remoteTotals.sessions || 0) + sessions;
+  lines.push(`   Session delta: +${sessions} (total: ${totalSessions})`);
+
+  if (syncFailures.length === 0) {
+    lines.push(`   Profile synced: ✅ Will remember you next time`);
+  } else {
+    lines.push(`   Profile synced: ⚠️  Partial (see warnings above)`);
+  }
   lines.push('');
 
   lines.push('═══════════════════════════════════════════════════════════');
-  lines.push('*yawn* φ remembers. Until next time.');
+  lines.push(syncFailures.length === 0
+    ? '*yawn* φ remembers. Until next time.'
+    : '*yawn* φ tried. Local backup saved. Until next time.');
   lines.push('═══════════════════════════════════════════════════════════');
 
   return lines.join('\n');
@@ -191,12 +219,16 @@ async function main() {
     // ═══════════════════════════════════════════════════════════════════════════
     // CROSS-SESSION MEMORY: Sync profile to PostgreSQL (with retry)
     // ═══════════════════════════════════════════════════════════════════════════
+    // Track sync failures for notification
+    const syncFailures = [];
+
     const profileSyncResult = await retryWithBackoff(
       () => syncProfileToDB(user.userId, profile),
       { maxRetries: 3, initialDelay: 100, operationName: 'Profile sync' }
     );
 
     if (!profileSyncResult.success) {
+      syncFailures.push({ type: 'profile', error: profileSyncResult.error?.message || 'connection failed' });
       console.error('[CYNIC] Profile sync failed - data may not persist to next session');
     }
 
@@ -211,6 +243,7 @@ async function main() {
       );
 
       if (!consciousnessResult.success) {
+        syncFailures.push({ type: 'consciousness', error: consciousnessResult.error?.message || 'connection failed' });
         console.error('[CYNIC] Consciousness sync failed - local files remain as backup');
       }
     }
@@ -226,9 +259,13 @@ async function main() {
       );
 
       if (!psychologyResult.success) {
+        syncFailures.push({ type: 'psychology', error: psychologyResult.error?.message || 'connection failed' });
         console.error('[CYNIC] Psychology sync failed - local files remain as backup');
       }
     }
+
+    // Store sync failures for the message
+    summary.syncFailures = syncFailures;
 
     // Send SessionEnd to MCP server (this triggers brain_session_end internally)
     await sendHookToCollective('SessionEnd', {
@@ -251,7 +288,7 @@ async function main() {
     }
 
     // Format and output message
-    const message = formatSleepMessage(profile, summary);
+    const message = formatSleepMessage(profile, summary, syncFailures);
     console.log(message);
 
   } catch (error) {

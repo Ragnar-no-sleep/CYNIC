@@ -420,15 +420,17 @@ export class UserLearningProfilesRepository extends BaseRepository {
   /**
    * Merge remote profile with local profile
    * Remote (DB) is source of truth for accumulated stats
-   * Local has latest session data
+   * Local has latest session data (deltas only)
    * @param {Object} remoteProfile - Profile from database
-   * @param {Object} localProfile - Profile from local JSON
+   * @param {Object} localProfile - Profile from local JSON (session deltas)
    * @returns {Object} Merged profile
    */
   mergeProfiles(remoteProfile, localProfile) {
     if (!remoteProfile) return localProfile;
     if (!localProfile) return remoteProfile;
 
+    // Local stats are session deltas - ADD them to remote totals
+    // This prevents data loss when multiple sessions contribute
     return {
       userId: localProfile.userId,
       identity: {
@@ -439,23 +441,15 @@ export class UserLearningProfilesRepository extends BaseRepository {
         lastSeen: localProfile.identity?.lastSeen || new Date().toISOString(),
       },
       stats: {
-        // Use max of remote/local for accumulated stats
-        sessions: Math.max(
-          remoteProfile.stats?.sessions || 0,
-          localProfile.stats?.sessions || 0
-        ),
-        toolCalls: Math.max(
-          remoteProfile.stats?.toolCalls || 0,
-          localProfile.stats?.toolCalls || 0
-        ),
-        errorsEncountered: Math.max(
-          remoteProfile.stats?.errorsEncountered || 0,
-          localProfile.stats?.errorsEncountered || 0
-        ),
-        dangerBlocked: Math.max(
-          remoteProfile.stats?.dangerBlocked || 0,
-          localProfile.stats?.dangerBlocked || 0
-        ),
+        // ADD local session deltas to remote accumulated totals
+        sessions: (remoteProfile.stats?.sessions || 0) +
+          (localProfile.stats?.sessions || 0),
+        toolCalls: (remoteProfile.stats?.toolCalls || 0) +
+          (localProfile.stats?.toolCalls || 0),
+        errorsEncountered: (remoteProfile.stats?.errorsEncountered || 0) +
+          (localProfile.stats?.errorsEncountered || 0),
+        dangerBlocked: (remoteProfile.stats?.dangerBlocked || 0) +
+          (localProfile.stats?.dangerBlocked || 0),
       },
       patterns: {
         preferredLanguages: [
@@ -503,13 +497,15 @@ export class UserLearningProfilesRepository extends BaseRepository {
   }
 
   /**
-   * Merge tool/hour counts (take max of each key)
+   * Merge tool/hour counts (SUM values for each key)
+   * Local counts are session deltas, remote is accumulated total
    * @private
    */
   _mergeToolCounts(remote, local) {
     const merged = { ...remote };
     for (const [key, value] of Object.entries(local)) {
-      merged[key] = Math.max(merged[key] || 0, value);
+      // ADD local session counts to remote totals
+      merged[key] = (merged[key] || 0) + (value || 0);
     }
     return merged;
   }

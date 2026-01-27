@@ -72,6 +72,37 @@ const RELEASE_LOCK_SCRIPT = `
 `;
 
 /**
+ * Lua script for atomic JSON field increment
+ * Increments a numeric field in a JSON object stored at key
+ * Returns the updated JSON string
+ */
+const INCREMENT_JSON_FIELD_SCRIPT = `
+  local key = KEYS[1]
+  local field = ARGV[1]
+  local ttl = tonumber(ARGV[2])
+
+  local data = redis.call("get", key)
+  if not data then
+    return nil
+  end
+
+  local obj = cjson.decode(data)
+  if type(obj[field]) == "number" then
+    obj[field] = obj[field] + 1
+  end
+  obj["lastActiveAt"] = ARGV[3]
+
+  local updated = cjson.encode(obj)
+  if ttl > 0 then
+    redis.call("setex", key, ttl, updated)
+  else
+    redis.call("set", key, updated)
+  end
+
+  return updated
+`;
+
+/**
  * Redis Client wrapper
  */
 export class RedisClient {
@@ -281,6 +312,57 @@ export class RedisClient {
 
   async touchSession(sessionId, ttl = TTL.SESSION) {
     return this.expire(`${PREFIX.SESSION}${sessionId}`, ttl);
+  }
+
+  /**
+   * Atomic increment of a field in a session JSON object
+   * Uses Lua script to avoid race conditions
+   */
+  async incrementSessionField(sessionId, field, ttl = TTL.SESSION) {
+    return this._executeProtected(async () => {
+      const key = `${PREFIX.SESSION}${sessionId}`;
+      const timestamp = new Date().toISOString();
+
+      const result = await this.client.call(
+        'EVAL',
+        INCREMENT_JSON_FIELD_SCRIPT,
+        1,
+        key,
+        field,
+        ttl.toString(),
+        timestamp
+      );
+
+      if (!result) return null;
+
+      try {
+        return JSON.parse(result);
+      } catch {
+        return result;
+      }
+    });
+  }
+
+  /**
+   * Atomic session creation using SETNX
+   * Returns { created: true, session } if new, { created: false } if exists
+   */
+  async createSessionIfNotExists(sessionId, data, ttl = TTL.SESSION) {
+    return this._executeProtected(async () => {
+      const key = `${PREFIX.SESSION}${sessionId}`;
+      const serialized = JSON.stringify(data);
+
+      // SET ... NX returns OK if set, null if key exists
+      const result = await this.client.set(key, serialized, 'EX', ttl, 'NX');
+
+      if (result === 'OK') {
+        return { created: true, session: data };
+      }
+
+      // Key already exists - get the existing session
+      const existing = await this.get(key);
+      return { created: false, session: existing };
+    });
   }
 
   // ==========================================================================

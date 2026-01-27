@@ -17,10 +17,21 @@ import { createLogger } from '@cynic/core';
 const log = createLogger('SessionManager');
 
 /**
- * Generate session ID
+ * Generate random session ID
  */
 function generateSessionId() {
   return 'ses_' + crypto.randomBytes(12).toString('hex');
+}
+
+/**
+ * Generate deterministic session ID based on user and project
+ * This ensures the same user+project always gets the same session ID
+ * preventing race conditions when multiple processes start simultaneously
+ */
+function generateDeterministicSessionId(userId, project) {
+  const input = `${userId}:${project || 'default'}:${new Date().toISOString().slice(0, 10)}`; // Include date for daily rotation
+  const hash = crypto.createHash('sha256').update(input).digest('hex').slice(0, 24);
+  return 'ses_' + hash;
 }
 
 /**
@@ -60,7 +71,8 @@ export class SessionManager {
     // Try Redis session store (if available)
     if (this.persistence?.sessionStore) {
       try {
-        const sessionId = generateSessionId();
+        // Use deterministic session ID to prevent race conditions
+        const sessionId = generateDeterministicSessionId(userId, context.project);
         const session = await this.persistence.sessionStore.getOrCreate(sessionId, userId);
         session.sessionId = sessionId;
         session.project = context.project || 'default';
@@ -94,9 +106,9 @@ export class SessionManager {
       }
     }
 
-    // Fallback: create local session
+    // Fallback: create local session (use deterministic ID for consistency)
     const session = {
-      sessionId: generateSessionId(),
+      sessionId: generateDeterministicSessionId(userId, context.project),
       userId,
       project: context.project || 'default',
       createdAt: new Date().toISOString(),

@@ -85,8 +85,36 @@ async function main() {
     try {
       remoteProfile = await loadProfileFromDB(user.userId);
       if (remoteProfile) {
-        // Merge remote (accumulated) with local (current session)
-        localProfile = mergeProfiles(remoteProfile, localProfile);
+        // Remote is SOURCE OF TRUTH for accumulated totals
+        // Copy non-stat data from remote (preferences, patterns, memory)
+        localProfile = {
+          ...localProfile,
+          identity: {
+            ...localProfile.identity,
+            ...remoteProfile.identity,
+            lastSeen: new Date().toISOString(),
+          },
+          patterns: remoteProfile.patterns || localProfile.patterns,
+          preferences: remoteProfile.preferences || localProfile.preferences,
+          memory: remoteProfile.memory || localProfile.memory,
+          learning: remoteProfile.learning || {},
+        };
+
+        // RESET local stats to 0 - they track SESSION DELTAS ONLY
+        // At session end, these deltas are ADDED to remote totals
+        localProfile.stats = {
+          sessions: 1, // This session counts as 1
+          toolCalls: 0,
+          errorsEncountered: 0,
+          dangerBlocked: 0,
+          commitsWithCynic: 0,
+          judgmentsMade: 0,
+          judgmentsCorrect: 0,
+        };
+
+        // Store remote totals for reference (display purposes)
+        localProfile._remoteTotals = remoteProfile.stats || {};
+
         learningsImport = {
           success: true,
           imported: remoteProfile.meta?.sessionCount || 0,
@@ -98,7 +126,26 @@ async function main() {
         };
       }
     } catch (e) {
-      // Silently fail - local profile is fallback
+      // Track failure for notification
+      localProfile._syncFailures = localProfile._syncFailures || [];
+      localProfile._syncFailures.push({
+        type: 'profile',
+        error: e.message,
+        timestamp: new Date().toISOString(),
+      });
+
+      // Reset stats for clean session tracking
+      localProfile.stats = {
+        sessions: 1,
+        toolCalls: 0,
+        errorsEncountered: 0,
+        dangerBlocked: 0,
+        commitsWithCynic: 0,
+        judgmentsMade: 0,
+        judgmentsCorrect: 0,
+      };
+
+      console.error('[CYNIC] Profile sync failed:', e.message);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -128,7 +175,14 @@ async function main() {
           };
         }
       } catch (e) {
-        // Silently fail - local consciousness is fallback
+        // Track failure for notification
+        localProfile._syncFailures = localProfile._syncFailures || [];
+        localProfile._syncFailures.push({
+          type: 'consciousness',
+          error: e.message,
+          timestamp: new Date().toISOString(),
+        });
+        console.error('[CYNIC] Consciousness sync failed:', e.message);
       }
     }
 
@@ -143,7 +197,14 @@ async function main() {
           // Psychology state imported from remote - learning persists
         }
       } catch (e) {
-        // Silently fail - local psychology state is fallback
+        // Track failure for notification
+        localProfile._syncFailures = localProfile._syncFailures || [];
+        localProfile._syncFailures.push({
+          type: 'psychology',
+          error: e.message,
+          timestamp: new Date().toISOString(),
+        });
+        console.error('[CYNIC] Psychology sync failed:', e.message);
       }
     }
 
@@ -440,6 +501,37 @@ async function main() {
           // Silently ignore - discovery is optional enhancement
         }
       });
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SYNC FAILURES: Warn user if cross-session memory is not working
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (localProfile._syncFailures && localProfile._syncFailures.length > 0) {
+      const warnLines = ['', '── ⚠️  SYNC WARNINGS ───────────────────────────────────────'];
+      warnLines.push('   Cross-session memory may be limited:');
+
+      for (const failure of localProfile._syncFailures) {
+        const icon = failure.type === 'profile' ? '👤' :
+                     failure.type === 'consciousness' ? '🧠' :
+                     failure.type === 'psychology' ? '💭' : '❓';
+        warnLines.push(`   ${icon} ${failure.type}: ${failure.error || 'connection failed'}`);
+      }
+
+      warnLines.push('   📁 Local file backup will be used');
+      warnLines.push('');
+
+      const lines = message.split('\n');
+      const insertIdx = lines.findIndex(l => l.includes('CYNIC is AWAKE'));
+      if (insertIdx > 0) {
+        lines.splice(insertIdx, 0, ...warnLines);
+        message = lines.join('\n');
+      }
+
+      // Save profile with sync failures tracked for session end
+      try {
+        const { saveUserProfile } = await import('../lib/cynic-core.cjs');
+        saveUserProfile(localProfile);
+      } catch (e) { /* ignore */ }
     }
 
     // Output directly to stdout (like asdf-brain) for banner display

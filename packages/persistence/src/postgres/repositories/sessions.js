@@ -26,13 +26,16 @@ export class SessionRepository extends BaseRepository {
   }
 
   /**
-   * Create a new session record
+   * Create a new session record (atomic with ON CONFLICT)
+   * If session already exists, returns existing record
    */
   async create(session) {
     const { rows } = await this.db.query(`
       INSERT INTO sessions (
         session_id, user_id, judgment_count, digest_count, feedback_count, context
       ) VALUES ($1, $2, $3, $4, $5, $6)
+      ON CONFLICT (session_id) DO UPDATE SET
+        last_active_at = NOW()
       RETURNING *
     `, [
       session.sessionId,

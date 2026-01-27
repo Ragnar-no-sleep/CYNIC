@@ -43,24 +43,33 @@ export class SessionStore {
   }
 
   /**
-   * Create or get existing session
+   * Create or get existing session (atomic, race-condition free)
+   * Uses SETNX to ensure only one process creates the session
    */
   async getOrCreate(sessionId, userId = 'anonymous') {
     await this._ensureConnected();
 
-    let session = await this.redis.getSession(sessionId);
+    // Try to atomically create the session
+    const newSession = createSession(userId);
+    const { created, session } = await this.redis.createSessionIfNotExists(
+      sessionId,
+      newSession,
+      TTL.SESSION
+    );
 
-    if (!session) {
-      session = createSession(userId);
-      await this.redis.setSession(sessionId, session, TTL.SESSION);
+    if (created) {
       console.log(`🐕 New session: ${sessionId.slice(0, 8)}...`);
-    } else {
-      // Touch session to extend TTL
-      session.lastActiveAt = new Date().toISOString();
-      await this.redis.setSession(sessionId, session, TTL.SESSION);
+      return session;
     }
 
-    return session;
+    // Session already exists - touch to extend TTL
+    const updated = {
+      ...session,
+      lastActiveAt: new Date().toISOString(),
+    };
+    await this.redis.setSession(sessionId, updated, TTL.SESSION);
+
+    return updated;
   }
 
   /**
@@ -85,21 +94,15 @@ export class SessionStore {
   }
 
   /**
-   * Increment session counter
+   * Increment session counter (atomic using Lua script)
+   * Prevents race conditions when multiple processes increment simultaneously
    */
   async increment(sessionId, field) {
     await this._ensureConnected();
 
-    const session = await this.redis.getSession(sessionId);
-    if (!session) return null;
-
-    if (typeof session[field] === 'number') {
-      session[field]++;
-      session.lastActiveAt = new Date().toISOString();
-      await this.redis.setSession(sessionId, session, TTL.SESSION);
-    }
-
-    return session;
+    // Use atomic Lua script to increment
+    const updated = await this.redis.incrementSessionField(sessionId, field, TTL.SESSION);
+    return updated;
   }
 
   /**
