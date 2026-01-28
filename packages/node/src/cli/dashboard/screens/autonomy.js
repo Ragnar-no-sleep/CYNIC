@@ -195,41 +195,75 @@ export function createAutonomyScreen(screen, dataFetcher, options = {}) {
    */
   async function fetchData() {
     // Fetch goals
-    const goalsResult = await dataFetcher.callTool('brain_goals', {
-      action: 'list',
-      status: 'active',
-    });
-    if (goalsResult.success) {
-      goals = goalsResult.result.goals || [];
-      updateGoalsList();
+    try {
+      const goalsResult = await dataFetcher.callTool('brain_goals', {
+        action: 'list',
+        status: 'active',
+      });
+      if (goalsResult.success) {
+        goals = goalsResult.result.goals || [];
+        updateGoalsList();
+      } else {
+        goals = [];
+        goalsList.setItems([`{red-fg}Error: ${goalsResult.error || 'Failed to fetch goals'}{/}`]);
+      }
+    } catch (err) {
+      goals = [];
+      goalsList.setItems([`{red-fg}Error: ${err.message}{/}`]);
     }
 
     // Fetch tasks
-    const tasksResult = await dataFetcher.callTool('brain_tasks', {
-      action: 'list',
-      limit: 20,
-    });
-    if (tasksResult.success) {
-      tasks = tasksResult.result.tasks || [];
-      updateTasksList();
+    try {
+      const tasksResult = await dataFetcher.callTool('brain_tasks', {
+        action: 'list',
+        limit: 20,
+      });
+      if (tasksResult.success) {
+        tasks = tasksResult.result.tasks || [];
+        updateTasksList();
+      } else {
+        tasks = [];
+        tasksList.setItems([`{red-fg}Error: ${tasksResult.error || 'Failed to fetch tasks'}{/}`]);
+      }
+    } catch (err) {
+      tasks = [];
+      tasksList.setItems([`{red-fg}Error: ${err.message}{/}`]);
     }
 
     // Fetch notifications
-    const notifsResult = await dataFetcher.callTool('brain_notifications', {
-      action: 'list',
-      delivered: false,
-    });
-    if (notifsResult.success) {
-      notifications = notifsResult.result.notifications || [];
-      updateNotificationsList();
+    try {
+      const notifsResult = await dataFetcher.callTool('brain_notifications', {
+        action: 'list',
+        delivered: false,
+      });
+      if (notifsResult.success) {
+        notifications = notifsResult.result.notifications || [];
+        updateNotificationsList();
+      } else {
+        notifications = [];
+        notificationsList.setItems([`{red-fg}Error: ${notifsResult.error || 'Failed to fetch notifications'}{/}`]);
+      }
+    } catch (err) {
+      notifications = [];
+      notificationsList.setItems([`{red-fg}Error: ${err.message}{/}`]);
     }
 
     // Fetch daemon stats
-    const statsResult = await dataFetcher.callTool('brain_health', {});
-    if (statsResult.success && statsResult.result.daemon) {
-      daemonStats = statsResult.result.daemon;
-      updateStatsBar();
+    try {
+      const statsResult = await dataFetcher.callTool('brain_health', {});
+      if (statsResult.success && statsResult.result.daemon) {
+        daemonStats = statsResult.result.daemon;
+        updateStatsBar();
+      } else {
+        daemonStats = { running: false };
+        statsBar.setContent(' {red-fg}Error fetching daemon stats{/}');
+      }
+    } catch (err) {
+      daemonStats = { running: false };
+      statsBar.setContent(` {red-fg}Error: ${err.message}{/}`);
     }
+
+    screen.render();
   }
 
   /**

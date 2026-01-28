@@ -152,17 +152,28 @@ export function createMemoryScreen(screen, dataFetcher, options = {}) {
    * Fetch memories
    */
   async function fetchMemories(query = '') {
-    const result = await dataFetcher.callTool('brain_search', {
-      query: query || '*',
-      limit: 50,
-      filter: currentFilter !== 'all' ? { type: currentFilter } : undefined,
-    });
+    try {
+      const result = await dataFetcher.callTool('brain_search', {
+        query: query || '*',
+        limit: 50,
+        filter: currentFilter !== 'all' ? { type: currentFilter } : undefined,
+      });
 
-    if (result.success) {
-      memories = result.result.results || [];
-      stats = result.result.stats || stats;
-      updateMemoryList();
-      updateStats();
+      if (result.success) {
+        memories = result.result.results || [];
+        stats = result.result.stats || stats;
+        updateMemoryList();
+        updateStats();
+      } else {
+        // Show error in list
+        memories = [];
+        memoryList.setItems([`{red-fg}Error: ${result.error || 'Failed to fetch memories'}{/}`]);
+        screen.render();
+      }
+    } catch (err) {
+      memories = [];
+      memoryList.setItems([`{red-fg}Error: ${err.message}{/}`]);
+      screen.render();
     }
   }
 
