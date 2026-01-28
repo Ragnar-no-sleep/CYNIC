@@ -6,6 +6,7 @@
  * - E-Score history tracking
  * - Pattern evolution and fusion
  * - User learning profiles
+ * - EventBus integration for automated learning
  *
  * "φ learns from every correction" - κυνικός
  *
@@ -16,8 +17,15 @@
 
 import crypto from 'crypto';
 import { EventEmitter } from 'events';
-import { PHI_INV_2, PHI_INV_3 } from '@cynic/core';
+import { PHI_INV_2, PHI_INV_3, createLogger } from '@cynic/core';
 import { LearningService } from './learning-service.js';
+
+const log = createLogger('LearningManager');
+
+/**
+ * Minimum samples before auto-triggering a learning cycle
+ */
+const MIN_AUTO_LEARN_SAMPLES = 5;
 
 /**
  * Generate short ID for learning cycles
@@ -39,13 +47,17 @@ export class LearningManager extends EventEmitter {
   /**
    * @param {Object} options - Manager options
    * @param {Object} [options.persistence] - PersistenceManager with all repositories
+   * @param {Object} [options.eventBus] - EventBus for automation integration
    * @param {number} [options.learningRate] - Learning rate (default: φ⁻³ = 23.6%)
    * @param {boolean} [options.autoRecord] - Auto-record E-Score changes (default: true)
+   * @param {boolean} [options.autoLearn] - Auto-trigger learning cycles (default: true)
+   * @param {number} [options.minSamples] - Min samples before auto-learning (default: 5)
    */
   constructor(options = {}) {
     super();
 
     this.persistence = options.persistence || null;
+    this.eventBus = options.eventBus || null;
 
     // Core RLHF service
     this.learningService = new LearningService({
@@ -55,6 +67,14 @@ export class LearningManager extends EventEmitter {
 
     // Configuration
     this.autoRecord = options.autoRecord !== false;
+    this.autoLearn = options.autoLearn !== false;
+    this.minSamples = options.minSamples || MIN_AUTO_LEARN_SAMPLES;
+
+    // Pending feedback for auto-learning
+    this._pendingFeedback = [];
+
+    // Event bus unsubscribers
+    this._unsubscribers = [];
 
     // Statistics
     this._stats = {
@@ -63,6 +83,7 @@ export class LearningManager extends EventEmitter {
       escoreSnapshots: 0,
       patternsEvolved: 0,
       profilesUpdated: 0,
+      autoTriggeredCycles: 0,
     };
 
     this._initialized = false;
@@ -76,8 +97,121 @@ export class LearningManager extends EventEmitter {
 
     await this.learningService.init();
 
+    // Wire up event bus if available
+    if (this.eventBus) {
+      this._setupEventBusIntegration();
+    }
+
     this._initialized = true;
     this.emit('initialized');
+    log.debug('Learning manager initialized', { autoLearn: this.autoLearn });
+  }
+
+  /**
+   * Set up event bus integration for automated learning
+   * @private
+   */
+  _setupEventBusIntegration() {
+    // Import EventType dynamically to avoid circular dependencies
+    const EventType = {
+      FEEDBACK_RECEIVED: 'feedback:received',
+      LEARNING_CYCLE_COMPLETE: 'learning:cycle:complete',
+    };
+
+    // Subscribe to feedback events
+    const unsubFeedback = this.eventBus.subscribe(EventType.FEEDBACK_RECEIVED, async (event) => {
+      await this._handleFeedbackEvent(event.data);
+    });
+    this._unsubscribers.push(unsubFeedback);
+
+    log.debug('Event bus integration set up');
+  }
+
+  /**
+   * Handle feedback event from event bus
+   * @private
+   */
+  async _handleFeedbackEvent(feedback) {
+    // Add to pending feedback
+    this._pendingFeedback.push({
+      ...feedback,
+      receivedAt: Date.now(),
+    });
+
+    log.trace('Feedback received', {
+      pending: this._pendingFeedback.length,
+      minSamples: this.minSamples,
+    });
+
+    // Auto-trigger learning cycle if threshold reached
+    if (this.autoLearn && this._pendingFeedback.length >= this.minSamples) {
+      log.debug('Auto-triggering learning cycle', {
+        pending: this._pendingFeedback.length,
+      });
+
+      try {
+        const result = await this.runLearningCycle();
+        this._stats.autoTriggeredCycles++;
+        this._pendingFeedback = []; // Clear pending after cycle
+
+        // Emit to event bus if available
+        if (this.eventBus) {
+          this.eventBus.publish('learning:cycle:complete', {
+            trigger: 'auto',
+            result,
+          }, { source: 'LearningManager' });
+        }
+      } catch (err) {
+        log.error('Auto learning cycle failed', { error: err.message });
+      }
+    }
+  }
+
+  /**
+   * Add feedback directly (bypasses event bus)
+   *
+   * @param {Object} feedback - Feedback data
+   */
+  async addFeedback(feedback) {
+    await this._handleFeedbackEvent(feedback);
+  }
+
+  /**
+   * Get pending feedback count
+   *
+   * @returns {number} Pending feedback count
+   */
+  getPendingFeedbackCount() {
+    return this._pendingFeedback.length;
+  }
+
+  /**
+   * Connect to an event bus
+   *
+   * @param {Object} eventBus - EventBus instance
+   */
+  connectEventBus(eventBus) {
+    if (this.eventBus) {
+      // Disconnect existing
+      this.disconnectEventBus();
+    }
+
+    this.eventBus = eventBus;
+
+    if (this._initialized) {
+      this._setupEventBusIntegration();
+    }
+  }
+
+  /**
+   * Disconnect from event bus
+   */
+  disconnectEventBus() {
+    for (const unsubscribe of this._unsubscribers) {
+      unsubscribe();
+    }
+    this._unsubscribers = [];
+    this.eventBus = null;
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

@@ -234,10 +234,21 @@ export {
 } from './agents/orchestrator.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Services - Autonomous Daemon and Background Processing
+// Services - Autonomous Daemon, Event Bus, and Automation
 // ═══════════════════════════════════════════════════════════════════════════════
 export {
+  // Autonomous Daemon
   AutonomousDaemon,
   createAutonomousDaemon,
   registerTaskHandler,
+  // Event Bus
+  EventBus,
+  EventType,
+  createEventBus,
+  getEventBus,
+  publish,
+  subscribe,
+  // Automation Executor
+  AutomationExecutor,
+  createAutomationExecutor,
 } from './services/index.js';

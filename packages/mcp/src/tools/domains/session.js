@@ -433,6 +433,140 @@ export function createProfileLoadTool(persistence) {
 }
 
 /**
+ * Create user preferences tool - get/set user preferences
+ * @param {Object} persistence - PersistenceManager instance
+ * @returns {Object} Tool definition
+ */
+export function createPreferencesTool(persistence) {
+  return {
+    name: 'brain_preferences',
+    description: 'Get or set user preferences for judgment, automation, and UI. Use action="get" to retrieve, action="set" to update.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        userId: {
+          type: 'string',
+          description: 'User ID',
+        },
+        action: {
+          type: 'string',
+          enum: ['get', 'set', 'reset'],
+          description: 'Action to perform (default: get)',
+        },
+        preferences: {
+          type: 'object',
+          description: 'Preferences to set (for action="set")',
+          properties: {
+            judgmentStrictness: { type: 'number', description: '0-1 strictness level (default: 0.5)' },
+            autoJudge: { type: 'boolean', description: 'Enable auto-judgment (default: true)' },
+            autoLearn: { type: 'boolean', description: 'Enable auto-learning (default: true)' },
+            autoNotifications: { type: 'boolean', description: 'Enable proactive notifications (default: true)' },
+            theme: { type: 'string', enum: ['dark', 'light'], description: 'UI theme (default: dark)' },
+            notificationLevel: { type: 'string', enum: ['silent', 'minimal', 'normal', 'verbose'] },
+          },
+        },
+      },
+      required: ['userId'],
+    },
+    handler: async (params) => {
+      const { userId, action = 'get', preferences = {} } = params;
+
+      if (!persistence?.userPreferences) {
+        return {
+          success: false,
+          error: 'User preferences not available (no PostgreSQL connection)',
+          timestamp: Date.now(),
+        };
+      }
+
+      try {
+        switch (action) {
+          case 'get': {
+            const prefs = await persistence.userPreferences.get(userId);
+            return {
+              success: true,
+              action: 'get',
+              userId,
+              preferences: prefs,
+              message: `*tail wag* Preferences loaded for ${userId}.`,
+              timestamp: Date.now(),
+            };
+          }
+
+          case 'set': {
+            // Convert camelCase to snake_case for database
+            const updates = {};
+            if (preferences.judgmentStrictness !== undefined) {
+              updates.judgment_strictness = preferences.judgmentStrictness;
+            }
+            if (preferences.autoJudge !== undefined) {
+              updates.auto_judge = preferences.autoJudge;
+            }
+            if (preferences.autoLearn !== undefined) {
+              updates.auto_learn = preferences.autoLearn;
+            }
+            if (preferences.autoNotifications !== undefined) {
+              updates.auto_notifications = preferences.autoNotifications;
+            }
+            if (preferences.theme !== undefined) {
+              updates.theme = preferences.theme;
+            }
+            if (preferences.notificationLevel !== undefined) {
+              updates.notification_level = preferences.notificationLevel;
+            }
+
+            if (Object.keys(updates).length === 0) {
+              return {
+                success: false,
+                error: 'No valid preferences provided to update',
+                timestamp: Date.now(),
+              };
+            }
+
+            const updated = await persistence.userPreferences.update(userId, updates);
+            return {
+              success: true,
+              action: 'set',
+              userId,
+              preferences: updated,
+              updated: Object.keys(updates),
+              message: `*tail wag* ${Object.keys(updates).length} preference(s) updated.`,
+              timestamp: Date.now(),
+            };
+          }
+
+          case 'reset': {
+            const reset = await persistence.userPreferences.reset(userId);
+            return {
+              success: true,
+              action: 'reset',
+              userId,
+              preferences: reset,
+              message: `*sniff* Preferences reset to defaults.`,
+              timestamp: Date.now(),
+            };
+          }
+
+          default:
+            return {
+              success: false,
+              error: `Unknown action: ${action}`,
+              timestamp: Date.now(),
+            };
+        }
+      } catch (err) {
+        log.error('Preferences error', { userId, action, error: err.message });
+        return {
+          success: false,
+          error: err.message,
+          timestamp: Date.now(),
+        };
+      }
+    },
+  };
+}
+
+/**
  * Factory for session domain tools
  */
 export const sessionFactory = {
@@ -461,6 +595,7 @@ export const sessionFactory = {
       tools.push(createProfileSyncTool(persistence));
       tools.push(createProfileLoadTool(persistence));
       tools.push(createPsychologyTool(persistence));
+      tools.push(createPreferencesTool(persistence));
     }
 
     return tools;

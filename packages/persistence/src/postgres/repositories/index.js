@@ -41,3 +41,6 @@ export { LessonsLearnedRepository, LessonCategory, LessonSeverity } from './less
 export { AutonomousGoalsRepository, GoalType, GoalStatus } from './autonomous-goals.js';
 export { AutonomousTasksRepository, TaskStatus, TaskType } from './autonomous-tasks.js';
 export { ProactiveNotificationsRepository, NotificationType } from './proactive-notifications.js';
+
+// Phase 18: Complete Automation Layer
+export { UserPreferencesRepository } from './user-preferences.js';
