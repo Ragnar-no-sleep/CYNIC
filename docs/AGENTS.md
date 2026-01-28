@@ -78,3 +78,33 @@ Opus:  1 (identity)
 Sonnet: 6 (complex)
 Haiku:  6 (fast)
 ```
+
+---
+
+## Pack Coordination
+
+Agents consult each other via the **Consultation Matrix** (see `@cynic/core` orchestration module).
+
+### Key Consultation Paths
+
+```
+architect → reviewer, simplifier  (design review)
+guardian → reviewer, tester       (security check)
+scout → cartographer, archivist   (exploration)
+deployer → guardian, tester       (pre-deploy)
+```
+
+### Circuit Breaker
+
+- **Max Depth**: 3 (prevents A→B→C→D chains)
+- **Max Consultations**: 5 per task
+- **Cycle Detection**: Blocks A→B→A loops
+- **Token Budget**: 10,000 tokens default
+
+### Pack Effectiveness (E)
+
+```
+E = ∛(Quality × Speed × Coherence) × 100
+```
+
+See `docs/ARCHITECTURE.md` §17 for details.

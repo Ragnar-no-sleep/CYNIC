@@ -35,11 +35,12 @@ npm install @cynic/core
 | `worlds` | 4 Kabbalah worlds framework |
 | `config` | Secure configuration management |
 | `refinement` | Self-critique and improvement |
-| `orchestration` | Multi-agent coordination |
+| `orchestration` | Multi-agent coordination, consultation matrix, circuit breaker |
 | `vector` | Semantic search/embeddings |
 | `learning` | Feedback → calibration loop |
 | `triggers` | Auto-judgment event handlers |
 | `ecosystem` | External source monitoring |
+| `context` | C-Score, token counting, budget management, context assembly |
 
 ---
 
@@ -57,6 +58,66 @@ const qScore = calculateQScore({
   dimensions: [...],
   weights: {...}
 });
+```
+
+### Context Intelligence (NEW)
+
+```javascript
+import {
+  calculateCScore,
+  BudgetManager,
+  assembleContext,
+  BUDGET_THRESHOLDS
+} from '@cynic/core';
+
+// Calculate C-Score for content
+const score = calculateCScore(
+  { text: 'function login() {}', type: 'code' },
+  { query: 'authentication', taskType: 'code' },
+  { turnsSinceAdded: 2 }
+);
+console.log(score.C);  // 0-100
+
+// Manage context budget (φ-aligned)
+const budget = new BudgetManager({ maxTokens: 200000 });
+console.log(budget.targetLimit);  // 47200 (23.6%)
+console.log(budget.softLimit);    // 76400 (38.2%)
+console.log(budget.hardLimit);    // 123600 (61.8%)
+
+// Assemble context with "ends-matter" strategy
+const result = assembleContext(items, context, { maxTokens: 50000 });
+```
+
+### Pack Coordination (NEW)
+
+```javascript
+import {
+  ConsultationCircuitBreaker,
+  getConsultants,
+  shouldConsult,
+  calculatePackEffectiveness
+} from '@cynic/core';
+
+// Get who to consult
+const consultants = getConsultants('architect', 'design');
+// ['reviewer', 'simplifier']
+
+// Circuit breaker prevents infinite loops
+const breaker = new ConsultationCircuitBreaker();
+if (breaker.canConsult('architect', 'reviewer').allowed) {
+  breaker.enterConsultation('architect', 'reviewer');
+  // ... do consultation ...
+  breaker.exitConsultation('architect', 'reviewer', { tokensUsed: 500 });
+}
+
+// Pack effectiveness metric
+const E = calculatePackEffectiveness({
+  avgQScore: 70,
+  avgResponseTime: 8000,
+  consensusRate: 0.8,
+  consultationSuccess: 0.9
+});
+console.log(E.E);  // 0-100
 ```
 
 ---

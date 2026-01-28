@@ -4,7 +4,7 @@
 >
 > **Mantra**: "Increase bandwidth, reduce latency"
 
-**Last Updated**: 2026-01-19
+**Last Updated**: 2026-01-28
 
 ---
 
@@ -1067,6 +1067,213 @@ Singularity = when dimensions explain 100% (asymptote, never reached).
 
 ---
 
+## 16. Context Intelligence (NEW)
+
+> "Ends matter" - Attention flows to beginnings and ends
+
+### 16.1 C-Score Formula
+
+```
+C-Score = (Pertinence × Fraîcheur × Densité) / √(Taille/100)
+
+Where:
+- Pertinence (0-1): Relevance to current task
+- Fraîcheur (0-1): How recent/fresh the content is
+- Densité (0-1): Information density (signal/noise)
+- Taille: Token count (penalizes bloat)
+
+Result: 0-100 (higher = more valuable in context)
+```
+
+### 16.2 φ-Aligned Budget Thresholds
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  CONTEXT BUDGET (φ-aligned)                                     │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  TARGET (23.6% = φ⁻³)                                           │
+│  ════════════════════                                           │
+│  Optimal context window size                                    │
+│  Keep context lean and relevant                                 │
+│                                                                  │
+│  SOFT LIMIT (38.2% = φ⁻²)                                       │
+│  ═════════════════════════                                      │
+│  Warning zone - consider pruning                                │
+│  Evict low C-Score items                                        │
+│                                                                  │
+│  HARD LIMIT (61.8% = φ⁻¹)                                       │
+│  ═════════════════════════                                      │
+│  Forced eviction                                                │
+│  Must prune to continue                                         │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 16.3 "Ends Matter" Assembly Strategy
+
+LLM attention is strongest at the beginning and end of context:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     CONTEXT ASSEMBLY                             │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  [START OF CONTEXT]                                              │
+│  ├── Highest C-Score items (critical context)                  │
+│  ├── Recent items (fresh context)                               │
+│  │                                                               │
+│  │   ... middle items (may be compressed) ...                   │
+│  │                                                               │
+│  ├── Recent items (continuation)                                │
+│  └── Current focus (what we're working on)                     │
+│  [END OF CONTEXT]                                                │
+│                                                                  │
+│  Strategy:                                                       │
+│  1. Sort by C-Score                                             │
+│  2. Place top items at start                                    │
+│  3. Place recent items at end                                   │
+│  4. Fill middle with remaining                                  │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 16.4 Token Counting
+
+```javascript
+// Hierarchical estimation (fast, φ-cached)
+function countTokens(text) {
+  // 1 token ≈ 4 characters for English
+  // 1 token ≈ 1.5 characters for code
+  // Cache results with φ-decay
+}
+
+// Type-aware multipliers
+const MULTIPLIERS = {
+  code: 1.3,      // Code is token-dense
+  markdown: 1.1,  // Some overhead
+  json: 1.4,      // Structure overhead
+  text: 1.0       // Baseline
+};
+```
+
+---
+
+## 17. Pack Coordination (NEW)
+
+> "The pack hunts together" - Multi-agent consultation
+
+### 17.1 Consultation Matrix
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  CONSULTATION MATRIX (Who consults whom, and when)              │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  AGENT         │ SITUATION      │ CONSULTS                      │
+│  ══════════════╪════════════════╪══════════════════════════════ │
+│  architect     │ design         │ reviewer, simplifier          │
+│                │ security       │ guardian                      │
+│                │ patterns       │ archivist, oracle             │
+│  ──────────────┼────────────────┼────────────────────────────── │
+│  scout         │ search         │ cartographer, archivist       │
+│                │ exploration    │ oracle                        │
+│  ──────────────┼────────────────┼────────────────────────────── │
+│  reviewer      │ quality        │ tester, guardian              │
+│                │ complexity     │ simplifier                    │
+│                │ history        │ archivist                     │
+│  ──────────────┼────────────────┼────────────────────────────── │
+│  guardian      │ security       │ reviewer, tester              │
+│                │ infrastructure │ deployer                      │
+│  ──────────────┼────────────────┼────────────────────────────── │
+│  tester        │ coverage       │ reviewer                      │
+│                │ integration    │ deployer                      │
+│  ──────────────┼────────────────┼────────────────────────────── │
+│  simplifier    │ refactor       │ reviewer, architect           │
+│                │ patterns       │ archivist                     │
+│  ──────────────┼────────────────┼────────────────────────────── │
+│  deployer      │ infrastructure │ guardian, tester              │
+│                │ monitoring     │ oracle                        │
+│  ──────────────┼────────────────┼────────────────────────────── │
+│  doc           │ accuracy       │ reviewer, archivist           │
+│                │ completeness   │ architect                     │
+│  ──────────────┼────────────────┼────────────────────────────── │
+│  oracle        │ analysis       │ archivist, cartographer       │
+│                │ visualization  │ architect                     │
+│  ──────────────┼────────────────┼────────────────────────────── │
+│  integrator    │ sync           │ deployer, cartographer        │
+│                │ compatibility  │ reviewer                      │
+│  ──────────────┼────────────────┼────────────────────────────── │
+│  librarian     │ docs           │ archivist                     │
+│                │ cache          │ deployer                      │
+│  ──────────────┼────────────────┼────────────────────────────── │
+│  solana-expert │ blockchain     │ guardian, librarian           │
+│                │ transactions   │ oracle                        │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 17.2 Circuit Breaker (Loop Prevention)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  CONSULTATION CIRCUIT BREAKER                                   │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  MAX DEPTH: 3                                                   │
+│  ═══════════                                                    │
+│  architect → reviewer → tester → STOP                          │
+│  Prevents infinite consultation chains                          │
+│                                                                  │
+│  MAX CONSULTATIONS: 5                                           │
+│  ═══════════════════                                            │
+│  Per task, max 5 total consultations                           │
+│  Prevents over-consultation                                     │
+│                                                                  │
+│  CYCLE DETECTION                                                │
+│  ═══════════════                                                │
+│  architect → reviewer → architect → BLOCKED                    │
+│  Tracks visited pairs, prevents loops                          │
+│                                                                  │
+│  TOKEN BUDGET                                                   │
+│  ════════════                                                   │
+│  Default: 10,000 tokens per consultation chain                 │
+│  Prevents runaway token consumption                            │
+│                                                                  │
+│  COOLDOWN (φ-aligned)                                           │
+│  ═════════════════════                                          │
+│  After blocked consultation: wait φ² × base_ms                 │
+│  Exponential backoff prevents hammering                        │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 17.3 Pack Effectiveness (E-Score for the Pack)
+
+```
+E = ∛(Quality × Speed × Coherence) × 100
+
+Where:
+- Quality = avgQScore / 100                    (0-1)
+- Speed = 1 / (1 + avgResponseTime/10000)     (0-1, decay)
+- Coherence = consensusRate × consultationSuccess  (0-1)
+
+Components:
+┌──────────────────────┬─────────────────────────────────────────┐
+│ COMPONENT            │ DESCRIPTION                             │
+├──────────────────────┼─────────────────────────────────────────┤
+│ avgQScore            │ Average Q-Score of pack judgments       │
+│ avgResponseTime      │ Average ms per consultation             │
+│ consensusRate        │ % of consultations reaching agreement   │
+│ consultationSuccess  │ % of consultations that helped          │
+└──────────────────────┴─────────────────────────────────────────┘
+
+Thresholds:
+- E < 50:  Pack is struggling, reduce consultations
+- E 50-70: Pack is functional, normal operation
+- E > 70:  Pack is effective, consider deeper consultations
+```
+
 ---
 
 ## Appendix A: System Diagrams
@@ -1333,6 +1540,6 @@ Singularity = when dimensions explain 100% (asymptote, never reached).
 
 ---
 
-**Document Version**: 1.1.0
-**Last Updated**: 2026-01-19
-**Status**: DRAFT - Awaiting implementation
+**Document Version**: 1.2.0
+**Last Updated**: 2026-01-28
+**Status**: ACTIVE - Context Intelligence & Pack Coordination implemented
