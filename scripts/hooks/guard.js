@@ -21,7 +21,7 @@ import cynic, {
   loadUserProfile,
   updateUserProfile,
   saveCollectivePattern,
-  orchestrate,
+  orchestrateFull,  // Phase 21: Full orchestration with UnifiedOrchestrator
   sendHookToCollectiveSync,
   getWatchdog,
   getCircuitBreaker,
@@ -295,32 +295,50 @@ async function main() {
     const filePath = toolInput.file_path || toolInput.filePath || '';
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // ORCHESTRATION: Consult KETER for intervention level
-    // "Le chien consulte KETER avant d'agir"
+    // ORCHESTRATION: Full orchestration through UnifiedOrchestrator (Phase 21)
+    // Includes: KETER routing → Dogs judgment → Engines synthesis → Circuit breakers
+    // "Le chien consulte le cerveau collectif avant d'agir"
     // ═══════════════════════════════════════════════════════════════════════════
     let orchestration = null;
     const user = detectUser();
     try {
-      orchestration = await orchestrate('tool_use', {
-        content: toolName === 'Bash' ? command : filePath,
-        source: 'guard_hook',
-        metadata: { tool: toolName },
-      }, {
-        user: user.userId,
-        project: detectProject(),
-      });
+      orchestration = await orchestrateFull(
+        toolName === 'Bash' ? command : filePath,
+        {
+          eventType: 'tool_use',
+          requestJudgment: true,  // Get judgment from Dogs
+          metadata: {
+            tool: toolName,
+            source: 'guard_hook',
+            project: detectProject(),
+            toolInput: toolInput,
+          },
+        }
+      );
     } catch (e) {
       // Orchestration failed - continue with local logic
+      if (process.env.CYNIC_DEBUG) {
+        console.error('[GUARD] Orchestration failed:', e.message);
+      }
     }
 
-    // If orchestrator says BLOCK, block immediately (for users with low E-Score on critical actions)
-    if (orchestration?.intervention?.level === 'block') {
+    // If orchestrator says BLOCK, block immediately
+    // UnifiedOrchestrator returns outcome: 'block' | 'allow' | 'warn'
+    if (orchestration?.outcome === 'block') {
+      const reason = orchestration.reasoning?.join('\n') ||
+                     orchestration.judgment?.reasoning ||
+                     'Dangerous operation detected';
+      const qScore = orchestration.judgment?.qScore ?? 'N/A';
+
       console.log(JSON.stringify({
         continue: false,
-        message: `*GROWL* KETER BLOCK\n\n${orchestration.intervention.reason}\n\nYour trust level: ${orchestration.intervention.userTrustLevel} (E-Score: ${Math.round(orchestration.intervention.userEScore)})`
+        message: `*GROWL* ORCHESTRATOR BLOCK\n\n${reason}\n\nQ-Score: ${qScore}\nDecision ID: ${orchestration.decisionId || 'N/A'}`
       }));
       return;
     }
+
+    // Orchestrator WARN handling is done later after local analysis
+    // (merged with local issues to avoid duplication)
 
     // ==========================================================================
     // CIRCUIT BREAKER CHECK (Anti-loop protection)
@@ -466,6 +484,31 @@ async function main() {
       }
     }
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // MERGE ORCHESTRATION INSIGHTS (Phase 21)
+    // Add orchestrator warnings/insights to local issues
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (orchestration?.outcome === 'warn' && orchestration?.reasoning?.length > 0) {
+      // Add orchestration warning if not already a critical issue locally
+      const hasCriticalLocal = issues.some(i => i.severity === 'critical');
+      if (!hasCriticalLocal) {
+        issues.push({
+          severity: 'medium',
+          message: `*sniff* Orchestrator: ${orchestration.reasoning[0]}`,
+          action: 'warn',
+        });
+      }
+    }
+
+    // Add judgment insight if available (for learning)
+    if (orchestration?.judgment && orchestration.judgment.qScore < 50) {
+      issues.push({
+        severity: 'low',
+        message: `Q-Score: ${orchestration.judgment.qScore}/100 - ${orchestration.judgment.verdict || 'Review recommended'}`,
+        action: 'suggest',
+      });
+    }
+
     // No issues found - continue
     if (issues.length === 0) {
       // If we did a security scan and it passed, log it
@@ -473,6 +516,14 @@ async function main() {
         console.log(JSON.stringify({
           continue: true,
           message: '*sniff* Security scan passed. No secrets in staged files.'
+        }));
+        return;
+      }
+      // Include orchestration success info if available
+      if (orchestration?.success && orchestration.decisionId) {
+        console.log(JSON.stringify({
+          continue: true,
+          message: `*tail wag* Decision ${orchestration.decisionId.slice(0, 8)} recorded.`
         }));
         return;
       }
@@ -486,12 +537,16 @@ async function main() {
     // Format response
     const { shouldBlock, message } = formatGuardianResponse(issues, toolName, profile);
 
-    // Send to MCP server (non-blocking)
+    // Send to MCP server (non-blocking) - include decision tracing
     sendHookToCollectiveSync('PreToolUse', {
       toolName,
       issues: issues.map(i => ({ severity: i.severity, message: i.message })),
       blocked: shouldBlock,
       timestamp: Date.now(),
+      // Phase 21: Include orchestration tracing
+      decisionId: orchestration?.decisionId,
+      qScore: orchestration?.judgment?.qScore,
+      outcome: orchestration?.outcome,
     });
 
     if (shouldBlock) {
