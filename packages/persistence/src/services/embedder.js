@@ -25,6 +25,7 @@ export const EMBEDDING_DIMENSIONS = 1536;
  */
 export const EmbedderType = {
   OPENAI: 'openai',
+  OLLAMA: 'ollama',
   LOCAL: 'local',
   MOCK: 'mock',
 };
@@ -267,27 +268,132 @@ export class OpenAIEmbedder extends Embedder {
 }
 
 /**
+ * Ollama Embedder - Local embeddings via Ollama
+ *
+ * Requires Ollama running locally: https://ollama.ai
+ * Models: nomic-embed-text (768d), mxbai-embed-large (1024d), all-minilm (384d)
+ *
+ * Install model: ollama pull nomic-embed-text
+ */
+export class OllamaEmbedder extends Embedder {
+  constructor(options = {}) {
+    // Default dimensions based on model
+    const model = options.model || process.env.OLLAMA_EMBED_MODEL || 'nomic-embed-text';
+    const defaultDims = {
+      'nomic-embed-text': 768,
+      'mxbai-embed-large': 1024,
+      'all-minilm': 384,
+    };
+    const dimensions = options.dimensions || defaultDims[model] || 768;
+
+    super({ ...options, dimensions, type: EmbedderType.OLLAMA });
+    this.model = model;
+    this.baseUrl = options.baseUrl || process.env.OLLAMA_HOST || 'http://localhost:11434';
+    this.timeout = options.timeout || 30000; // 30s timeout
+  }
+
+  /**
+   * Generate embedding via Ollama API
+   */
+  async embed(text) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+    try {
+      const response = await fetch(`${this.baseUrl}/api/embeddings`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: this.model,
+          prompt: text,
+        }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const error = await response.text().catch(() => 'Unknown error');
+        throw new Error(`Ollama API error: ${response.status} - ${error}`);
+      }
+
+      const data = await response.json();
+      return data.embedding;
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        throw new Error(`Ollama timeout after ${this.timeout}ms - is Ollama running?`);
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  /**
+   * Check if Ollama is available
+   * @returns {Promise<boolean>}
+   */
+  async isAvailable() {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/tags`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(5000),
+      });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Check if the model is installed
+   * @returns {Promise<boolean>}
+   */
+  async hasModel() {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/tags`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!response.ok) return false;
+
+      const data = await response.json();
+      return data.models?.some(m => m.name.startsWith(this.model)) || false;
+    } catch {
+      return false;
+    }
+  }
+}
+
+/**
  * Create embedder based on environment and options
  *
  * Default: MockEmbedder (free, local, deterministic)
- * Set CYNIC_EMBEDDER=openai to use OpenAI (requires OPENAI_API_KEY)
+ * Set CYNIC_EMBEDDER=ollama for local Ollama embeddings (recommended)
+ * Set CYNIC_EMBEDDER=openai for OpenAI (requires OPENAI_API_KEY)
  *
  * @param {Object} options - Embedder options
  * @returns {Embedder} Embedder instance
  */
 export function createEmbedder(options = {}) {
-  // Default to mock - opt-in to OpenAI via CYNIC_EMBEDDER=openai
+  // Default to mock - opt-in via CYNIC_EMBEDDER
   const envType = process.env.CYNIC_EMBEDDER?.toLowerCase();
-  const type = options.type || (envType === 'openai' ? EmbedderType.OPENAI : EmbedderType.MOCK);
+  const type = options.type || envType || EmbedderType.MOCK;
 
   switch (type) {
+    case EmbedderType.OLLAMA:
+    case 'ollama':
+      return new OllamaEmbedder(options);
     case EmbedderType.OPENAI:
+    case 'openai':
       return new OpenAIEmbedder(options);
     case EmbedderType.LOCAL:
+    case 'local':
       // Future: Support for local models (e.g., sentence-transformers)
       console.warn('Local embedder not yet implemented, falling back to mock');
       return new MockEmbedder(options);
     case EmbedderType.MOCK:
+    case 'mock':
     default:
       return new MockEmbedder(options);
   }

@@ -20,6 +20,7 @@ export {
   Embedder,
   MockEmbedder,
   OpenAIEmbedder,
+  OllamaEmbedder,
   EmbedderType,
   EMBEDDING_DIMENSIONS,
   createEmbedder,
