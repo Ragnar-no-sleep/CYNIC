@@ -69,6 +69,9 @@ export class MetricsService extends EventEmitter {
       collectCount: 0,
       lastCollectMs: 0,
     };
+
+    // Event tracking (for recordEvent)
+    this._events = new Map();
   }
 
   /**
@@ -397,6 +400,45 @@ export class MetricsService extends EventEmitter {
    */
   setThresholds(thresholds) {
     this._alertManager.setThresholds(thresholds);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Event Recording (for ServiceInitializer bus subscriptions)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Record an event for metrics tracking
+   * @param {string} eventType - Event type (e.g., 'user_feedback', 'tool_completed')
+   * @param {Object} [data={}] - Event data
+   */
+  recordEvent(eventType, data = {}) {
+    if (!this._events.has(eventType)) {
+      this._events.set(eventType, { count: 0, last: null, samples: [] });
+    }
+    const record = this._events.get(eventType);
+    record.count++;
+    record.last = Date.now();
+    // Keep last 10 samples for analysis
+    record.samples.push({ timestamp: Date.now(), ...data });
+    if (record.samples.length > 10) {
+      record.samples.shift();
+    }
+  }
+
+  /**
+   * Get recorded events summary
+   * @returns {Object} Event stats by type
+   */
+  getEventStats() {
+    const stats = {};
+    for (const [type, record] of this._events) {
+      stats[type] = {
+        count: record.count,
+        last: record.last,
+        sampleCount: record.samples.length,
+      };
+    }
+    return stats;
   }
 }
 
