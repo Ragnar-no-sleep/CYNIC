@@ -22,6 +22,13 @@ tools:
   - Grep
   - Glob
   - Bash
+  # Brain Tools - Solana Knowledge
+  - mcp__cynic__brain_cynic_judge
+  - mcp__cynic__brain_search
+  - mcp__cynic__brain_docs
+  - mcp__cynic__brain_memory_search
+  - mcp__cynic__brain_memory_store
+  - mcp__cynic__brain_patterns
 color: "#9945FF"
 icon: "⛓️"
 ---

@@ -19,6 +19,12 @@ tools:
   - Read
   - Grep
   - Glob
+  # Brain Tools - Codebase & Notifications
+  - mcp__cynic__brain_codebase
+  - mcp__cynic__brain_lsp_symbols
+  - mcp__cynic__brain_notifications
+  - mcp__cynic__brain_memory_search
+  - mcp__cynic__brain_patterns
 color: "#10B981"
 icon: "🧪"
 ---

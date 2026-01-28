@@ -21,6 +21,13 @@ tools:
   - Grep
   - Read
   - Bash
+  # Brain Tools - Collective Search
+  - mcp__cynic__brain_search
+  - mcp__cynic__brain_vector_search
+  - mcp__cynic__brain_codebase
+  - mcp__cynic__brain_lsp_symbols
+  - mcp__cynic__brain_lsp_references
+  - mcp__cynic__brain_memory_search
 color: "#3B82F6"
 icon: "🔍"
 ---

@@ -21,6 +21,13 @@ tools:
   - Glob
   - Bash
   - Task
+  # Brain Tools - Ecosystem Integration
+  - mcp__cynic__brain_integrator
+  - mcp__cynic__brain_ecosystem
+  - mcp__cynic__brain_ecosystem_monitor
+  - mcp__cynic__brain_patterns
+  - mcp__cynic__brain_memory_search
+  - mcp__cynic__brain_memory_store
 color: "#10B981"
 icon: "🔗"
 ---

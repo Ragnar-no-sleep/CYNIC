@@ -21,6 +21,14 @@ tools:
   - Grep
   - Glob
   - Bash
+  # Brain Tools - Codebase Mapping
+  - mcp__cynic__brain_codebase
+  - mcp__cynic__brain_search
+  - mcp__cynic__brain_vector_search
+  - mcp__cynic__brain_ecosystem
+  - mcp__cynic__brain_lsp_symbols
+  - mcp__cynic__brain_lsp_imports
+  - mcp__cynic__brain_memory_search
 color: "#84CC16"
 icon: "🗺️"
 ---

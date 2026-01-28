@@ -22,6 +22,12 @@ tools:
   - Grep
   - Glob
   - Bash
+  # Brain Tools - Documentation Cache
+  - mcp__cynic__brain_docs
+  - mcp__cynic__brain_search
+  - mcp__cynic__brain_memory_search
+  - mcp__cynic__brain_memory_store
+  - mcp__cynic__brain_patterns
 color: "#6B7280"
 icon: "📚"
 ---

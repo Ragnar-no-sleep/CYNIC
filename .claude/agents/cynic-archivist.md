@@ -21,6 +21,15 @@ tools:
   - Grep
   - Glob
   - Bash
+  # Brain Tools - Memory Specialist
+  - mcp__cynic__brain_memory_search
+  - mcp__cynic__brain_memory_store
+  - mcp__cynic__brain_memory_stats
+  - mcp__cynic__brain_search
+  - mcp__cynic__brain_vector_search
+  - mcp__cynic__brain_search_index
+  - mcp__cynic__brain_timeline
+  - mcp__cynic__brain_patterns
 color: "#10B981"
 icon: "📜"
 ---

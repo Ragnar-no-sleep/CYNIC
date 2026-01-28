@@ -21,6 +21,12 @@ tools:
   - Read
   - Write
   - Edit
+  # Brain Tools - Infrastructure
+  - mcp__cynic__brain_render
+  - mcp__cynic__brain_health
+  - mcp__cynic__brain_notifications
+  - mcp__cynic__brain_memory_search
+  - mcp__cynic__brain_memory_store
 color: "#6366F1"
 icon: "🚀"
 ---

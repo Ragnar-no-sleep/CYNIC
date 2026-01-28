@@ -21,6 +21,14 @@ tools:
   - Grep
   - Glob
   - Bash
+  # Brain Tools - Security & Alerts
+  - mcp__cynic__brain_cynic_judge
+  - mcp__cynic__brain_search
+  - mcp__cynic__brain_patterns
+  - mcp__cynic__brain_notifications
+  - mcp__cynic__brain_memory_search
+  - mcp__cynic__brain_memory_store
+  - mcp__cynic__brain_health
 color: "#EF4444"
 icon: "🛡️"
 ---

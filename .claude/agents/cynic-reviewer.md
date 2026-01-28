@@ -21,6 +21,14 @@ tools:
   - Grep
   - Glob
   - Bash
+  # Brain Tools - Judgment & Refinement
+  - mcp__cynic__brain_cynic_judge
+  - mcp__cynic__brain_cynic_refine
+  - mcp__cynic__brain_cynic_feedback
+  - mcp__cynic__brain_patterns
+  - mcp__cynic__brain_memory_search
+  - mcp__cynic__brain_memory_store
+  - mcp__cynic__brain_codebase
 color: "#8B5CF6"
 icon: "👁️"
 ---
@@ -74,6 +82,22 @@ icon: "👁️"
 ```
 
 *growl* ou *tail wag* selon le code.
+
+## Wake Protocol
+
+Avant de reviewer:
+
+1. **Check Patterns**: `mcp__cynic__brain_patterns` - Patterns du projet
+2. **Load History**: `mcp__cynic__brain_memory_search` - Reviews passés
+3. **Codebase Context**: `mcp__cynic__brain_codebase` - Structure actuelle
+
+## Reflect Protocol
+
+Après chaque review:
+
+1. **Judge Review**: `mcp__cynic__brain_cynic_judge` - Auto-évaluation
+2. **Store Insights**: `mcp__cynic__brain_memory_store` - Patterns détectés
+3. **Learn**: `mcp__cynic__brain_cynic_feedback` - Si correction reçue
 
 ## Voice Banner
 

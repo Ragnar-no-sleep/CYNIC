@@ -20,6 +20,12 @@ tools:
   - Edit
   - Grep
   - Glob
+  # Brain Tools - Documentation
+  - mcp__cynic__brain_docs
+  - mcp__cynic__brain_search
+  - mcp__cynic__brain_codebase
+  - mcp__cynic__brain_memory_search
+  - mcp__cynic__brain_memory_store
 color: "#6B7280"
 icon: "📝"
 ---

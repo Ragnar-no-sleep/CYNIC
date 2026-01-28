@@ -22,6 +22,13 @@ tools:
   - Edit
   - Grep
   - Glob
+  # Brain Tools - Judgment & Simplification
+  - mcp__cynic__brain_cynic_judge
+  - mcp__cynic__brain_cynic_refine
+  - mcp__cynic__brain_patterns
+  - mcp__cynic__brain_codebase
+  - mcp__cynic__brain_memory_search
+  - mcp__cynic__brain_memory_store
 color: "#F59E0B"
 icon: "✂️"
 ---

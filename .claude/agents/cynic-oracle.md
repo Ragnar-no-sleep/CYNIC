@@ -21,6 +21,13 @@ tools:
   - Grep
   - Glob
   - Bash
+  # Brain Tools - Visualization & Insights
+  - mcp__cynic__brain_patterns
+  - mcp__cynic__brain_timeline
+  - mcp__cynic__brain_metrics
+  - mcp__cynic__brain_ecosystem
+  - mcp__cynic__brain_collective_status
+  - mcp__cynic__brain_memory_search
 color: "#F59E0B"
 icon: "🔮"
 ---
