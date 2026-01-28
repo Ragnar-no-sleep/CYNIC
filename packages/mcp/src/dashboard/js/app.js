@@ -21,6 +21,8 @@ import { LiveView } from './views/live.js';
 import { KnowledgeView } from './views/knowledge.js';
 import { MemoryView } from './views/memory.js';
 import { AutonomyView } from './views/autonomy.js';
+import { ResilienceView } from './views/resilience.js';  // Phase 21: Circuit breakers
+import { DecisionsView } from './views/decisions.js';    // Phase 21: Decision tracing
 import { SingularityView } from './views/singularity.js';
 
 /**
@@ -160,6 +162,14 @@ class App {
     this.views.autonomy = new AutonomyView({ api });
     this.views.autonomy.render(document.getElementById('view-autonomy'));
 
+    // Resilience view (Phase 21: Circuit breakers health and stats)
+    this.views.resilience = new ResilienceView({ api });
+    this.views.resilience.render(document.getElementById('view-resilience'));
+
+    // Decisions view (Phase 21: Decision timeline and tracing)
+    this.views.decisions = new DecisionsView({ api });
+    this.views.decisions.render(document.getElementById('view-decisions'));
+
     // Singularity view (index, milestones, comparison)
     this.views.singularity = new SingularityView({ api });
     this.views.singularity.render(document.getElementById('view-singularity'));
@@ -233,6 +243,12 @@ class App {
         break;
       case 'autonomy':
         await this.views.autonomy.refresh();
+        break;
+      case 'resilience':
+        await this.views.resilience.refresh();
+        break;
+      case 'decisions':
+        await this.views.decisions.refresh();
         break;
       case 'singularity':
         await this.views.singularity.refresh();
