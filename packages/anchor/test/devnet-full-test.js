@@ -124,6 +124,67 @@ async function airdrop(connection, publicKey, amount, retries = 3) {
   }
 }
 
+/**
+ * Load wallet from file or create new one with airdrop
+ */
+async function loadOrCreateWallet(connection, walletPath) {
+  if (existsSync(walletPath)) {
+    log(`\n  Loading pre-funded wallet from: ${walletPath}`, CYAN);
+    const { readFileSync } = await import('fs');
+    const keyData = JSON.parse(readFileSync(walletPath, 'utf8'));
+    const keypair = Keypair.fromSecretKey(new Uint8Array(keyData));
+    log(`  Wallet: ${keypair.publicKey.toBase58()}`, CYAN);
+    return keypair;
+  }
+
+  log(`\n  ⚠️ No saved wallet found, generating new one...`, YELLOW);
+  const keypair = Keypair.generate();
+  log(`  New wallet: ${keypair.publicKey.toBase58()}`, CYAN);
+
+  const { writeFileSync } = await import('fs');
+  writeFileSync(walletPath, JSON.stringify(Array.from(keypair.secretKey)));
+  log(`  Saved wallet to: ${walletPath}`, GREEN);
+  log('  Requesting airdrop...', YELLOW);
+  await airdrop(connection, keypair.publicKey, LAMPORTS_PER_SOL);
+
+  return keypair;
+}
+
+/**
+ * Verify merkle proofs for all items in queue
+ */
+function verifyQueueProofs(queue, items) {
+  for (const item of items) {
+    const proofData = queue.getProof(item.id);
+    if (!proofData) return false;
+    const isValid = queue.verifyProof(proofData.itemHash, proofData.merkleRoot, proofData.merkleProof);
+    if (!isValid) return false;
+  }
+  return true;
+}
+
+/**
+ * Print test results summary
+ */
+function printTestSummary() {
+  header('📊 Test Results Summary');
+
+  const total = results.passed + results.failed;
+  const passRate = ((results.passed / total) * 100).toFixed(1);
+
+  log(`\n  Total Tests: ${total}`, CYAN);
+  log(`  Passed: ${results.passed}`, GREEN);
+  log(`  Failed: ${results.failed}`, results.failed > 0 ? RED : GREEN);
+  log(`  Pass Rate: ${passRate}%`, passRate >= 80 ? GREEN : YELLOW);
+
+  if (results.failed > 0) {
+    log('\n  Failed Tests:', RED);
+    for (const test of results.tests.filter((t) => t.status === 'FAIL')) {
+      log(`    - ${test.name}: ${test.error}`, RED);
+    }
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Test 1: Wallet Management
 // ═══════════════════════════════════════════════════════════════════════════
@@ -280,19 +341,7 @@ async function testQueueBatching(connection, keypair) {
       pass('Flush queue', `batch: ${batch.batchId}, root: ${batch.merkleRoot.slice(0, 16)}...`);
 
       // Verify proofs
-      let proofsValid = true;
-      for (const item of items) {
-        const proofData = queue.getProof(item.id);
-        if (proofData) {
-          // verifyProof(itemHash, merkleRoot, merkleProof)
-          const isValid = queue.verifyProof(proofData.itemHash, proofData.merkleRoot, proofData.merkleProof);
-          if (!isValid) proofsValid = false;
-        } else {
-          proofsValid = false;
-        }
-      }
-
-      if (proofsValid) {
+      if (verifyQueueProofs(queue, items)) {
         pass('Merkle proofs', 'All proofs valid');
       } else {
         fail('Merkle proofs', new Error('Some proofs invalid'));
@@ -500,30 +549,10 @@ async function main() {
   log(`\n  Cluster: ${CONFIG.cluster}`, CYAN);
   log(`  Time: ${new Date().toISOString()}`, CYAN);
 
-  // Setup connection
+  // Setup
   const connection = new Connection(CONFIG.cluster, 'confirmed');
-
-  // Load pre-funded wallet from file
   const walletPath = join(import.meta.dirname, '.devnet-wallet.json');
-  let mainKeypair;
-
-  if (existsSync(walletPath)) {
-    log(`\n  Loading pre-funded wallet from: ${walletPath}`, CYAN);
-    const { readFileSync } = await import('fs');
-    const keyData = JSON.parse(readFileSync(walletPath, 'utf8'));
-    mainKeypair = Keypair.fromSecretKey(new Uint8Array(keyData));
-    log(`  Wallet: ${mainKeypair.publicKey.toBase58()}`, CYAN);
-  } else {
-    log(`\n  ⚠️ No saved wallet found, generating new one...`, YELLOW);
-    mainKeypair = Keypair.generate();
-    log(`  New wallet: ${mainKeypair.publicKey.toBase58()}`, CYAN);
-    // Save wallet for reuse
-    const { writeFileSync } = await import('fs');
-    writeFileSync(walletPath, JSON.stringify(Array.from(mainKeypair.secretKey)));
-    log(`  Saved wallet to: ${walletPath}`, GREEN);
-    log('  Requesting airdrop...', YELLOW);
-    await airdrop(connection, mainKeypair.publicKey, LAMPORTS_PER_SOL);
-  }
+  const mainKeypair = await loadOrCreateWallet(connection, walletPath);
 
   // Check balance
   const balance = await connection.getBalance(mainKeypair.publicKey);
@@ -545,23 +574,8 @@ async function main() {
   await testErrorHandling();
   await testExportImport();
 
-  // Summary
-  header('📊 Test Results Summary');
-
-  const total = results.passed + results.failed;
-  const passRate = ((results.passed / total) * 100).toFixed(1);
-
-  log(`\n  Total Tests: ${total}`, CYAN);
-  log(`  Passed: ${results.passed}`, GREEN);
-  log(`  Failed: ${results.failed}`, results.failed > 0 ? RED : GREEN);
-  log(`  Pass Rate: ${passRate}%`, passRate >= 80 ? GREEN : YELLOW);
-
-  if (results.failed > 0) {
-    log('\n  Failed Tests:', RED);
-    for (const test of results.tests.filter((t) => t.status === 'FAIL')) {
-      log(`    - ${test.name}: ${test.error}`, RED);
-    }
-  }
+  // Results
+  printTestSummary();
 
   header('🐕 Validation Complete');
   log(`\n  "Onchain is truth" - Architecture ${results.failed === 0 ? 'VALIDATED' : 'NEEDS ATTENTION'}`,
