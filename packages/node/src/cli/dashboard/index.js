@@ -20,6 +20,8 @@ import {
   createChainScreen,
   createPatternsScreen,
   createAgentsScreen,
+  createResilienceScreen,
+  createDecisionsScreen,
 } from './screens/index.js';
 
 // φ-aligned poll interval
@@ -33,6 +35,8 @@ const SCREENS = {
   CHAIN: 'chain',
   PATTERNS: 'patterns',
   AGENTS: 'agents',
+  RESILIENCE: 'resilience',
+  DECISIONS: 'decisions',
 };
 
 /**
@@ -93,6 +97,8 @@ export async function createDashboard(options = {}) {
     chain: createChainScreen(screen, dataFetcher),
     patterns: createPatternsScreen(screen, dataFetcher),
     agents: createAgentsScreen(screen, dataFetcher),
+    resilience: createResilienceScreen(screen, dataFetcher),
+    decisions: createDecisionsScreen(screen, dataFetcher),
   };
 
   // Show initial screen
@@ -182,6 +188,8 @@ export async function createDashboard(options = {}) {
   screen.key('f', () => {
     if (currentScreen === SCREENS.CHAIN) {
       screens.chain.flush();
+    } else if (currentScreen === SCREENS.DECISIONS) {
+      screens.decisions.cycleFilter();
     }
   });
 
@@ -204,6 +212,34 @@ export async function createDashboard(options = {}) {
       const index = screens.agents.getSelectedIndex();
       screens.agents.runDiagnostic(index);
     }
+  });
+
+  // Resilience screen navigation
+  screen.key('e', () => {
+    switchScreen(SCREENS.RESILIENCE);
+  });
+
+  // Resilience screen specific keys
+  screen.key('t', () => {
+    if (currentScreen === SCREENS.RESILIENCE) {
+      const index = screens.resilience.getSelectedIndex();
+      screens.resilience.tripCircuit(index);
+    } else if (currentScreen === SCREENS.DECISIONS) {
+      const index = screens.decisions.getSelectedIndex();
+      screens.decisions.traceDecision(index);
+    }
+  });
+
+  screen.key('s', () => {
+    if (currentScreen === SCREENS.RESILIENCE) {
+      const index = screens.resilience.getSelectedIndex();
+      screens.resilience.resetCircuit(index);
+    }
+  });
+
+  // Decisions screen navigation
+  screen.key('o', () => {
+    switchScreen(SCREENS.DECISIONS);
   });
 
   // ═══════════════════════════════════════════════════════════
