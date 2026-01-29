@@ -120,8 +120,11 @@ function loadState() {
 function saveState() {
   ensureDir();
   fs.writeFileSync(STATE_FILE, JSON.stringify({
+    session: thermoState.session,
     totals: thermoState.totals,
     stats: thermoState.stats,
+    heatSources: thermoState.heatSources,
+    workSources: thermoState.workSources,
   }, null, 2));
 }
 
@@ -164,6 +167,7 @@ function addHeat(amount, source = 'unknown') {
 
   thermoState.session.lastAction = Date.now();
 
+  saveState(); // Persist state for cross-process access
   return getState();
 }
 
@@ -192,6 +196,7 @@ function addWork(amount, source = 'unknown') {
     thermoState.stats.peakEfficiency = efficiency;
   }
 
+  saveState(); // Persist state for cross-process access
   return getState();
 }
 
@@ -500,6 +505,20 @@ function init() {
   if (saved) {
     thermoState.totals = saved.totals || thermoState.totals;
     thermoState.stats = saved.stats || thermoState.stats;
+
+    // Restore session if it's recent (within 30 minutes)
+    if (saved.session && saved.session.lastAction) {
+      const timeSinceLastAction = Date.now() - saved.session.lastAction;
+      const thirtyMinutes = 30 * 60 * 1000;
+
+      if (timeSinceLastAction < thirtyMinutes) {
+        // Continue existing session
+        thermoState.session = saved.session;
+        thermoState.heatSources = saved.heatSources || {};
+        thermoState.workSources = saved.workSources || {};
+        return; // Don't start new session
+      }
+    }
   }
   startSession();
 }

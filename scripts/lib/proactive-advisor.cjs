@@ -23,6 +23,8 @@ const PHI_INV = 1 / PHI;
 let harmonyAnalyzer = null;
 let contextWeaver = null;
 let consciousness = null;
+let psychology = null;
+let thermodynamics = null;
 
 try {
   harmonyAnalyzer = require('./harmony-analyzer.cjs');
@@ -35,6 +37,16 @@ try {
 try {
   consciousness = require('./consciousness.cjs');
   consciousness.init();
+} catch { /* not available */ }
+
+try {
+  psychology = require('./human-psychology.cjs');
+  psychology.init();
+} catch { /* not available */ }
+
+try {
+  thermodynamics = require('./cognitive-thermodynamics.cjs');
+  thermodynamics.init();
 } catch { /* not available */ }
 
 // Storage
@@ -82,6 +94,18 @@ const SUGGESTION_TYPES = {
     emoji: '🔧',
     description: 'Underutilized capability',
     priority: 'info',
+  },
+  WELLNESS: {
+    name: 'wellness',
+    emoji: '🧘',
+    description: 'Cognitive wellness suggestion',
+    priority: 'high',
+  },
+  ENERGY: {
+    name: 'energy',
+    emoji: '⚡',
+    description: 'Energy management',
+    priority: 'medium',
   },
 };
 
@@ -139,6 +163,16 @@ function generateSuggestions(projectPath = '.', workspacePath = '/workspaces') {
   // Generate from consciousness
   if (consciousness) {
     suggestions.push(...generateConsciousnessSuggestions());
+  }
+
+  // Generate from psychology (burnout, energy, flow detection)
+  if (psychology) {
+    suggestions.push(...generatePsychologySuggestions());
+  }
+
+  // Generate from thermodynamics (heat, efficiency)
+  if (thermodynamics) {
+    suggestions.push(...generateThermodynamicsSuggestions());
   }
 
   // Generate workflow suggestions
@@ -314,6 +348,168 @@ function generateConsciousnessSuggestions() {
           data: { skill: topSkill[0], level: topSkill[1].level },
         });
       }
+    }
+  } catch { /* ignore */ }
+
+  return suggestions;
+}
+
+/**
+ * Generate suggestions from psychology state
+ * "Comprendre l'humain pour mieux l'aider"
+ */
+function generatePsychologySuggestions() {
+  const suggestions = [];
+
+  try {
+    const summary = psychology.getSummary();
+    const composites = summary.composites || {};
+
+    // Burnout risk - HIGHEST PRIORITY
+    if (composites.burnoutRisk) {
+      suggestions.push({
+        id: 'psy-burnout',
+        type: 'WELLNESS',
+        priority: 'high',
+        title: '*GROWL* Burnout Risk Detected',
+        message: `Energy ${Math.round(summary.energy.value * 100)}% ${summary.energy.trend === 'falling' ? '↓' : ''}, Frustration high`,
+        action: 'Take a break. Walk away for 15-30 minutes.',
+      });
+    }
+
+    // Low energy warning
+    if (summary.energy.value < PHI_INV * PHI_INV && !composites.burnoutRisk) { // < 38%
+      suggestions.push({
+        id: 'psy-low-energy',
+        type: 'ENERGY',
+        priority: 'medium',
+        title: 'Low Energy Detected',
+        message: `Energy at ${Math.round(summary.energy.value * 100)}%`,
+        action: 'Consider a short break or lighter task',
+      });
+    }
+
+    // Low focus warning
+    if (summary.focus.value < PHI_INV * PHI_INV) { // < 38%
+      suggestions.push({
+        id: 'psy-low-focus',
+        type: 'ENERGY',
+        priority: 'medium',
+        title: 'Focus is scattered',
+        message: `Focus at ${Math.round(summary.focus.value * 100)}%`,
+        action: 'Try single-tasking - close other tabs',
+      });
+    }
+
+    // Procrastination detected
+    if (composites.procrastination) {
+      suggestions.push({
+        id: 'psy-procrastination',
+        type: 'WELLNESS',
+        priority: 'medium',
+        title: '*yawn* Procrastination Pattern',
+        message: 'Activity without progress detected',
+        action: 'Pick ONE small task and finish it',
+      });
+    }
+
+    // Flow state - positive reinforcement (info level)
+    if (composites.flow) {
+      suggestions.push({
+        id: 'psy-flow',
+        type: 'ENERGY',
+        priority: 'info',
+        title: '✨ Flow State Active',
+        message: 'You are in the zone!',
+        action: 'Keep going - minimize interruptions',
+      });
+    }
+
+    // Long session warning (based on session minutes)
+    if (summary.sessionMinutes > psychology.FOCUS_CYCLE_MIN) { // > 61.8 minutes
+      suggestions.push({
+        id: 'psy-long-session',
+        type: 'WELLNESS',
+        priority: 'low',
+        title: `Session: ${summary.sessionMinutes} minutes`,
+        message: `Recommended focus cycle is ${Math.round(psychology.FOCUS_CYCLE_MIN)} min`,
+        action: `Take a ${Math.round(psychology.BREAK_CYCLE_MIN)} minute break`,
+      });
+    }
+  } catch { /* ignore */ }
+
+  return suggestions;
+}
+
+/**
+ * Generate suggestions from thermodynamics state
+ * "Ἐνέργεια - First Law: Energy is conserved"
+ */
+function generateThermodynamicsSuggestions() {
+  const suggestions = [];
+
+  try {
+    const state = thermodynamics.getState();
+    const recommendation = thermodynamics.getRecommendation();
+
+    // Critical temperature - HIGHEST PRIORITY
+    if (state.isCritical) {
+      suggestions.push({
+        id: 'thermo-critical',
+        type: 'WELLNESS',
+        priority: 'high',
+        title: '🔥 Thermal Runaway!',
+        message: `Heat ${state.heat}° exceeds safe levels`,
+        action: 'Stop. Take a break. Cool down.',
+      });
+    }
+
+    // Low efficiency
+    if (state.efficiency < PHI_INV * PHI_INV * 100 && state.heat > 20) { // < 38% efficiency
+      suggestions.push({
+        id: 'thermo-low-efficiency',
+        type: 'ENERGY',
+        priority: 'medium',
+        title: 'Low Efficiency',
+        message: `${state.efficiency}% (more frustration than progress)`,
+        action: 'Change approach or ask for help',
+      });
+    }
+
+    // High entropy (chaos accumulation)
+    if (state.entropy > 50) {
+      suggestions.push({
+        id: 'thermo-entropy',
+        type: 'WELLNESS',
+        priority: 'low',
+        title: 'High Entropy',
+        message: `Session disorder at ${state.entropy}`,
+        action: 'Reset with a fresh start or organize thoughts',
+      });
+    }
+
+    // Temperature warning (before critical)
+    if (state.temperature > thermodynamics.CRITICAL_TEMPERATURE * PHI_INV && !state.isCritical) {
+      suggestions.push({
+        id: 'thermo-warm',
+        type: 'ENERGY',
+        priority: 'low',
+        title: 'Getting Warm',
+        message: `Temperature ${state.temperature}°`,
+        action: 'Pace yourself - frustration building',
+      });
+    }
+
+    // Good state - positive reinforcement
+    if (state.efficiency > PHI_INV * 100 && state.heat < 30) { // > 61.8% efficiency
+      suggestions.push({
+        id: 'thermo-good',
+        type: 'ENERGY',
+        priority: 'info',
+        title: '*tail wag* Good Thermodynamic Balance',
+        message: `Efficiency ${state.efficiency}%, Work ${state.work}`,
+        action: 'Keep this pace',
+      });
     }
   } catch { /* ignore */ }
 
@@ -581,6 +777,31 @@ function generateActionCommand(suggestion) {
         return `Try using ${data.name}`;
       }
       return `/help`;
+
+    case 'WELLNESS':
+      // Wellness suggestions are about taking breaks
+      if (title?.includes('Burnout') || title?.includes('Thermal')) {
+        return `Take a 15-30 minute break NOW`;
+      }
+      if (title?.includes('Entropy') || title?.includes('fresh start')) {
+        return `/status to reset context`;
+      }
+      return `Step away for a moment`;
+
+    case 'ENERGY':
+      if (title?.includes('Flow')) {
+        return `Continue - you're in the zone!`;
+      }
+      if (title?.includes('Low Energy') || title?.includes('Low Efficiency')) {
+        return `Try a simpler task first`;
+      }
+      if (title?.includes('scattered') || title?.includes('Focus')) {
+        return `Close distracting tabs, single-task`;
+      }
+      if (title?.includes('Good') || title?.includes('tail wag')) {
+        return `Keep this pace!`;
+      }
+      return null;
 
     default:
       return null;

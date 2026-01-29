@@ -609,16 +609,24 @@ async function main() {
       try {
         if (isError) {
           // Errors generate heat (frustration)
+          // Map error types to thermodynamics events
           const errorType = detectErrorType(typeof toolOutput === 'string' ? toolOutput : '');
-          thermodynamics.recordHeat(toolName, errorType);
+          const heatEventType = errorType === 'timeout' ? 'timeout' :
+                                errorType === 'permission_denied' ? 'blocked' :
+                                errorType === 'syntax_error' ? 'confusion' :
+                                'error';
+          thermodynamics.recordHeatEvent(heatEventType, { tool: toolName, errorType });
         } else {
           // Successful actions produce work
-          const workUnits = toolName === 'Write' || toolName === 'Edit' ? 15 : 10;
-          thermodynamics.recordWork(toolName, workUnits);
+          // Map tool types to work events
+          const workEventType = toolName === 'Write' ? 'codeWritten' :
+                                toolName === 'Edit' ? 'codeWritten' :
+                                toolName === 'Bash' && toolOutput?.includes?.('commit') ? 'commitMade' :
+                                toolName === 'Bash' && toolOutput?.includes?.('PASS') ? 'testPassed' :
+                                'questionAnswered';
+          const magnitude = toolName === 'Write' || toolName === 'Edit' ? 1.5 : 1.0;
+          thermodynamics.recordWorkEvent(workEventType, { tool: toolName, magnitude });
         }
-
-        // Record action for entropy calculation
-        thermodynamics.recordAction(toolName);
       } catch (e) {
         // Thermodynamics tracking failed - continue without
       }

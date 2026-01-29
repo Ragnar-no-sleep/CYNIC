@@ -36,6 +36,7 @@ import cynic, {
   getPsychology,
   getContributorDiscovery,
   getTotalMemory,
+  getThermodynamics,
 } from '../lib/index.js';
 
 import path from 'path';
@@ -72,6 +73,7 @@ async function main() {
     const proactiveAdvisor = getProactiveAdvisor();
     const signalCollector = getSignalCollector();
     const psychology = getPsychology();
+    const thermodynamics = getThermodynamics();
     const contributorDiscovery = getContributorDiscovery();
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -649,6 +651,50 @@ async function main() {
         }
       } catch (e) {
         // Psychology injection failed - continue without
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // THERMODYNAMICS: Show cognitive heat/work/efficiency
+    // "Ἐνέργεια - the activity of being"
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (thermodynamics) {
+      try {
+        const thermoState = thermodynamics.getState();
+        const recommendation = thermodynamics.getRecommendation();
+
+        // Only show if there's meaningful data (heat or work > 0)
+        if (thermoState.heat > 0 || thermoState.work > 0) {
+          // Temperature bar (0 to critical)
+          const tempPercent = Math.min(100, (thermoState.temperature / thermodynamics.CRITICAL_TEMPERATURE) * 100);
+          const tempBar = '█'.repeat(Math.round(tempPercent / 10)) +
+                          '░'.repeat(10 - Math.round(tempPercent / 10));
+
+          // Efficiency bar
+          const effBar = '█'.repeat(Math.round(thermoState.efficiency / 10)) +
+                         '░'.repeat(10 - Math.round(thermoState.efficiency / 10));
+
+          const criticalIndicator = thermoState.isCritical ? ' 🔥' : '';
+
+          const thermoLines = ['', '── THERMODYNAMICS ─────────────────────────────────────────'];
+          thermoLines.push(`   Q (heat):     ${thermoState.heat}${criticalIndicator}  W (work): ${thermoState.work}`);
+          thermoLines.push(`   Temperature:  [${tempBar}] ${thermoState.temperature}°`);
+          thermoLines.push(`   Efficiency:   [${effBar}] ${thermoState.efficiency}% (φ max: ${thermoState.carnotLimit}%)`);
+
+          // Show recommendation if not GOOD
+          if (recommendation.level !== 'GOOD') {
+            thermoLines.push(`   ${recommendation.message}`);
+          }
+
+          const lines = message.split('\n');
+          const insertIdx = lines.findIndex(l => l.includes('CYNIC is AWAKE'));
+          if (insertIdx > 0) {
+            lines.splice(insertIdx, 0, ...thermoLines, '');
+            message = lines.join('\n');
+          }
+        }
+      } catch (e) {
+        // Thermodynamics injection failed - continue without
       }
     }
 
