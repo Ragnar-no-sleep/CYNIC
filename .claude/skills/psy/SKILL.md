@@ -8,11 +8,15 @@ user-invocable: true
 
 *"Comprendre l'humain pour mieux l'aider" - κυνικός*
 
-## Quick Start
+## Execution
 
+Run the psy-dashboard script to generate the interactive dashboard:
+
+```bash
+node scripts/lib/psy-dashboard.cjs
 ```
-/psy
-```
+
+Display the output directly to the user. The dashboard shows real-time psychological state.
 
 ## What It Does
 
