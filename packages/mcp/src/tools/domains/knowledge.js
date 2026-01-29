@@ -115,11 +115,11 @@ export function createSearchTool(persistence = null) {
         type: { type: 'string', enum: ['judgment', 'pattern', 'decision', 'all'], description: 'Type of knowledge to search' },
         limit: { type: 'number', description: 'Maximum results (default 10)' },
       },
-      required: ['query'],
+      required: [],  // Empty query allowed for listing recent items
     },
     handler: async (params) => {
-      const { query, type = 'all', limit = 10 } = params;
-      if (!query) throw new Error('Missing required parameter: query');
+      const { query = '', type = 'all', limit = 10 } = params;
+      // Empty query is allowed - returns recent items without text filtering
 
       const results = [];
 
