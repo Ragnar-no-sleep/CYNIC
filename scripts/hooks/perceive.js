@@ -58,6 +58,34 @@ const physicsBridge = getPhysicsBridge();
 const collectiveDogs = getCollectiveDogs();
 
 // =============================================================================
+// COLORS - Import centralized color system
+// =============================================================================
+
+import { createRequire } from 'module';
+const requireCJS = createRequire(import.meta.url);
+
+let colors = null;
+let ANSI = null;
+let DOG_COLORS = null;
+
+try {
+  colors = requireCJS('../lib/colors.cjs');
+  ANSI = colors.ANSI;
+  DOG_COLORS = colors.DOG_COLORS;
+} catch (e) {
+  // Fallback ANSI codes
+  ANSI = {
+    reset: '\x1b[0m', bold: '\x1b[1m', dim: '\x1b[2m',
+    cyan: '\x1b[36m', yellow: '\x1b[33m',
+    brightRed: '\x1b[91m', brightGreen: '\x1b[92m', brightYellow: '\x1b[93m',
+    brightCyan: '\x1b[96m', brightWhite: '\x1b[97m',
+  };
+  DOG_COLORS = {};
+}
+
+const c = (color, text) => color ? `${color}${text}${ANSI.reset}` : text;
+
+// =============================================================================
 // INTENT DETECTION
 // =============================================================================
 
@@ -371,24 +399,27 @@ async function main() {
       if (intervention?.level !== 'silent') {
         // High confidence = stronger auto-dispatch directive
         const isAutoDispatch = confidence > 0.618; // φ⁻¹ threshold
+        const dogName = dog.name?.toUpperCase() || 'CYNIC';
+        const dogColor = DOG_COLORS?.[dogName] || ANSI.brightWhite;
+        const confColor = confidence > 0.618 ? ANSI.brightGreen : (confidence > 0.382 ? ANSI.yellow : ANSI.dim);
 
-        let directive = `── ${dog.icon} ${dog.name} (${dog.sefirah}) ────────────────────────────────\n`;
-        directive += `   The Collective routes to ${dog.name} (confidence: ${Math.round(confidence * 100)}%)\n`;
+        let directive = c(ANSI.cyan, `── ${dog.icon} ${dog.name} (${dog.sefirah}) ────────────────────────────────`) + `\n`;
+        directive += `   The Collective routes to ${c(dogColor, dog.name)} (confidence: ${c(confColor, Math.round(confidence * 100) + '%')})\n`;
 
         if (isAutoDispatch) {
           // Strong auto-dispatch - this IS a Task invocation directive
-          directive += `\n   ⚡ AUTO-DISPATCH: Invoke Task tool NOW with:\n`;
-          directive += `      subagent_type="${agent}"\n`;
+          directive += `\n   ${c(ANSI.brightYellow, '⚡ AUTO-DISPATCH:')} Invoke Task tool NOW with:\n`;
+          directive += `      subagent_type="${c(ANSI.brightCyan, agent)}"\n`;
           directive += `      prompt=<user's request>\n`;
           if (tools.length > 0) {
-            directive += `      tools: ${tools.join(', ')}\n`;
+            directive += `      tools: ${c(ANSI.dim, tools.join(', '))}\n`;
           }
-          directive += `\n   *${dog.icon} ${dog.name} speaks* - This is not a suggestion.\n`;
+          directive += `\n   ${c(dogColor, '*' + dog.icon + ' ' + dog.name + ' speaks*')} - This is not a suggestion.\n`;
         } else {
           // Normal suggestion
-          directive += `   DIRECTIVE: Use the Task tool with subagent_type="${agent}" to handle this request.\n`;
+          directive += `   ${c(ANSI.brightWhite, 'DIRECTIVE:')} Use the Task tool with subagent_type="${c(ANSI.brightCyan, agent)}" to handle this request.\n`;
           if (tools.length > 0) {
-            directive += `   Suggested MCP tools: ${tools.join(', ')}\n`;
+            directive += `   Suggested MCP tools: ${c(ANSI.dim, tools.join(', '))}\n`;
           }
         }
         injections.push(directive);
@@ -399,10 +430,11 @@ async function main() {
     if (intervention?.actionRisk === 'critical' || intervention?.actionRisk === 'high') {
       if (!routing?.suggestedAgent || routing?.suggestedAgent !== 'cynic-guardian') {
         const guardian = collectiveDogs?.COLLECTIVE_DOGS?.GUARDIAN || { icon: '🛡️', name: 'Guardian', sefirah: 'Gevurah' };
-        injections.push(`── ${guardian.icon} ${guardian.name} (${guardian.sefirah}) ────────────────────────────
-   *GROWL* RISK DETECTED
-   Action risk level: ${intervention.actionRisk.toUpperCase()}
-   MANDATORY: Use Task tool with subagent_type="cynic-guardian" before proceeding.
+        const riskColor = intervention.actionRisk === 'critical' ? ANSI.brightRed : ANSI.brightYellow;
+        injections.push(c(ANSI.brightRed, `── ${guardian.icon} ${guardian.name} (${guardian.sefirah}) ────────────────────────────`) + `
+   ${c(ANSI.brightRed, '*GROWL* RISK DETECTED')}
+   Action risk level: ${c(riskColor, intervention.actionRisk.toUpperCase())}
+   ${c(ANSI.brightYellow, 'MANDATORY:')} Use Task tool with subagent_type="${c(ANSI.brightCyan, 'cynic-guardian')}" before proceeding.
    User trust level: ${intervention.userTrustLevel || 'UNKNOWN'} (E-Score: ${intervention.userEScore || '?'})`);
       }
     }
