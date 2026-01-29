@@ -25,6 +25,19 @@ const { execFileSync, spawnSync } = require('child_process');
 const PHI = 1.618033988749895;
 const PHI_INV = 1 / PHI; // 0.618
 
+// ANSI color helpers
+const ANSI = {
+  reset: '\x1b[0m', bold: '\x1b[1m', dim: '\x1b[2m',
+  red: '\x1b[31m', green: '\x1b[32m', yellow: '\x1b[33m',
+  blue: '\x1b[34m', magenta: '\x1b[35m', cyan: '\x1b[36m', white: '\x1b[37m',
+  brightRed: '\x1b[91m', brightGreen: '\x1b[92m', brightYellow: '\x1b[93m',
+  brightBlue: '\x1b[94m', brightMagenta: '\x1b[95m', brightCyan: '\x1b[96m',
+  brightWhite: '\x1b[97m',
+};
+
+let useColor = true;
+const c = (color, text) => useColor ? `${color}${text}${ANSI.reset}` : text;
+
 // Paths
 const CYNIC_DIR = path.join(os.homedir(), '.cynic');
 const SELF_DIR = path.join(CYNIC_DIR, 'self');
@@ -547,50 +560,66 @@ function fullScan(runTests = true) {
 
 /**
  * Format self-status for display
+ * @param {Object} scan - Scan results
+ * @param {boolean} enableColor - Whether to use ANSI colors
  */
-function formatStatus(scan) {
+function formatStatus(scan, enableColor = true) {
+  useColor = enableColor;
   const lines = [];
 
+  const header = '═══════════════════════════════════════════════════════════════════';
   lines.push('');
-  lines.push('╔═══════════════════════════════════════════════════════════════════╗');
-  lines.push('║            🐕 CYNIC SELF-STATUS (Auto-generated)                  ║');
-  lines.push('╠═══════════════════════════════════════════════════════════════════╣');
+  lines.push(c(ANSI.cyan, '╔' + header + '╗'));
+  lines.push(c(ANSI.cyan, '║') + c(ANSI.bold + ANSI.brightCyan, '            🐕 CYNIC SELF-STATUS (Auto-generated)                  ') + c(ANSI.cyan, '║'));
+  lines.push(c(ANSI.cyan, '╠' + header + '╣'));
 
   // Package summary
   const pkg = scan.packages?.summary || {};
-  lines.push('║                                                                   ║');
-  lines.push(`║  PACKAGES: ${pkg.healthy || 0}/${pkg.total || 0} healthy                                          `);
-  lines.push(`║  TESTS: ${pkg.pass || 0}/${pkg.tests || 0} passing (${((pkg.coverage || 0) * 100).toFixed(1)}%)                              `);
-  lines.push('║                                                                   ║');
+  const pkgHealthy = (pkg.healthy || 0) === (pkg.total || 0);
+  const pkgColor = pkgHealthy ? ANSI.brightGreen : ANSI.brightYellow;
+  const coveragePct = ((pkg.coverage || 0) * 100).toFixed(1);
+  const coverageColor = coveragePct >= 90 ? ANSI.brightGreen : (coveragePct >= 70 ? ANSI.yellow : ANSI.brightRed);
+
+  lines.push(c(ANSI.cyan, '║') + '                                                                   ' + c(ANSI.cyan, '║'));
+  lines.push(c(ANSI.cyan, '║') + `  ${c(ANSI.brightWhite, 'PACKAGES:')} ${c(pkgColor, `${pkg.healthy || 0}/${pkg.total || 0}`)} healthy                                          `);
+  lines.push(c(ANSI.cyan, '║') + `  ${c(ANSI.brightWhite, 'TESTS:')} ${c(ANSI.brightCyan, `${pkg.pass || 0}/${pkg.tests || 0}`)} passing (${c(coverageColor, coveragePct + '%')})                              `);
+  lines.push(c(ANSI.cyan, '║') + '                                                                   ' + c(ANSI.cyan, '║'));
 
   // Package details
   for (const [name, data] of Object.entries(scan.packages?.packages || {})) {
-    const icon = data.healthy ? '✅' : (data.fail > 0 ? '❌' : '⚪');
-    const critical = data.critical ? '*' : ' ';
-    const sampled = data.sampled ? '~' : ' ';
-    lines.push(`║  ${icon}${critical} ${name.padEnd(12)} ${sampled}${String(data.pass || 0).padStart(3)}/${String(data.tests || 0).padStart(3)} tests           `);
+    const icon = data.healthy ? c(ANSI.brightGreen, '✅') : (data.fail > 0 ? c(ANSI.brightRed, '❌') : c(ANSI.dim, '⚪'));
+    const critical = data.critical ? c(ANSI.brightYellow, '*') : ' ';
+    const sampled = data.sampled ? c(ANSI.dim, '~') : ' ';
+    const testColor = data.healthy ? ANSI.brightGreen : (data.fail > 0 ? ANSI.brightRed : ANSI.dim);
+    const nameColor = data.critical ? ANSI.brightWhite : ANSI.white;
+    lines.push(c(ANSI.cyan, '║') + `  ${icon}${critical} ${c(nameColor, name.padEnd(12))} ${sampled}${c(testColor, String(data.pass || 0).padStart(3) + '/' + String(data.tests || 0).padStart(3))} tests           `);
   }
 
-  lines.push('║                                                                   ║');
-  lines.push('╠═══════════════════════════════════════════════════════════════════╣');
+  lines.push(c(ANSI.cyan, '║') + '                                                                   ' + c(ANSI.cyan, '║'));
+  lines.push(c(ANSI.cyan, '╠' + header + '╣'));
 
   // Integrations
   const int = scan.integrations || {};
-  lines.push(`║  HOOKS: ${int.hooks?.count || 0}   SKILLS: ${int.skills?.count || 0}   AGENTS: ${int.agents?.count || 0}   LIB: ${int.libModules?.count || 0}         `);
-  lines.push(`║  MCP: ${int.mcp?.status || 'unknown'}                                                    `);
-  lines.push('║                                                                   ║');
+  const hooksOk = (int.hooks?.count || 0) >= 5;
+  const skillsOk = (int.skills?.count || 0) >= 10;
+  const agentsOk = (int.agents?.count || 0) >= 10;
+  const mcpOk = int.mcp?.status === 'healthy';
+
+  lines.push(c(ANSI.cyan, '║') + `  ${c(ANSI.brightWhite, 'HOOKS:')} ${c(hooksOk ? ANSI.brightGreen : ANSI.yellow, int.hooks?.count || 0)}   ${c(ANSI.brightWhite, 'SKILLS:')} ${c(skillsOk ? ANSI.brightGreen : ANSI.yellow, int.skills?.count || 0)}   ${c(ANSI.brightWhite, 'AGENTS:')} ${c(agentsOk ? ANSI.brightGreen : ANSI.yellow, int.agents?.count || 0)}   ${c(ANSI.brightWhite, 'LIB:')} ${c(ANSI.brightCyan, int.libModules?.count || 0)}         `);
+  lines.push(c(ANSI.cyan, '║') + `  ${c(ANSI.brightWhite, 'MCP:')} ${c(mcpOk ? ANSI.brightGreen : ANSI.yellow, int.mcp?.status || 'unknown')}                                                    `);
+  lines.push(c(ANSI.cyan, '║') + '                                                                   ' + c(ANSI.cyan, '║'));
 
   // Roadmap
   const roadmap = scan.roadmap?.summary || {};
-  const p1 = roadmap.phase1 === 'complete' ? '✅' : '🔄';
-  const p2 = roadmap.phase2 === 'complete' ? '✅' : '🔄';
-  const p3 = roadmap.phase3 === 'complete' ? '✅' : '📋';
-  lines.push(`║  ROADMAP: ${p1} Core  ${p2} Integration  ${p3} External              `);
-  lines.push('║                                                                   ║');
+  const p1 = roadmap.phase1 === 'complete' ? c(ANSI.brightGreen, '✅') : c(ANSI.yellow, '🔄');
+  const p2 = roadmap.phase2 === 'complete' ? c(ANSI.brightGreen, '✅') : c(ANSI.yellow, '🔄');
+  const p3 = roadmap.phase3 === 'complete' ? c(ANSI.brightGreen, '✅') : c(ANSI.dim, '📋');
+  lines.push(c(ANSI.cyan, '║') + `  ${c(ANSI.brightWhite, 'ROADMAP:')} ${p1} ${c(ANSI.white, 'Core')}  ${p2} ${c(ANSI.white, 'Integration')}  ${p3} ${c(ANSI.white, 'External')}              `);
+  lines.push(c(ANSI.cyan, '║') + '                                                                   ' + c(ANSI.cyan, '║'));
 
-  lines.push('╠═══════════════════════════════════════════════════════════════════╣');
-  lines.push('║  * = critical package   φ⁻¹ = 61.8% max confidence               ║');
-  lines.push('╚═══════════════════════════════════════════════════════════════════╝');
+  lines.push(c(ANSI.cyan, '╠' + header + '╣'));
+  lines.push(c(ANSI.cyan, '║') + c(ANSI.dim, '  * = critical package   φ⁻¹ = 61.8% max confidence               ') + c(ANSI.cyan, '║'));
+  lines.push(c(ANSI.cyan, '╚' + header + '╝'));
   lines.push('');
 
   return lines.join('\n');
@@ -644,11 +673,12 @@ module.exports = {
 // CLI execution
 if (require.main === module) {
   const args = process.argv.slice(2);
+  const enableColor = !args.includes('--no-color');
 
   if (args.includes('--quick') || args.includes('-q')) {
     // Quick scan (no tests)
     const scan = fullScan(false);
-    console.log(formatStatus(scan));
+    console.log(formatStatus(scan, enableColor));
   } else if (args.includes('--status') || args.includes('-s')) {
     console.log(getStatusLine());
   } else if (args.includes('--json') || args.includes('-j')) {
@@ -656,8 +686,8 @@ if (require.main === module) {
     console.log(JSON.stringify(scan, null, 2));
   } else {
     // Full scan with tests
-    console.log('🐕 Running full self-scan (tests included)...');
+    console.log(c(ANSI.dim, '🐕 Running full self-scan (tests included)...'));
     const scan = fullScan(true);
-    console.log(formatStatus(scan));
+    console.log(formatStatus(scan, enableColor));
   }
 }
