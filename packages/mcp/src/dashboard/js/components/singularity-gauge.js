@@ -236,12 +236,13 @@ export class SingularityGauge {
       try {
         // This would fetch from emergence detector and decision timeline
         // For now, use learning state as proxy
-        const result = await this.api.learning({ action: 'summary' });
-        if (result.success && result.result) {
-          const summary = result.result;
-          const feedbackScore = Math.min(summary.totalFeedback || 0, 100) / 100 * 30;
-          const accuracyScore = (summary.accuracy || 0.5) * 40;
-          const calibrationScore = summary.isCalibrated ? 30 : 0;
+        const result = await this.api.learning({ action: 'state' });
+        if (result.success && result.result?.patterns) {
+          const patterns = result.result.patterns;
+          const overall = patterns.overall || {};
+          const feedbackScore = Math.min(overall.totalFeedback || 0, 100) / 100 * 30;
+          const accuracyScore = (patterns.accuracy || 0.5) * 40;
+          const calibrationScore = overall.learningIterations > 0 ? 30 : 0;
           return Math.round(feedbackScore + accuracyScore + calibrationScore);
         }
       } catch (err) {
