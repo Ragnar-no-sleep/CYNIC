@@ -16,6 +16,14 @@ const path = require('path');
 const os = require('os');
 const https = require('https');
 
+// Import centralized color system
+let colors;
+try {
+  colors = require('./colors.cjs');
+} catch {
+  colors = null;
+}
+
 // Lazy load modules
 let dogs = null;
 let thermodynamics = null;
@@ -27,9 +35,9 @@ function loadModules() {
   try { psychology = require('./human-psychology.cjs'); psychology.init(); } catch {}
 }
 
-// ANSI color helpers
-const ANSI = {
-  reset: '\x1b[0m', bold: '\x1b[1m', dim: '\x1b[2m', italic: '\x1b[3m',
+// Use centralized ANSI or fallback
+const ANSI = colors?.ANSI || {
+  reset: '\x1b[0m', bold: '\x1b[1m', dim: '\x1b[2m',
   red: '\x1b[31m', green: '\x1b[32m', yellow: '\x1b[33m',
   blue: '\x1b[34m', magenta: '\x1b[35m', cyan: '\x1b[36m', white: '\x1b[37m',
   brightRed: '\x1b[91m', brightGreen: '\x1b[92m', brightYellow: '\x1b[93m',
@@ -38,26 +46,21 @@ const ANSI = {
 };
 
 let useColor = true;
-const c = (color, text) => useColor ? `${color}${text}${ANSI.reset}` : text;
+const c = colors?.colorize || ((color, text) => useColor ? `${color}${text}${ANSI.reset}` : text);
 
-// Progress bar helpers
-const bar = (val, max = 1) => {
+// Use centralized progressBar or fallback
+const colorBar = colors?.progressBar || ((val, max = 1, inverse = false) => {
   const pct = Math.min(1, val / max);
-  return '█'.repeat(Math.round(pct * 10)) + '░'.repeat(10 - Math.round(pct * 10));
-};
-
-const colorBar = (val, max = 1, inverse = false) => {
-  const pct = Math.min(1, val / max);
-  const barStr = bar(val, max);
+  const filled = Math.round(pct * 10);
+  const barStr = '█'.repeat(filled) + '░'.repeat(10 - filled);
+  let color;
   if (inverse) {
-    if (pct > 0.6) return c(ANSI.brightRed, barStr);
-    if (pct > 0.38) return c(ANSI.yellow, barStr);
-    return c(ANSI.brightGreen, barStr);
+    color = pct > 0.618 ? ANSI.brightRed : (pct > 0.382 ? ANSI.yellow : ANSI.brightGreen);
+  } else {
+    color = pct > 0.618 ? ANSI.brightGreen : (pct > 0.382 ? ANSI.yellow : ANSI.brightRed);
   }
-  if (pct > 0.6) return c(ANSI.brightGreen, barStr);
-  if (pct > 0.38) return c(ANSI.yellow, barStr);
-  return c(ANSI.brightRed, barStr);
-};
+  return `${color}${barStr}${ANSI.reset}`;
+});
 
 /**
  * Check if a hook file exists and count its engines
