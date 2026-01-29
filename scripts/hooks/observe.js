@@ -1269,6 +1269,11 @@ async function main() {
         const quirk = collectiveDogsModule?.getDogQuirk?.(activeDog) || '*sniff*';
         const verb = collectiveDogsModule?.getDogVerb?.(activeDog) || 'observes';
         dogNote = `\n${activeDog.icon} ${activeDog.name} ${quirk} ${verb}.`;
+
+        // Record Dog activity for session summary
+        if (collectiveDogsModule?.recordDogActivity) {
+          collectiveDogsModule.recordDogActivity(activeDog, isError ? 'judging' : 'observing');
+        }
       }
 
       // Output the judgment (will be shown to user)
@@ -1316,6 +1321,11 @@ async function main() {
     if (showDog && activeDog) {
       const verb = collectiveDogsModule?.getDogVerb?.(activeDog) || actionDesc || 'observes';
       outputParts.push(`\n${activeDog.icon} ${verb} `);
+
+      // Record Dog activity for session summary
+      if (collectiveDogsModule?.recordDogActivity) {
+        collectiveDogsModule.recordDogActivity(activeDog, actionDesc || toolName);
+      }
     }
 
     // 2. Observation Summary (efficiency, escalation, patterns)

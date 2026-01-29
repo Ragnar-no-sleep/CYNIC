@@ -299,22 +299,197 @@ function renderSefirotTree() {
   ].join('\n');
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// SESSION ACTIVITY TRACKING
+// ═══════════════════════════════════════════════════════════════════════════
+
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+
+const ACTIVITY_DIR = path.join(os.homedir(), '.cynic', 'dogs');
+const ACTIVITY_FILE = path.join(ACTIVITY_DIR, 'activity.json');
+
+/**
+ * Ensure activity directory exists
+ */
+function ensureActivityDir() {
+  if (!fs.existsSync(ACTIVITY_DIR)) {
+    fs.mkdirSync(ACTIVITY_DIR, { recursive: true });
+  }
+}
+
+/**
+ * Load activity data
+ * @returns {Object} Activity data
+ */
+function loadActivity() {
+  try {
+    if (fs.existsSync(ACTIVITY_FILE)) {
+      return JSON.parse(fs.readFileSync(ACTIVITY_FILE, 'utf8'));
+    }
+  } catch (e) { /* ignore */ }
+  return {
+    session: { started: Date.now(), dogs: {} },
+    totals: {},
+  };
+}
+
+/**
+ * Save activity data
+ * @param {Object} data - Activity data
+ */
+function saveActivity(data) {
+  ensureActivityDir();
+  fs.writeFileSync(ACTIVITY_FILE, JSON.stringify(data, null, 2));
+}
+
+/**
+ * Record Dog activity
+ * @param {Object} dog - Dog object
+ * @param {string} action - Action performed
+ */
+function recordDogActivity(dog, action = 'action') {
+  if (!dog?.name) return;
+
+  const data = loadActivity();
+  const dogName = dog.name.toUpperCase();
+
+  // Initialize session if stale (>30 min)
+  const thirtyMin = 30 * 60 * 1000;
+  if (Date.now() - (data.session.started || 0) > thirtyMin) {
+    data.session = { started: Date.now(), dogs: {} };
+  }
+
+  // Update session counts
+  if (!data.session.dogs[dogName]) {
+    data.session.dogs[dogName] = { count: 0, actions: [] };
+  }
+  data.session.dogs[dogName].count++;
+  data.session.dogs[dogName].lastAction = action;
+  data.session.dogs[dogName].lastTime = Date.now();
+
+  // Update totals
+  if (!data.totals[dogName]) {
+    data.totals[dogName] = 0;
+  }
+  data.totals[dogName]++;
+
+  saveActivity(data);
+}
+
+/**
+ * Get session activity summary
+ * @returns {Object} Session summary
+ */
+function getSessionSummary() {
+  const data = loadActivity();
+  const session = data.session;
+
+  const dogs = Object.entries(session.dogs || {})
+    .map(([name, info]) => ({
+      name,
+      count: info.count,
+      dog: COLLECTIVE_DOGS[name],
+    }))
+    .sort((a, b) => b.count - a.count);
+
+  const duration = Math.round((Date.now() - (session.started || Date.now())) / 60000);
+
+  return {
+    duration,
+    dogs,
+    totalActions: dogs.reduce((sum, d) => sum + d.count, 0),
+    topDog: dogs[0] || null,
+  };
+}
+
+/**
+ * Format session summary for display
+ * @returns {string} Formatted summary
+ */
+function formatSessionSummary() {
+  const summary = getSessionSummary();
+
+  if (summary.totalActions === 0) {
+    return '── SESSION ────────────────────────────────────────────────\n   No Dog activity recorded.';
+  }
+
+  const lines = ['── SESSION DOGS ───────────────────────────────────────────'];
+  lines.push(`   Duration: ${summary.duration} min │ Actions: ${summary.totalActions}`);
+  lines.push('');
+
+  for (const { name, count, dog } of summary.dogs.slice(0, 5)) {
+    const icon = dog?.icon || '🐕';
+    const bar = '█'.repeat(Math.min(10, Math.round(count / summary.totalActions * 10)));
+    const pct = Math.round(count / summary.totalActions * 100);
+    lines.push(`   ${icon} ${name.padEnd(12)} [${bar.padEnd(10, '░')}] ${count} (${pct}%)`);
+  }
+
+  if (summary.topDog) {
+    const top = summary.topDog;
+    const greeting = getDogGreeting(top.dog);
+    lines.push('');
+    lines.push(`   Most active: ${top.dog?.icon || '🐕'} ${top.name} - "${greeting}"`);
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * Reset session activity
+ */
+function resetSession() {
+  const data = loadActivity();
+  data.session = { started: Date.now(), dogs: {} };
+  saveActivity(data);
+}
+
+/**
+ * Get all-time Dog statistics
+ * @returns {Object} Total stats
+ */
+function getTotalStats() {
+  const data = loadActivity();
+  return Object.entries(data.totals || {})
+    .map(([name, count]) => ({
+      name,
+      count,
+      dog: COLLECTIVE_DOGS[name],
+    }))
+    .sort((a, b) => b.count - a.count);
+}
+
 module.exports = {
+  // Dog definitions
   COLLECTIVE_DOGS,
   AGENT_TO_DOG,
   ERROR_TO_DOG,
   TOOL_TO_DOG,
+
+  // Dog lookup
   getDogForAgent,
   getDogForError,
   getDogForTool,
+  getAllDogs,
+  getDogByName,
+  getDogBySefirah,
+
+  // Dog personality
   getDogGreeting,
   getDogQuirk,
   getDogVerb,
   formatDogSpeech,
   formatDogAction,
   formatDogHeader,
-  getAllDogs,
-  getDogByName,
-  getDogBySefirah,
+
+  // Display
   renderSefirotTree,
+
+  // Session tracking
+  recordDogActivity,
+  getSessionSummary,
+  formatSessionSummary,
+  resetSession,
+  getTotalStats,
 };
