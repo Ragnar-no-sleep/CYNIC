@@ -42,6 +42,100 @@ import cynic, {
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+
+// Load ANSI colors from collective-dogs module
+let ANSI = null;
+try {
+  const dogs = require('../lib/collective-dogs.cjs');
+  ANSI = dogs.ANSI;
+} catch (e) {
+  // Fallback ANSI codes
+  ANSI = {
+    reset: '\x1b[0m', bold: '\x1b[1m', dim: '\x1b[2m',
+    red: '\x1b[31m', green: '\x1b[32m', yellow: '\x1b[33m',
+    blue: '\x1b[34m', magenta: '\x1b[35m', cyan: '\x1b[36m',
+    brightRed: '\x1b[91m', brightGreen: '\x1b[92m', brightYellow: '\x1b[93m',
+    brightBlue: '\x1b[94m', brightMagenta: '\x1b[95m', brightCyan: '\x1b[96m',
+    brightWhite: '\x1b[97m',
+  };
+}
+
+// Color helper
+const c = (color, text) => `${color}${text}${ANSI.reset}`;
+
+/**
+ * Colorize the awakening banner
+ * @param {string} message - The banner message
+ * @returns {string} Colorized message
+ */
+function colorizeBanner(message) {
+  return message
+    // Headers (═══)
+    .replace(/^(═+)$/gm, c(ANSI.cyan, '$1'))
+    // Title lines
+    .replace(/(🧠 CYNIC AWAKENING.*)/g, c(ANSI.bold + ANSI.brightCyan, '$1'))
+    .replace(/("Loyal to truth.*")/g, c(ANSI.dim, '$1'))
+    // Section headers
+    .replace(/^(── .+ ─+)$/gm, c(ANSI.brightWhite, '$1'))
+    // Status indicators
+    .replace(/(✅)/g, c(ANSI.brightGreen, '$1'))
+    .replace(/(⚠️)/g, c(ANSI.brightYellow, '$1'))
+    .replace(/(🔴|❌)/g, c(ANSI.brightRed, '$1'))
+    .replace(/(💡)/g, c(ANSI.brightYellow, '$1'))
+    .replace(/(🔥)/g, c(ANSI.brightRed, '$1'))
+    // Dogs in Sefirot tree
+    .replace(/(🧠 CYNIC)/g, c(ANSI.brightWhite, '$1'))
+    .replace(/(🔍 Scout)/g, c(ANSI.brightGreen, '$1'))
+    .replace(/(🛡️ Guardian)/g, c(ANSI.brightRed, '$1'))
+    .replace(/(🏗️ Architect)/g, c(ANSI.brightBlue, '$1'))
+    .replace(/(🚀 Deployer)/g, c(ANSI.yellow, '$1'))
+    .replace(/(🧹 Janitor)/g, c(ANSI.magenta, '$1'))
+    .replace(/(🔮 Oracle)/g, c(ANSI.brightYellow, '$1'))
+    .replace(/(📊 Analyst)/g, c(ANSI.brightWhite, '$1'))
+    .replace(/(🦉 Sage)/g, c(ANSI.cyan, '$1'))
+    .replace(/(📚 Scholar)/g, c(ANSI.yellow, '$1'))
+    .replace(/(🗺️ Cartographer)/g, c(ANSI.green, '$1'))
+    // State emojis and expressions
+    .replace(/(\*sniff\*)/g, c(ANSI.dim, '$1'))
+    .replace(/(\*GROWL\*)/g, c(ANSI.brightRed, '$1'))
+    .replace(/(\*tail wag\*)/g, c(ANSI.brightGreen, '$1'))
+    .replace(/(\*nod\*)/g, c(ANSI.dim, '$1'))
+    // Thermodynamics
+    .replace(/(Q \(heat\):.*?🔥)/g, c(ANSI.brightRed, '$1'))
+    .replace(/(W \(work\):\s*\d+)/g, c(ANSI.brightGreen, '$1'))
+    .replace(/(Efficiency:.*?%)/g, (match) => {
+      // Color based on efficiency value
+      const effMatch = match.match(/(\d+)%/);
+      if (effMatch) {
+        const eff = parseInt(effMatch[1], 10);
+        if (eff > 50) return c(ANSI.brightGreen, match);
+        if (eff > 30) return c(ANSI.yellow, match);
+        return c(ANSI.brightRed, match);
+      }
+      return match;
+    })
+    // Psychology states
+    .replace(/(FLOW|NORMAL|PRODUCTIVE)/g, c(ANSI.brightGreen, '$1'))
+    .replace(/(BURNOUT|CRITICAL|DANGER)/gi, c(ANSI.brightRed, '$1'))
+    .replace(/(WARNING|CAUTION)/gi, c(ANSI.brightYellow, '$1'))
+    // Energy/focus percentages - color based on value
+    .replace(/(énergie|focus|energy):\s*(\d+)%/gi, (match, label, pct) => {
+      const val = parseInt(pct, 10);
+      const color = val > 60 ? ANSI.brightGreen : (val > 38 ? ANSI.yellow : ANSI.brightRed);
+      return `${label}: ${c(color, pct + '%')}`;
+    })
+    // Progress bars - color based on fill
+    .replace(/\[(█+)(░*)\]/g, (match, filled, empty) => {
+      const fillPct = filled.length / 10;
+      const color = fillPct > 0.6 ? ANSI.brightGreen : (fillPct > 0.38 ? ANSI.yellow : ANSI.brightRed);
+      return `[${c(color, filled)}${empty}]`;
+    })
+    // Final awakening line
+    .replace(/(CYNIC is AWAKE\. φ guides all ratios\.)/g, c(ANSI.brightCyan, '$1'));
+}
 
 // Phase 22: Session state management
 import { getSessionState, initOrchestrationClient } from './lib/index.js';
@@ -857,7 +951,9 @@ async function main() {
     }
 
     // Output directly to stdout (like asdf-brain) for banner display
-    console.log(message);
+    // Apply colors if terminal supports it
+    const useColor = process.stdout.isTTY !== false && !process.env.NO_COLOR;
+    console.log(useColor ? colorizeBanner(message) : message);
 
   } catch (error) {
     // Minimal output on error
