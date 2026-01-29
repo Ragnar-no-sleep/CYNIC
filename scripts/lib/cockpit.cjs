@@ -21,6 +21,14 @@ const { execFileSync } = require('child_process');
 // Import core library
 const cynic = require('./cynic-core.cjs');
 
+// Import centralized color system
+let colors;
+try {
+  colors = require('./colors.cjs');
+} catch {
+  colors = null;
+}
+
 // =============================================================================
 // CONSTANTS
 // =============================================================================
@@ -30,8 +38,8 @@ const SCAN_INTERVAL_MS = cynic.HEARTBEAT_MS; // 61.8 seconds (φ-aligned)
 const ALERT_TTL_MS = 3600000; // 1 hour
 const MAX_ALERTS = 100;
 
-// ANSI color helpers
-const ANSI = {
+// Use centralized ANSI or fallback
+const ANSI = colors?.ANSI || {
   reset: '\x1b[0m', bold: '\x1b[1m', dim: '\x1b[2m',
   red: '\x1b[31m', green: '\x1b[32m', yellow: '\x1b[33m',
   blue: '\x1b[34m', magenta: '\x1b[35m', cyan: '\x1b[36m', white: '\x1b[37m',
@@ -41,7 +49,7 @@ const ANSI = {
 };
 
 let useColor = true;
-const c = (color, text) => useColor ? `${color}${text}${ANSI.reset}` : text;
+const c = colors?.colorize || ((color, text) => useColor ? `${color}${text}${ANSI.reset}` : text);
 
 // Known ecosystem repos and their roles
 // GRANULARITY: Only repos owned by zeyxx are part of the TRUE ecosystem

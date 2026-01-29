@@ -21,12 +21,20 @@ const path = require('path');
 const os = require('os');
 const { execFileSync, spawnSync } = require('child_process');
 
+// Import centralized color system
+let colors;
+try {
+  colors = require('./colors.cjs');
+} catch {
+  colors = null;
+}
+
 // φ Constants
 const PHI = 1.618033988749895;
 const PHI_INV = 1 / PHI; // 0.618
 
-// ANSI color helpers
-const ANSI = {
+// Use centralized ANSI or fallback
+const ANSI = colors?.ANSI || {
   reset: '\x1b[0m', bold: '\x1b[1m', dim: '\x1b[2m',
   red: '\x1b[31m', green: '\x1b[32m', yellow: '\x1b[33m',
   blue: '\x1b[34m', magenta: '\x1b[35m', cyan: '\x1b[36m', white: '\x1b[37m',
@@ -36,7 +44,7 @@ const ANSI = {
 };
 
 let useColor = true;
-const c = (color, text) => useColor ? `${color}${text}${ANSI.reset}` : text;
+const c = colors?.colorize || ((color, text) => useColor ? `${color}${text}${ANSI.reset}` : text);
 
 // Paths
 const CYNIC_DIR = path.join(os.homedir(), '.cynic');
