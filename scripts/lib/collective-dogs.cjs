@@ -213,9 +213,10 @@ function getDogVerb(dog) {
  * @param {Object} dog - Dog object
  * @param {string} message - Message content
  * @param {string} mood - 'neutral', 'alert', 'happy', 'warning'
+ * @param {boolean} useColor - Whether to use ANSI colors
  * @returns {string} Formatted speech
  */
-function formatDogSpeech(dog, message, mood = 'neutral') {
+function formatDogSpeech(dog, message, mood = 'neutral', useColor = true) {
   // Use the Dog's own quirk if available
   const quirk = getDogQuirk(dog);
 
@@ -226,7 +227,13 @@ function formatDogSpeech(dog, message, mood = 'neutral') {
   };
 
   const prefix = moodOverrides[mood] || quirk;
-  return `${dog.icon} ${dog.name}: ${prefix} ${message}`;
+  const nameText = `${dog.icon} ${dog.name}`;
+  const content = `${prefix} ${message}`;
+
+  if (useColor) {
+    return `${colorize(dog, bold(nameText))}: ${dim(prefix)} ${message}`;
+  }
+  return `${nameText}: ${content}`;
 }
 
 /**
@@ -244,11 +251,17 @@ function formatDogAction(dog, action = null) {
  * Format a Dog header for output sections
  * @param {Object} dog - Dog object
  * @param {string} title - Section title
+ * @param {boolean} useColor - Whether to use ANSI colors
  * @returns {string} Formatted header
  */
-function formatDogHeader(dog, title = '') {
+function formatDogHeader(dog, title = '', useColor = true) {
   const titleText = title ? ` - ${title}` : '';
-  return `── ${dog.icon} ${dog.name} (${dog.sefirah})${titleText} ──`;
+  const header = `── ${dog.icon} ${dog.name} (${dog.sefirah})${titleText} ──`;
+
+  if (useColor) {
+    return colorize(dog, bold(header));
+  }
+  return header;
 }
 
 /**
@@ -306,6 +319,88 @@ function renderSefirotTree() {
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ANSI COLORS - Make Dogs visually distinct
+// ═══════════════════════════════════════════════════════════════════════════
+
+const ANSI = {
+  reset: '\x1b[0m',
+  bold: '\x1b[1m',
+  dim: '\x1b[2m',
+  italic: '\x1b[3m',
+  underline: '\x1b[4m',
+
+  // Foreground colors
+  black: '\x1b[30m',
+  red: '\x1b[31m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  blue: '\x1b[34m',
+  magenta: '\x1b[35m',
+  cyan: '\x1b[36m',
+  white: '\x1b[37m',
+
+  // Bright foreground
+  brightRed: '\x1b[91m',
+  brightGreen: '\x1b[92m',
+  brightYellow: '\x1b[93m',
+  brightBlue: '\x1b[94m',
+  brightMagenta: '\x1b[95m',
+  brightCyan: '\x1b[96m',
+  brightWhite: '\x1b[97m',
+
+  // Background
+  bgRed: '\x1b[41m',
+  bgGreen: '\x1b[42m',
+  bgYellow: '\x1b[43m',
+  bgBlue: '\x1b[44m',
+};
+
+// Map Dog colors to ANSI codes
+const DOG_COLORS = {
+  CYNIC: ANSI.brightWhite,
+  SCOUT: ANSI.brightGreen,
+  GUARDIAN: ANSI.brightRed,
+  DEPLOYER: ANSI.yellow,
+  ARCHITECT: ANSI.brightBlue,
+  JANITOR: ANSI.magenta,
+  ORACLE: ANSI.brightYellow,
+  ANALYST: ANSI.white,
+  SAGE: ANSI.cyan,
+  SCHOLAR: ANSI.yellow,
+  CARTOGRAPHER: ANSI.green,
+};
+
+/**
+ * Colorize text for a specific Dog
+ * @param {Object} dog - Dog object
+ * @param {string} text - Text to colorize
+ * @returns {string} Colorized text
+ */
+function colorize(dog, text) {
+  const dogName = dog?.name?.toUpperCase() || 'CYNIC';
+  const color = DOG_COLORS[dogName] || ANSI.white;
+  return `${color}${text}${ANSI.reset}`;
+}
+
+/**
+ * Make text bold
+ * @param {string} text - Text to bold
+ * @returns {string} Bold text
+ */
+function bold(text) {
+  return `${ANSI.bold}${text}${ANSI.reset}`;
+}
+
+/**
+ * Make text dim
+ * @param {string} text - Text to dim
+ * @returns {string} Dimmed text
+ */
+function dim(text) {
+  return `${ANSI.dim}${text}${ANSI.reset}`;
+}
 
 const ACTIVITY_DIR = path.join(os.homedir(), '.cynic', 'dogs');
 const ACTIVITY_FILE = path.join(ACTIVITY_DIR, 'activity.json');
@@ -482,6 +577,13 @@ module.exports = {
   formatDogSpeech,
   formatDogAction,
   formatDogHeader,
+
+  // Colors
+  ANSI,
+  DOG_COLORS,
+  colorize,
+  bold,
+  dim,
 
   // Display
   renderSefirotTree,
