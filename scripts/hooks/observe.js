@@ -83,6 +83,134 @@ const feedbackCollector = getFeedbackCollector();
 const suggestionEngine = getSuggestionEngine();
 
 // =============================================================================
+// COLLECTIVE DOGS (SEFIROT) MAPPING
+// =============================================================================
+
+/**
+ * The 11 Dogs of the Collective, mapped to Kabbalistic Sefirot
+ * Each Dog has a domain and reacts to specific actions
+ */
+const COLLECTIVE_DOGS = {
+  CYNIC:        { icon: '🧠', name: 'CYNIC', sefirah: 'Keter', domain: 'orchestration' },
+  SCOUT:        { icon: '🔍', name: 'Scout', sefirah: 'Netzach', domain: 'exploration' },
+  GUARDIAN:     { icon: '🛡️', name: 'Guardian', sefirah: 'Gevurah', domain: 'protection' },
+  DEPLOYER:     { icon: '🚀', name: 'Deployer', sefirah: 'Hod', domain: 'deployment' },
+  ARCHITECT:    { icon: '🏗️', name: 'Architect', sefirah: 'Chesed', domain: 'building' },
+  JANITOR:      { icon: '🧹', name: 'Janitor', sefirah: 'Yesod', domain: 'cleanup' },
+  ORACLE:       { icon: '🔮', name: 'Oracle', sefirah: 'Tiferet', domain: 'insight' },
+  ANALYST:      { icon: '📊', name: 'Analyst', sefirah: 'Binah', domain: 'analysis' },
+  SAGE:         { icon: '🦉', name: 'Sage', sefirah: 'Chochmah', domain: 'wisdom' },
+  SCHOLAR:      { icon: '📚', name: 'Scholar', sefirah: 'Daat', domain: 'knowledge' },
+  CARTOGRAPHER: { icon: '🗺️', name: 'Cartographer', sefirah: 'Malkhut', domain: 'mapping' },
+};
+
+/**
+ * Determine which Dog is most relevant for the current action
+ * "Le Collectif observe - un Chien répond"
+ */
+function getActiveDog(toolName, toolInput, isError) {
+  const command = toolInput?.command || '';
+  const filePath = toolInput?.file_path || toolInput?.filePath || '';
+
+  // Errors activate the Guardian
+  if (isError) {
+    return COLLECTIVE_DOGS.GUARDIAN;
+  }
+
+  // Tool-specific mappings
+  switch (toolName) {
+    // Exploration tools → Scout
+    case 'Read':
+    case 'Glob':
+    case 'Grep':
+    case 'LS':
+      return COLLECTIVE_DOGS.SCOUT;
+
+    // Building tools → Architect
+    case 'Write':
+    case 'Edit':
+    case 'NotebookEdit':
+      // Unless it's cleanup/deletion
+      if (toolInput?.new_string === '' || toolInput?.content?.length < (toolInput?.old_string?.length || 0)) {
+        return COLLECTIVE_DOGS.JANITOR;
+      }
+      return COLLECTIVE_DOGS.ARCHITECT;
+
+    // Task/Agent dispatch → CYNIC (orchestration)
+    case 'Task':
+      return COLLECTIVE_DOGS.CYNIC;
+
+    // Web research → Scholar
+    case 'WebFetch':
+    case 'WebSearch':
+      return COLLECTIVE_DOGS.SCHOLAR;
+
+    // Bash commands need deeper analysis
+    case 'Bash':
+      // Git operations
+      if (command.startsWith('git ')) {
+        const gitCmd = command.split(' ')[1];
+        if (['push', 'deploy', 'publish'].includes(gitCmd)) {
+          return COLLECTIVE_DOGS.DEPLOYER;
+        }
+        if (['log', 'diff', 'show', 'blame'].includes(gitCmd)) {
+          return COLLECTIVE_DOGS.ANALYST;
+        }
+        if (['clean', 'gc', 'prune'].includes(gitCmd)) {
+          return COLLECTIVE_DOGS.JANITOR;
+        }
+        return COLLECTIVE_DOGS.CARTOGRAPHER; // git status, branch, etc.
+      }
+      // Test commands → Guardian (verification)
+      if (command.match(/test|jest|vitest|mocha|pytest|cargo\s+test/i)) {
+        return COLLECTIVE_DOGS.GUARDIAN;
+      }
+      // Build/compile → Architect
+      if (command.match(/build|compile|tsc|webpack|vite/i)) {
+        return COLLECTIVE_DOGS.ARCHITECT;
+      }
+      // Deploy commands → Deployer
+      if (command.match(/deploy|publish|release/i)) {
+        return COLLECTIVE_DOGS.DEPLOYER;
+      }
+      // Cleanup → Janitor
+      if (command.match(/clean|rm\s|del\s|remove/i)) {
+        return COLLECTIVE_DOGS.JANITOR;
+      }
+      // Default bash → Cartographer (mapping/exploration)
+      return COLLECTIVE_DOGS.CARTOGRAPHER;
+
+    // MCP tools → depends on the tool
+    default:
+      // MCP brain tools
+      if (toolName.startsWith('mcp__')) {
+        if (toolName.includes('search') || toolName.includes('query')) {
+          return COLLECTIVE_DOGS.SCOUT;
+        }
+        if (toolName.includes('memory') || toolName.includes('learn')) {
+          return COLLECTIVE_DOGS.SCHOLAR;
+        }
+        if (toolName.includes('judge') || toolName.includes('refine')) {
+          return COLLECTIVE_DOGS.ORACLE;
+        }
+        if (toolName.includes('pattern')) {
+          return COLLECTIVE_DOGS.ANALYST;
+        }
+      }
+      // Default → Scout (exploration)
+      return COLLECTIVE_DOGS.SCOUT;
+  }
+}
+
+/**
+ * Format the active Dog display
+ */
+function formatActiveDog(dog, action = '') {
+  const actionText = action ? ` - ${action}` : '';
+  return `${dog.icon} ${dog.name} (${dog.sefirah})${actionText}`;
+}
+
+// =============================================================================
 // PATTERN DETECTION
 // =============================================================================
 
@@ -971,9 +1099,11 @@ async function main() {
         const biasWarning = highConfidenceBiases
           .map(b => cognitiveBiases.formatDetection(b))
           .join('\n');
+        // Guardian speaks on bias detection
+        const guardian = COLLECTIVE_DOGS.GUARDIAN;
         console.log(JSON.stringify({
           continue: true,
-          message: `\n── COGNITIVE BIAS DETECTED ────────────────────────────────\n${biasWarning}\n`,
+          message: `\n── ${guardian.icon} ${guardian.name} (${guardian.sefirah}) ────────────────────────────\n   COGNITIVE BIAS DETECTED\n${biasWarning}\n`,
         }));
         return;
       }
@@ -1006,9 +1136,11 @@ async function main() {
     if (topologyState?.rabbitHole) {
       const emoji = topologyState.rabbitHole.type === 'depth' ? '🐰' :
                     topologyState.rabbitHole.type === 'relevance' ? '🌀' : '⏰';
+      // Cartographer speaks on navigation issues
+      const cartographer = COLLECTIVE_DOGS.CARTOGRAPHER;
       console.log(JSON.stringify({
         continue: true,
-        message: `\n── RABBIT HOLE DETECTED ───────────────────────────────────\n   ${emoji} ${topologyState.rabbitHole.suggestion}\n`,
+        message: `\n── ${cartographer.icon} ${cartographer.name} (${cartographer.sefirah}) ────────────────────────────\n   RABBIT HOLE DETECTED\n   ${emoji} ${topologyState.rabbitHole.suggestion}\n`,
       }));
       return;
     }
@@ -1122,10 +1254,14 @@ async function main() {
         } catch (e) { /* ignore */ }
       }
 
+      // Add active Dog to judgment output
+      const activeDog = getActiveDog(toolName, toolInput, isError);
+      const dogNote = activeDog ? `\n${activeDog.icon} ${activeDog.name} observes.` : '';
+
       // Output the judgment (will be shown to user)
       console.log(JSON.stringify({
         continue: true,
-        message: formatted + refinementNote + thermoNote,
+        message: formatted + refinementNote + thermoNote + dogNote,
       }));
       return;
     }
@@ -1138,7 +1274,37 @@ async function main() {
 
     let outputParts = [];
 
-    // 1. Observation Summary (efficiency, escalation, patterns)
+    // 0. Active Dog Display - Which Sefirot is speaking
+    // "Le Collectif observe - un Chien répond"
+    const activeDog = getActiveDog(toolName, toolInput, isError);
+
+    // Determine action description
+    let actionDesc = '';
+    if (isError) {
+      actionDesc = 'protecting';
+    } else if (toolName === 'Read' || toolName === 'Glob' || toolName === 'Grep') {
+      actionDesc = 'exploring';
+    } else if (toolName === 'Write' || toolName === 'Edit') {
+      actionDesc = 'building';
+    } else if (toolName === 'Bash') {
+      const cmd = toolInput.command || '';
+      if (cmd.startsWith('git ')) actionDesc = 'tracking';
+      else if (cmd.match(/test/i)) actionDesc = 'verifying';
+      else actionDesc = 'executing';
+    } else if (toolName === 'Task') {
+      actionDesc = 'dispatching';
+    }
+
+    // Only show Dog if there's significant activity (not just silent observation)
+    const showDog = isError || toolName === 'Write' || toolName === 'Edit' ||
+                   toolName === 'Task' || (toolName === 'Bash' && toolInput.command?.length > 10);
+
+    // 1. Active Dog indicator (subtle, inline)
+    if (showDog && activeDog) {
+      outputParts.push(`\n${activeDog.icon} `);
+    }
+
+    // 2. Observation Summary (efficiency, escalation, patterns)
     if (suggestionEngine) {
       const observationSummary = suggestionEngine.getObservationSummary();
       const formattedObservation = suggestionEngine.formatObservationSummary(observationSummary);

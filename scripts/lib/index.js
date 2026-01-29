@@ -451,6 +451,20 @@ export function getTotalMemory() {
   return _totalMemory || null;
 }
 
+// Collective Dogs (Sefirot) module
+let _collectiveDogs = null;
+
+export function getCollectiveDogs() {
+  if (_collectiveDogs === null) {
+    try {
+      _collectiveDogs = require('./collective-dogs.cjs');
+    } catch (e) {
+      _collectiveDogs = false;
+    }
+  }
+  return _collectiveDogs || null;
+}
+
 // More module getters for observe hook
 let _selfRefinement = null;
 let _harmonyAnalyzer = null;

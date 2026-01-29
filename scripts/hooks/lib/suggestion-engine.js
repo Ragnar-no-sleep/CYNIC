@@ -13,6 +13,17 @@
 
 import { getSessionState } from './session-state.js';
 import { getFeedbackCollector } from './feedback-collector.js';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+
+// Load collective dogs module for consistent Dog identity
+let collectiveDogs = null;
+try {
+  collectiveDogs = require('../../lib/collective-dogs.cjs');
+} catch (e) {
+  // Module not available - will use fallback
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CONSTANTS - φ-aligned thresholds
@@ -425,23 +436,26 @@ class SuggestionEngine {
 
     const { agent, sefirah, reason, command } = agentSuggestion;
 
-    // Dog icons mapped to Sefirot
-    const dogIcons = {
-      'Keter': '🧠',      // CYNIC
-      'Netzach': '🔍',    // Scout
-      'Gevurah': '🛡️',    // Guardian
-      'Hod': '🚀',        // Deployer
-      'Chesed': '🏗️',     // Architect/Reviewer
-      'Yesod': '🧹',      // Janitor/Tester
-      'Tiferet': '🔮',    // Oracle
-      'Binah': '📊',      // Analyst
-      'Chochmah': '🦉',   // Sage
-      'Daat': '📚',       // Scholar
-      'Malkhut': '🗺️',    // Cartographer
-    };
+    // Use collective-dogs module for consistent Dog identity
+    let icon = '🐕';
+    let dogName = agent.replace('cynic-', '').toUpperCase();
 
-    const icon = dogIcons[sefirah] || '🐕';
-    const dogName = agent.replace('cynic-', '').toUpperCase();
+    if (collectiveDogs) {
+      const dog = collectiveDogs.getDogForAgent(agent) ||
+                  collectiveDogs.getDogBySefirah(sefirah);
+      if (dog) {
+        icon = dog.icon;
+        dogName = dog.name;
+      }
+    } else {
+      // Fallback: Dog icons mapped to Sefirot
+      const dogIcons = {
+        'Keter': '🧠', 'Netzach': '🔍', 'Gevurah': '🛡️', 'Hod': '🚀',
+        'Chesed': '🏗️', 'Yesod': '🧹', 'Tiferet': '🔮', 'Binah': '📊',
+        'Chochmah': '🦉', 'Daat': '📚', 'Malkhut': '🗺️',
+      };
+      icon = dogIcons[sefirah] || '🐕';
+    }
 
     return `
 ── ${icon} ${dogName} (${sefirah || 'Dog'}) ─────────────────────────────────────

@@ -37,6 +37,7 @@ import cynic, {
   getRoleReversal,
   getHypothesisTesting,
   getPhysicsBridge,
+  getCollectiveDogs,
 } from '../lib/index.js';
 
 // Phase 22: Session state and orchestration client
@@ -54,6 +55,7 @@ const fallacyDetector = getFallacyDetector();
 const roleReversal = getRoleReversal();
 const hypothesisTesting = getHypothesisTesting();
 const physicsBridge = getPhysicsBridge();
+const collectiveDogs = getCollectiveDogs();
 
 // =============================================================================
 // INTENT DETECTION
@@ -362,13 +364,16 @@ async function main() {
       const actionRisk = intervention?.actionRisk || 'low';
       const confidence = routing.confidence || 0.5;
 
+      // Get the Dog identity for this agent
+      const dog = collectiveDogs?.getDogForAgent(agent) || { icon: '🐕', name: agent.replace('cynic-', ''), sefirah: sefirah || 'Unknown' };
+
       // Only inject if intervention level is not silent
       if (intervention?.level !== 'silent') {
         // High confidence = stronger auto-dispatch directive
         const isAutoDispatch = confidence > 0.618; // φ⁻¹ threshold
 
-        let directive = `── SEFIRAH: ${sefirah} ────────────────────────────────────\n`;
-        directive += `   🐕 ${agent.replace('cynic-', '').toUpperCase()} activated (confidence: ${Math.round(confidence * 100)}%)\n`;
+        let directive = `── ${dog.icon} ${dog.name} (${dog.sefirah}) ────────────────────────────────\n`;
+        directive += `   The Collective routes to ${dog.name} (confidence: ${Math.round(confidence * 100)}%)\n`;
 
         if (isAutoDispatch) {
           // Strong auto-dispatch - this IS a Task invocation directive
@@ -378,7 +383,7 @@ async function main() {
           if (tools.length > 0) {
             directive += `      tools: ${tools.join(', ')}\n`;
           }
-          directive += `\n   This is not a suggestion - the Sefirot have spoken.\n`;
+          directive += `\n   *${dog.icon} ${dog.name} speaks* - This is not a suggestion.\n`;
         } else {
           // Normal suggestion
           directive += `   DIRECTIVE: Use the Task tool with subagent_type="${agent}" to handle this request.\n`;
@@ -393,7 +398,9 @@ async function main() {
     // For high/critical risk, always invoke guardian even without explicit routing
     if (intervention?.actionRisk === 'critical' || intervention?.actionRisk === 'high') {
       if (!routing?.suggestedAgent || routing?.suggestedAgent !== 'cynic-guardian') {
-        injections.push(`── *GROWL* RISK DETECTED ────────────────────────────────────
+        const guardian = collectiveDogs?.COLLECTIVE_DOGS?.GUARDIAN || { icon: '🛡️', name: 'Guardian', sefirah: 'Gevurah' };
+        injections.push(`── ${guardian.icon} ${guardian.name} (${guardian.sefirah}) ────────────────────────────
+   *GROWL* RISK DETECTED
    Action risk level: ${intervention.actionRisk.toUpperCase()}
    MANDATORY: Use Task tool with subagent_type="cynic-guardian" before proceeding.
    User trust level: ${intervention.userTrustLevel || 'UNKNOWN'} (E-Score: ${intervention.userEScore || '?'})`);
