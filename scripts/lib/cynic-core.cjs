@@ -986,6 +986,30 @@ async function digestToBrain(content, options = {}) {
 // Learnings persistence: PostgreSQL via brain_learning MCP tool
 // =============================================================================
 
+// Feedback counter for triggering learn() periodically
+let _feedbackCount = 0;
+const LEARN_THRESHOLD = 3; // Trigger learn() after every 3 feedback items (φ⁻³ inspired)
+
+/**
+ * Maybe trigger learning cycle if enough feedback has accumulated
+ * Called after each feedback to ensure learning happens during session, not just at end
+ * @private
+ */
+async function _maybeTriggerLearning() {
+  _feedbackCount++;
+  if (_feedbackCount >= LEARN_THRESHOLD) {
+    _feedbackCount = 0;
+    try {
+      const result = await callBrainTool('brain_learning', { action: 'learn' });
+      if (result?.success) {
+        console.error(`[CYNIC] Learning cycle: ${result.feedbackProcessed || 0} processed, ${result.adjustmentsMade || 0} adjustments`);
+      }
+    } catch (e) {
+      // Non-critical - learning will happen eventually
+    }
+  }
+}
+
 /**
  * Send test result feedback to learning service
  * Uses brain_learning test_result action which calls LearningService.processTestResult()
@@ -999,7 +1023,7 @@ async function digestToBrain(content, options = {}) {
  * @returns {Promise<Object>} Learning result
  */
 async function sendTestFeedback(params) {
-  return callBrainTool('brain_learning', {
+  const result = await callBrainTool('brain_learning', {
     action: 'test_result',
     judgmentId: params.judgmentId,
     passed: params.passed,
@@ -1008,6 +1032,8 @@ async function sendTestFeedback(params) {
     failCount: params.failCount || 0,
     itemType: params.itemType || 'code',
   });
+  await _maybeTriggerLearning();
+  return result;
 }
 
 /**
@@ -1022,13 +1048,15 @@ async function sendTestFeedback(params) {
  * @returns {Promise<Object>} Learning result
  */
 async function sendCommitFeedback(params) {
-  return callBrainTool('brain_learning', {
+  const result = await callBrainTool('brain_learning', {
     action: 'commit_result',
     judgmentId: params.judgmentId,
     success: params.success,
     commitHash: params.commitHash,
     hooksPassed: params.hooksPassed,
   });
+  await _maybeTriggerLearning();
+  return result;
 }
 
 /**
@@ -1042,13 +1070,15 @@ async function sendCommitFeedback(params) {
  * @returns {Promise<Object>} Learning result
  */
 async function sendPRFeedback(params) {
-  return callBrainTool('brain_learning', {
+  const result = await callBrainTool('brain_learning', {
     action: 'pr_result',
     judgmentId: params.judgmentId,
     status: params.status,
     prNumber: params.prNumber,
     approvalCount: params.approvalCount || 0,
   });
+  await _maybeTriggerLearning();
+  return result;
 }
 
 /**
@@ -1062,13 +1092,15 @@ async function sendPRFeedback(params) {
  * @returns {Promise<Object>} Learning result
  */
 async function sendBuildFeedback(params) {
-  return callBrainTool('brain_learning', {
+  const result = await callBrainTool('brain_learning', {
     action: 'build_result',
     judgmentId: params.judgmentId,
     success: params.success,
     buildId: params.buildId,
     duration: params.duration,
   });
+  await _maybeTriggerLearning();
+  return result;
 }
 
 // =============================================================================

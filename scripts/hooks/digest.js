@@ -42,6 +42,9 @@ import cynic, {
 /**
  * Emit session feedback event to the brain
  * This allows the automation layer to learn from session outcomes
+ *
+ * FIXED: Now sends proper format for LearningService.processFeedback()
+ * and triggers learn() to actually apply the feedback to weights
  */
 async function emitSessionFeedback(userId, analysis, insights) {
   try {
@@ -53,34 +56,58 @@ async function emitSessionFeedback(userId, analysis, insights) {
     const completionScore = analysis.completionRate ?? 0;
 
     // φ-weighted quality: 61.8% completion, 38.2% error-free
-    const qualityScore = (completionScore * 0.618) + ((1 - errorRate) * 0.382);
+    const qualityScore = Math.round((completionScore * 0.618) + ((1 - errorRate) * 0.382) * 100);
 
-    // Prepare session feedback
+    // Determine outcome based on error rate and insights
+    const hasNegativeInsights = insights.some(i =>
+      i.type === 'recurring_error' || i.type === 'failure_pattern'
+    );
+    const outcome = errorRate > 0.3 || hasNegativeInsights ? 'incorrect' : 'correct';
+
+    // Prepare session feedback in LearningService format
+    // This matches processFeedback() expected schema
     const feedback = {
+      outcome,                              // 'correct' | 'incorrect' | 'partial'
+      actualScore: qualityScore,            // What the session actually scored (0-100)
+      originalScore: 62,                    // φ⁻¹ baseline expectation
+      itemType: 'session',                  // Track by session type
+      dimensionScores: {
+        // Estimate dimension contributions from session metrics
+        PHI_COHERENCE: errorRate < 0.1 ? 80 : 50,
+        PHI_HARMONY: completionScore * 100,
+        VERIFY_ACCURACY: (1 - errorRate) * 100,
+        VERIFY_EVIDENCE: analysis.toolsUsed > 5 ? 70 : 50,
+        BURN_SIMPLICITY: analysis.toolsUsed < 50 ? 70 : 40,
+        CULTURE_PATTERNS: insights.length > 0 ? 60 : 40,
+      },
       source: 'session_digest',
-      userId,
-      timestamp: Date.now(),
-      metrics: {
+      sourceContext: {
+        userId,
         toolsUsed: analysis.toolsUsed,
         errorsEncountered: analysis.errorsEncountered,
-        errorRate,
-        completionRate: completionScore,
-        qualityScore,
         insightCount: insights.length,
+        timestamp: Date.now(),
       },
-      outcome: qualityScore > 0.5 ? 'positive' : 'negative',
     };
 
-    // Send feedback via brain_learning tool
+    // Step 1: Send feedback to queue
     await callBrainTool('brain_learning', {
       action: 'feedback',
       feedback,
-    }).catch(() => {
-      // Fallback: Try event-based feedback
-      // This will be picked up by the AutomationExecutor
-    });
+    }).catch(() => {});
+
+    // Step 2: CRITICAL - Trigger learn() to actually process the feedback
+    // Without this, feedback accumulates but never updates weights
+    const learnResult = await callBrainTool('brain_learning', {
+      action: 'learn',
+    }).catch(() => ({ success: false, reason: 'MCP call failed' }));
+
+    if (learnResult?.success) {
+      console.error(`[CYNIC] Learning cycle completed: ${learnResult.feedbackProcessed} feedback processed`);
+    }
   } catch (e) {
     // Non-critical - silently ignore
+    console.error('[CYNIC] Session feedback failed:', e.message);
   }
 }
 
