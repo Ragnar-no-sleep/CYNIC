@@ -50,3 +50,10 @@ export {
   WarningSeverity,
   WarningType,
 } from './burnout-detection.js';
+
+// v1.2: EWC++ Knowledge Retention
+export {
+  EWCConsolidationService,
+  createEWCService,
+  EWC_CONFIG,
+} from './ewc-consolidation.js';

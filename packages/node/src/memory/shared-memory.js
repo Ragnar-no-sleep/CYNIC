@@ -37,6 +37,18 @@ const REINFORCEMENT = {
 };
 
 /**
+ * EWC++ (Elastic Weight Consolidation) constants
+ * Prevents catastrophic forgetting of important patterns
+ */
+const EWC = {
+  LOCK_THRESHOLD: PHI_INV,        // 0.618 - Lock patterns above this Fisher score
+  UNLOCK_THRESHOLD: 0.236,        // φ⁻³ - Unlock patterns below this
+  FISHER_BOOST_PER_USE: 0.01,     // Fisher score boost per successful use
+  FISHER_DECAY: 0.999,            // Fisher decay rate (very slow)
+  MIN_USES_FOR_LOCK: 5,           // Minimum uses before pattern can be locked
+};
+
+/**
  * SharedMemory - Collective knowledge accessible to all dogs
  */
 export class SharedMemory {
@@ -155,6 +167,10 @@ export class SharedMemory {
       useCount: 0,
       weight: pattern.weight ?? 1.0,  // Path reinforcement weight
       verified: pattern.verified || false,
+      // EWC++ fields (anti-forgetting)
+      fisherImportance: pattern.fisherImportance ?? 0,
+      consolidationLocked: pattern.consolidationLocked ?? false,
+      lockedAt: pattern.lockedAt ?? null,
     });
 
     this.stats.patternsAdded++;
@@ -214,21 +230,29 @@ export class SharedMemory {
   }
 
   _prunePatterns() {
-    // Sort by score (weight + recency + usage + verified)
+    // Sort by score (weight + recency + usage + verified + EWC lock)
+    // EWC-locked patterns are NEVER pruned (infinite score)
     const sorted = Array.from(this._patterns.entries())
       .map(([id, p]) => ({
         id,
-        score: (p.verified ? 1000 : 0) +
+        locked: p.consolidationLocked || false,
+        score: (p.consolidationLocked ? Infinity : 0) +  // EWC lock = never prune
+               (p.verified ? 1000 : 0) +
                (p.weight || 1.0) * 100 +  // Weight now matters more
                (p.useCount || 0) * 10 +
+               (p.fisherImportance || 0) * 500 +  // Fisher importance matters
                (Date.now() - (p.addedAt || 0)) / -86400000,
       }))
       .sort((a, b) => a.score - b.score);
 
-    // Remove bottom 10%
+    // Remove bottom 10% (but never remove locked patterns)
     const toRemove = Math.floor(sorted.length * 0.1);
-    for (let i = 0; i < toRemove; i++) {
-      this._patterns.delete(sorted[i].id);
+    let removed = 0;
+    for (let i = 0; i < sorted.length && removed < toRemove; i++) {
+      if (!sorted[i].locked) {
+        this._patterns.delete(sorted[i].id);
+        removed++;
+      }
     }
   }
 
@@ -249,6 +273,94 @@ export class SharedMemory {
 
     pattern.weight = newWeight;
     pattern.lastReinforced = Date.now();
+
+    // EWC++: Also boost Fisher importance when pattern is used
+    this._boostFisherImportance(pattern);
+  }
+
+  /**
+   * Boost Fisher importance when pattern is used successfully
+   * Auto-locks pattern if it exceeds threshold
+   * @param {Object} pattern - Pattern to boost
+   * @private
+   */
+  _boostFisherImportance(pattern) {
+    // Already locked? Nothing to do
+    if (pattern.consolidationLocked) return;
+
+    const currentFisher = pattern.fisherImportance ?? 0;
+    const newFisher = Math.min(1.0, currentFisher + EWC.FISHER_BOOST_PER_USE);
+
+    pattern.fisherImportance = newFisher;
+
+    // Auto-lock if exceeds threshold AND has enough uses
+    const useCount = pattern.useCount || 0;
+    if (newFisher >= EWC.LOCK_THRESHOLD && useCount >= EWC.MIN_USES_FOR_LOCK) {
+      this._lockPattern(pattern);
+    }
+  }
+
+  /**
+   * Lock a pattern (EWC++ consolidation)
+   * Locked patterns are protected from decay and pruning
+   * @param {Object} pattern - Pattern to lock
+   * @private
+   */
+  _lockPattern(pattern) {
+    if (pattern.consolidationLocked) return;
+
+    pattern.consolidationLocked = true;
+    pattern.lockedAt = Date.now();
+
+    // Emit event for external listeners (e.g., persistence sync)
+    if (this.swarm) {
+      this.swarm.emit?.('pattern:locked', { id: pattern.id });
+    }
+  }
+
+  /**
+   * Unlock a pattern (manual or threshold-based)
+   * @param {string} patternId - Pattern ID to unlock
+   * @returns {boolean} Success
+   */
+  unlockPattern(patternId) {
+    const pattern = this._patterns.get(patternId);
+    if (!pattern || !pattern.consolidationLocked) return false;
+
+    pattern.consolidationLocked = false;
+    pattern.lockedAt = null;
+
+    return true;
+  }
+
+  /**
+   * Get EWC statistics
+   * @returns {Object} EWC stats
+   */
+  getEWCStats() {
+    let locked = 0;
+    let critical = 0;
+    let totalFisher = 0;
+    let maxFisher = 0;
+
+    for (const pattern of this._patterns.values()) {
+      const fisher = pattern.fisherImportance || 0;
+      totalFisher += fisher;
+      if (fisher > maxFisher) maxFisher = fisher;
+
+      if (pattern.consolidationLocked) locked++;
+      else if (fisher >= EWC.LOCK_THRESHOLD) critical++;
+    }
+
+    const count = this._patterns.size;
+    return {
+      totalPatterns: count,
+      lockedPatterns: locked,
+      criticalPatterns: critical,
+      avgFisher: count > 0 ? totalFisher / count : 0,
+      maxFisher,
+      retentionRate: count > 0 ? locked / count : 0,
+    };
   }
 
   /**
@@ -260,8 +372,16 @@ export class SharedMemory {
     const now = Date.now();
     const thresholdMs = REINFORCEMENT.DECAY_THRESHOLD_HOURS * 3600000;
     let decayedCount = 0;
+    let skippedLocked = 0;
 
     for (const pattern of this._patterns.values()) {
+      // EWC++ protection: NEVER decay consolidation-locked patterns
+      // "What is truly known cannot be forgotten" - κυνικός
+      if (pattern.consolidationLocked) {
+        skippedLocked++;
+        continue;
+      }
+
       const lastUsed = pattern.lastUsed || pattern.addedAt || now;
       const hoursSinceUse = (now - lastUsed) / 3600000;
 
@@ -283,9 +403,14 @@ export class SharedMemory {
           decayedCount++;
         }
       }
+
+      // Also decay Fisher importance for unlocked patterns (very slow)
+      if (pattern.fisherImportance && pattern.fisherImportance > 0) {
+        pattern.fisherImportance = pattern.fisherImportance * EWC.FISHER_DECAY;
+      }
     }
 
-    return decayedCount;
+    return { decayed: decayedCount, protected: skippedLocked };
   }
 
   /**
