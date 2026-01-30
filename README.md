@@ -84,16 +84,68 @@ Say `bonjour` — if you see a *tail wag*, CYNIC is alive.
 
 ---
 
+## Solana Integration
+
+CYNIC anchors AI judgments on Solana for **immutable truth verification**.
+
+### Proof of Judgment (PoJ)
+
+```
+AI Decision → Local PoJ Block → Merkle Root → Solana Anchor
+     │              │                │              │
+   Judge      SHA-256 chain    Batch hash    On-chain proof
+```
+
+Every AI judgment is:
+1. **Hashed** into a local PoJ block (SHA-256)
+2. **Batched** with other judgments (Merkle tree)
+3. **Anchored** to Solana (transaction memo with Merkle root)
+4. **Verified** - anyone can prove a judgment existed at time T
+
+### Burn Verification
+
+```javascript
+import { BurnVerifier } from '@cynic/burns';
+
+const verifier = new BurnVerifier({ rpcUrl: 'https://api.devnet.solana.com' });
+const result = await verifier.verify(signature);
+// { verified: true, amount: 1000000, burner: '...', slot: 12345 }
+```
+
+Burns are verified on-chain and feed into the **E-Score BURN dimension**.
+
+### E-Score 7D
+
+Reputation score with 7 φ-weighted dimensions:
+
+| Dimension | Weight | Source |
+|-----------|--------|--------|
+| BURN | φ³ | Verified Solana burns |
+| BUILD | φ² | Code contributions |
+| JUDGE | φ | Consensus accuracy |
+| RUN | 1 | Uptime/availability |
+| SOCIAL | φ⁻¹ | Community standing |
+| GRAPH | φ⁻² | Network position |
+| HOLD | φ⁻³ | Token holdings |
+
+### Packages
+
+| Package | Solana Role |
+|---------|-------------|
+| [@cynic/anchor](./packages/anchor) | Wallet, RPC, transaction signing |
+| [@cynic/burns](./packages/burns) | Burn verification, SPL token burns |
+| [@cynic/protocol](./packages/protocol) | PoJ chain, Merkle anchoring |
+
+---
+
 ## Documentation
 
 | Document | Description |
 |----------|-------------|
-| [GETTING-STARTED.md](./GETTING-STARTED.md) | Quick overview for new users |
 | [INSTALL.md](./INSTALL.md) | Setup guide |
 | [docs/INDEX.md](./docs/INDEX.md) | Full documentation index |
 | [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) | Technical deep-dive |
 | [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) | Production deployment |
-| [ROADMAP.md](./ROADMAP.md) | Development roadmap |
 
 ---
 
