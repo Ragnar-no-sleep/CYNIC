@@ -40,15 +40,29 @@ export class PatternAdapter {
    * @returns {Promise<Pattern|null>}
    */
   async upsert(pattern) {
+    // Validate and provide defaults for required fields
+    if (!pattern) {
+      log.error('Error upserting pattern', { error: 'pattern is null or undefined' });
+      return null;
+    }
+
+    // Ensure category exists (required by DB constraint)
+    const validatedPattern = {
+      ...pattern,
+      category: pattern.category || 'uncategorized',
+      name: pattern.name || `pattern_${Date.now()}`,
+      confidence: pattern.confidence ?? 0.5,
+    };
+
     if (this._repo) {
       try {
-        return await this._repo.upsert(pattern);
+        return await this._repo.upsert(validatedPattern);
       } catch (err) {
         log.error('Error upserting pattern', { error: err.message });
       }
     }
     if (this._fallback) {
-      return await this._fallback.upsertPattern(pattern);
+      return await this._fallback.upsertPattern(validatedPattern);
     }
     return null;
   }
