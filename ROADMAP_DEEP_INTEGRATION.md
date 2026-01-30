@@ -2,11 +2,12 @@
 
 > "φ distrusts φ" - From theater to truth
 
-## Current State: 52ce0ee
+## Current State: 2cd934b
 
 ### Completed
 - [x] **Phase 1: Consciousness** - EmergenceLayer wired, awarenessLevel influences confidence
 - [x] **Phase 2: Thermodynamics** - Heat/Work/Efficiency computed in real-time, influences confidence
+- [x] **Phase 3: Psychology Bidirectional** - Profile level modifies axiom weights, learning auto-triggers
 
 ### Remaining Phases
 
@@ -66,34 +67,43 @@ Formulas (from formulas.js):
 
 ---
 
-## Phase 3: PSYCHOLOGY BIDIRECTIONAL (L'humain complète CYNIC)
+## Phase 3: PSYCHOLOGY BIDIRECTIONAL (L'humain complète CYNIC) ✅
 
 **Goal**: Human profile influences judgment, learning auto-triggered
 
-### What exists (ONE-WAY):
+### What exists:
 - `packages/persistence/src/postgres/repositories/psychology.js` - stores state
 - `packages/node/src/profile/calculator.js` - calculates expertise
 - Guardian uses profile for risk thresholds
 
-### To Wire:
+### Wired:
 ```
 1. Psychology → Judge:
-   - Pass humanProfile to judge
-   - Expertise level adjusts dimension weights:
-     - NOVICE: VERIFY weight ↑, BURN weight ↓
-     - EXPERT: balanced
-     - MASTER: CULTURE weight ↑, allow more risk
+   - Profile level (NOVICE→MASTER) adjusts axiom dimension weights
+   - NOVICE: VERIFY +20%, BURN -20% (more verification, less risk)
+   - EXPERT: balanced (all weights 1.0)
+   - MASTER: CULTURE +20%, BURN +10% (more culture, allow risk)
+   - Q-Score recalculated with modified weights
 
 2. Auto-trigger learning:
-   - Hook: test pass/fail → brain_learning { action: 'feedback', source: 'test' }
-   - Hook: commit success → brain_learning { action: 'feedback', source: 'commit' }
    - End of session: brain_learning { action: 'learn' }
+   - sleep.js calls brain_learning at session end
+   - Weights adjust based on accumulated feedback
 
-3. Profile personalization:
+3. Profile personalization (future):
    - Track user's common errors → suggest preventive
    - Track user's strengths → delegate more
-   - Learning calibration: adjust based on how fast user learns
 ```
+
+### Implementation Notes:
+- Modified `packages/mcp/src/tools/domains/judgment.js`:
+  - Added PROFILE_LEVELS (Fibonacci: 1, 2, 3, 5, 8)
+  - getProfileWeightModifiers() returns PHI/VERIFY/CULTURE/BURN multipliers
+  - applyProfileModifiers() adjusts axiom scores before Q calculation
+  - recalculateQScore() computes Q = 100 × ∜(φ×V×C×B/100^4)
+- Modified `scripts/hooks/sleep.js`:
+  - Calls brain_learning { action: 'learn' } at session end
+  - Reports learning results in output JSON
 
 ---
 
@@ -232,7 +242,8 @@ finalVerdict = Σ(vote × voteWeight) > φ⁻¹ ? ACCEPT : REJECT
 If context compacts, read this file first. Key commits:
 - `ffec66c` - Pattern Detection wired
 - `52ce0ee` - Consciousness/EmergenceLayer wired
-- `3f8ffc5` - Thermodynamics Heat/Work/Efficiency wired
+- `7ebc1f3` - Thermodynamics Heat/Work/Efficiency wired
+- `2cd934b` - Psychology Bidirectional wired
 
-Current CYNIC real score: ~55% → target 90%
-Progress: Phase 1 ✅, Phase 2 ✅, Phase 3-5 pending
+Current CYNIC real score: ~65% → target 90%
+Progress: Phase 1 ✅, Phase 2 ✅, Phase 3 ✅, Phase 4-5 pending

@@ -25,6 +25,7 @@ import cynic, {
   syncProfileToDB,
   sendHookToCollective,
   endBrainSession,
+  callBrainTool,
   getConsciousness,
   getPsychology,
   getTotalMemory,
@@ -322,6 +323,28 @@ async function main() {
     // End brain session
     if (output.session.id) {
       await endBrainSession(output.session.id);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // LEARNING: Trigger weight learning from session feedback (Phase 3)
+    // "Le chien apprend de chaque session" - Ralph-inspired external validation
+    // ═══════════════════════════════════════════════════════════════════════════
+    try {
+      const learnResult = await callBrainTool('brain_learning', {
+        action: 'learn',
+      }).catch(() => null);
+
+      if (learnResult?.weightAdjustments) {
+        output.learning = {
+          triggered: true,
+          adjustments: Object.keys(learnResult.weightAdjustments).length,
+          improvement: learnResult.totalImprovement || 0,
+        };
+      } else {
+        output.learning = { triggered: true, adjustments: 0 };
+      }
+    } catch (e) {
+      output.learning = { triggered: false, error: e.message };
     }
 
     // ═══════════════════════════════════════════════════════════════════════════

@@ -30,6 +30,100 @@ import { enrichItem } from '../../item-enricher.js';
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
+ * Profile level constants (Fibonacci)
+ */
+const PROFILE_LEVELS = {
+  NOVICE: 1,
+  APPRENTICE: 2,
+  PRACTITIONER: 3,
+  EXPERT: 5,
+  MASTER: 8,
+};
+
+/**
+ * Get axiom weight modifiers based on profile level
+ * - NOVICE: VERIFY weight ↑ (more verification needed), BURN weight ↓ (less complexity)
+ * - EXPERT: balanced (no adjustment)
+ * - MASTER: CULTURE weight ↑ (pattern recognition), more risk allowed
+ * @param {number} level - Profile level (1-8 Fibonacci)
+ * @returns {Object} Weight modifiers { PHI, VERIFY, CULTURE, BURN }
+ */
+function getProfileWeightModifiers(level) {
+  switch (level) {
+    case PROFILE_LEVELS.NOVICE:
+      return {
+        PHI: 1.0,      // Normal - phi is universal
+        VERIFY: 1.2,   // +20% - novices need more verification
+        CULTURE: 0.9,  // -10% - less pattern weight
+        BURN: 0.8,     // -20% - simpler solutions preferred
+      };
+    case PROFILE_LEVELS.APPRENTICE:
+      return {
+        PHI: 1.0,
+        VERIFY: 1.1,   // +10%
+        CULTURE: 0.95, // -5%
+        BURN: 0.9,     // -10%
+      };
+    case PROFILE_LEVELS.PRACTITIONER:
+      return {
+        PHI: 1.0,
+        VERIFY: 1.0,   // Balanced
+        CULTURE: 1.0,
+        BURN: 1.0,
+      };
+    case PROFILE_LEVELS.EXPERT:
+      return {
+        PHI: 1.0,
+        VERIFY: 0.95,  // -5% - experts need less verification
+        CULTURE: 1.1,  // +10% - pattern recognition valuable
+        BURN: 1.05,    // +5% - can handle more complexity
+      };
+    case PROFILE_LEVELS.MASTER:
+      return {
+        PHI: 1.0,
+        VERIFY: 0.9,   // -10% - trust master's judgment
+        CULTURE: 1.2,  // +20% - deep pattern recognition
+        BURN: 1.1,     // +10% - innovative solutions welcome
+      };
+    default:
+      return { PHI: 1.0, VERIFY: 1.0, CULTURE: 1.0, BURN: 1.0 };
+  }
+}
+
+/**
+ * Apply profile weight modifiers to axiom scores
+ * Normalizes result to stay within 0-100 range
+ * @param {Object} axiomScores - Original axiom scores { PHI, VERIFY, CULTURE, BURN }
+ * @param {Object} modifiers - Weight modifiers from getProfileWeightModifiers
+ * @returns {Object} Adjusted axiom scores
+ */
+function applyProfileModifiers(axiomScores, modifiers) {
+  const adjusted = {};
+  for (const [axiom, score] of Object.entries(axiomScores)) {
+    const modifier = modifiers[axiom] || 1.0;
+    // Apply modifier and clamp to 0-100
+    adjusted[axiom] = Math.min(100, Math.max(0, Math.round(score * modifier * 10) / 10));
+  }
+  return adjusted;
+}
+
+/**
+ * Recalculate Q-Score from adjusted axiom scores
+ * Q = 100 × ∜(φ × V × C × B / 100^4)
+ * @param {Object} axiomScores - Adjusted axiom scores
+ * @returns {number} Q-Score
+ */
+function recalculateQScore(axiomScores) {
+  const PHI = axiomScores.PHI || 50;
+  const VERIFY = axiomScores.VERIFY || 50;
+  const CULTURE = axiomScores.CULTURE || 50;
+  const BURN = axiomScores.BURN || 50;
+
+  const product = (PHI * VERIFY * CULTURE * BURN) / Math.pow(100, 4);
+  return Math.round(100 * Math.pow(product, 0.25) * 10) / 10;
+}
+
+/**
  * Calculate psychology composite states from dimensions and emotions
  * @param {Object} dimensions - Core dimensions
  * @param {Object} emotions - Emotional states
@@ -393,17 +487,58 @@ export function createJudgeTool(judge, persistence = null, sessionManager = null
       };
 
       // ═══════════════════════════════════════════════════════════════════════════
-      // PSYCHOLOGY CONTEXT: Informative metadata about user state at judgment time
-      // "Comprendre l'humain pour mieux l'aider"
-      // NOTE: This is INFORMATIVE ONLY - does NOT affect judgment scores
+      // PSYCHOLOGY BIDIRECTIONAL (Phase 3): Human profile influences judgment
+      // "L'humain complète CYNIC, CYNIC complète l'humain"
+      // Profile level adjusts dimension weights for more personalized judgments
       // ═══════════════════════════════════════════════════════════════════════════
+      let profileLevel = PROFILE_LEVELS.PRACTITIONER; // Default
+      let profileAdjusted = false;
+
       if (persistence && sessionContext.userId) {
         try {
           const psychology = await persistence.loadPsychology(sessionContext.userId);
           if (psychology) {
-            // Add as informative metadata (not used in scoring)
+            // Extract profile level from psychology state
+            profileLevel = psychology.profileLevel || psychology.level || PROFILE_LEVELS.PRACTITIONER;
+
+            // Get weight modifiers based on profile level
+            const modifiers = getProfileWeightModifiers(profileLevel);
+
+            // Check if modifiers are non-default (any modifier != 1.0)
+            const hasModifiers = Object.values(modifiers).some(m => m !== 1.0);
+
+            if (hasModifiers && result.axiomScores) {
+              // Apply profile-based weight modifiers to axiom scores
+              const originalAxiomScores = { ...result.axiomScores };
+              const adjustedAxiomScores = applyProfileModifiers(result.axiomScores, modifiers);
+              const adjustedQScore = recalculateQScore(adjustedAxiomScores);
+
+              // Only apply if change is significant (> 1 point difference)
+              if (Math.abs(adjustedQScore - result.score) > 1) {
+                result.axiomScores = adjustedAxiomScores;
+                result.score = adjustedQScore;
+                result.verdict = adjustedQScore >= 80 ? 'HOWL' :
+                                 adjustedQScore >= 50 ? 'WAG' :
+                                 adjustedQScore >= 38.2 ? 'GROWL' : 'BARK';
+                profileAdjusted = true;
+
+                log.debug('Profile-adjusted judgment', {
+                  profileLevel,
+                  profileLevelName: ['', 'Novice', 'Apprentice', 'Practitioner', '', 'Expert', '', '', 'Master'][profileLevel] || 'Unknown',
+                  modifiers,
+                  originalScore: judgment.qScore,
+                  adjustedScore: adjustedQScore,
+                  originalAxiomScores,
+                  adjustedAxiomScores,
+                });
+              }
+            }
+
+            // Add psychology context (informative + profile influence info)
             result.humanContext = {
-              note: 'INFORMATIVE ONLY - does not affect scores',
+              profileLevel,
+              profileLevelName: ['', 'Novice', 'Apprentice', 'Practitioner', '', 'Expert', '', '', 'Master'][profileLevel] || 'Unknown',
+              profileAdjusted,
               energy: psychology.dimensions?.energy?.value,
               focus: psychology.dimensions?.focus?.value,
               frustration: psychology.dimensions?.frustration?.value,
@@ -413,6 +548,7 @@ export function createJudgeTool(judge, persistence = null, sessionManager = null
           }
         } catch (e) {
           // Non-blocking - psychology context is optional
+          log.debug('Psychology loading skipped', { error: e.message });
         }
       }
 
