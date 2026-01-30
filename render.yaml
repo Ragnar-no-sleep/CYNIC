@@ -1,13 +1,18 @@
-# CYNIC Render Blueprint
-#
-# Deploy: Connect repo to Render and select this file
+# ===========================================
+# CYNIC RENDER BLUEPRINT
+# ===========================================
+# Uses external shared infrastructure from ASDF-Web
+# Region: Oregon (same region for low latency)
 #
 # "φ distrusts φ" - κυνικός
+#
+# NOTE: Database and Redis URLs must be set manually
+# in Render dashboard from asdf-shared-db and asdf-shared-redis
 
 services:
-  # ===========================================================================
+  # ===========================================
   # CYNIC MCP Server
-  # ===========================================================================
+  # ===========================================
   - type: web
     name: cynic-mcp
     runtime: docker
@@ -23,33 +28,24 @@ services:
         value: http
       - key: PORT
         value: 3000
+      # External shared infrastructure (set in Render dashboard)
+      # Copy connection strings from ASDF-Web's asdf-shared-db and asdf-shared-redis
       - key: CYNIC_DATABASE_URL
-        fromDatabase:
-          name: cynic-db
-          property: connectionString
+        sync: false
       - key: CYNIC_REDIS_URL
-        fromService:
-          type: redis
-          name: cynic-redis
-          property: connectionString
+        sync: false
+      # Solana (disabled for now)
+      - key: CYNIC_ENABLE_ANCHORING
+        value: "false"
     autoDeploy: true
 
-  # ===========================================================================
-  # Redis Cache
-  # ===========================================================================
-  - type: redis
-    name: cynic-redis
-    region: oregon
-    plan: starter
-    maxmemoryPolicy: allkeys-lru
-    ipAllowList: []  # Only internal connections
-
-databases:
-  # ===========================================================================
-  # PostgreSQL Database
-  # ===========================================================================
-  - name: cynic-db
-    region: oregon
-    plan: starter
-    postgresMajorVersion: 16
-    ipAllowList: []  # Only internal connections
+# ===========================================
+# NO LOCAL DATABASE OR REDIS
+# ===========================================
+# CYNIC uses shared infrastructure from ASDF-Web:
+# - PostgreSQL: asdf-shared-db (schema: cynic)
+# - Redis: asdf-shared-redis (prefix: cynic:*)
+#
+# Set these in Render dashboard:
+# - CYNIC_DATABASE_URL = connection string from asdf-shared-db
+# - CYNIC_REDIS_URL = connection string from asdf-shared-redis

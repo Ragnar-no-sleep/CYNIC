@@ -231,6 +231,8 @@ export class PostgresClient {
       connectionString: this.connectionString,
       ...this.config,
       ssl: this.config.ssl !== undefined ? this.config.ssl : getSSLConfig(this.connectionString),
+      // Schema isolation: all CYNIC tables in 'cynic' schema
+      options: '-c search_path=cynic,public',
     });
 
     // Test connection
