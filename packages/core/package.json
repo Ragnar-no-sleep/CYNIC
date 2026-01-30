@@ -15,7 +15,8 @@
     "./engines": "./src/engines/index.js",
     "./boot": "./src/boot/index.js",
     "./boot/providers": "./src/boot/providers/index.js",
-    "./bus": "./src/bus/index.js"
+    "./bus": "./src/bus/index.js",
+    "./orchestration": "./src/orchestration/index.js"
   },
   "scripts": {
     "test": "node --test test/*.test.js"
