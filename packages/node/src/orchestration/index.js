@@ -61,3 +61,14 @@ export {
   KabbalisticRouter,
   createKabbalisticRouter,
 } from './kabbalistic-router.js';
+
+// Q-Learning Router - Learned dog selection (P2.1)
+export {
+  QLearningRouter,
+  QTable,
+  Q_CONFIG,
+  StateFeatures,
+  Actions,
+  createQLearningRouter,
+  getQLearningRouter,
+} from './q-learning-router.js';

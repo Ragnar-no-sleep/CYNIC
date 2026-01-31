@@ -41,6 +41,15 @@ export default {
   createReasoningBank,
 };
 
+// P2.3: Behavior Modifier
+export {
+  BehaviorModifier,
+  BehaviorAdjustment,
+  AdjustmentType,
+  BEHAVIOR_CONFIG,
+  createBehaviorModifier,
+} from './behavior-modifier.js';
+
 // Re-export from sona for convenience
 import { SONA, createSONA, SONA_CONFIG } from './sona.js';
 import {
@@ -54,3 +63,10 @@ import {
   REASONING_BANK_CONFIG,
   createReasoningBank,
 } from './reasoning-bank.js';
+import {
+  BehaviorModifier,
+  BehaviorAdjustment,
+  AdjustmentType,
+  BEHAVIOR_CONFIG,
+  createBehaviorModifier,
+} from './behavior-modifier.js';

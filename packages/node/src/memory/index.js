@@ -7,6 +7,12 @@
  * Layer 3: Procedural Memory (SharedMemory.procedures)
  * Layer 4: User Lab (UserLab)
  *
+ * P2.2: 4-Tier Memory Architecture (TieredMemory)
+ * - Vector: Dense representations, similarity retrieval
+ * - Episodic: Complete interaction records
+ * - Semantic: Factual knowledge, learned patterns
+ * - Working: Active task focus (Miller's Law: 7±2)
+ *
  * @module @cynic/node/memory
  */
 
@@ -14,3 +20,16 @@
 
 export { SharedMemory } from './shared-memory.js';
 export { UserLab, LabManager } from './user-lab.js';
+
+// P2.2: 4-Tier Memory Architecture
+export {
+  TieredMemory,
+  VectorMemory,
+  EpisodicMemory,
+  SemanticMemory,
+  WorkingMemory,
+  MemoryItem,
+  Episode,
+  MEMORY_CONFIG,
+  createTieredMemory,
+} from './tiered-memory.js';

@@ -11,6 +11,7 @@
 
 import { PHI_INV } from '@cynic/core';
 import { AgentId } from './events.js';
+import { SwarmConsensus, createSwarmConsensus } from './swarm-consensus.js';
 
 /**
  * Dog execution modes
@@ -70,6 +71,8 @@ export class DogOrchestrator {
    * @param {Object} [options.userLab] - UserLab instance (optional)
    * @param {string} [options.mode] - Execution mode
    * @param {number} [options.consensusThreshold] - Custom threshold (default: φ⁻¹)
+   * @param {boolean} [options.useSwarmConsensus] - Use P2.4 swarm consensus (default: true)
+   * @param {SwarmConsensus} [options.swarmConsensus] - Custom swarm consensus instance
    */
   constructor(options = {}) {
     this.collectivePack = options.collectivePack;
@@ -77,6 +80,12 @@ export class DogOrchestrator {
     this.userLab = options.userLab;
     this.mode = options.mode || DogMode.PARALLEL;
     this.consensusThreshold = options.consensusThreshold || PHI_INV;
+
+    // P2.4: Swarm consensus (enabled by default)
+    this.useSwarmConsensus = options.useSwarmConsensus !== false;
+    if (this.useSwarmConsensus) {
+      this.swarmConsensus = options.swarmConsensus || createSwarmConsensus({ orchestrator: this });
+    }
 
     // Custom spawner (for future Claude API integration)
     this.spawner = options.spawner || null;
@@ -121,8 +130,10 @@ export class DogOrchestrator {
       votes = await this._runParallel(item, dogsToRun, injectedContext);
     }
 
-    // Calculate φ-consensus
-    const consensus = this._calculateConsensus(votes);
+    // Calculate consensus (P2.4: use swarm consensus if available)
+    const consensus = this.useSwarmConsensus && this.swarmConsensus
+      ? this.swarmConsensus.calculateConsensus(votes, { ...context, itemType: item?.type })
+      : this._calculateConsensus(votes);
 
     // Check for blocking votes
     if (consensus.blocked) {
@@ -573,6 +584,13 @@ export class DogOrchestrator {
    * @param {Object} [details] - Additional feedback details
    */
   async processFeedback(judgmentId, outcome, details = {}) {
+    const wasCorrect = outcome === 'correct';
+
+    // P2.4: Record feedback in swarm consensus for learning
+    if (this.swarmConsensus) {
+      this.swarmConsensus.recordFeedback(judgmentId, wasCorrect, details);
+    }
+
     if (!this.sharedMemory) return;
 
     // Record feedback
@@ -584,7 +602,7 @@ export class DogOrchestrator {
 
     // Adjust weights based on feedback
     if (details.dimensions) {
-      const delta = outcome === 'correct' ? 0.1 : -0.1;
+      const delta = wasCorrect ? 0.1 : -0.1;
       for (const dim of Object.keys(details.dimensions)) {
         this.sharedMemory.adjustWeight(dim, delta, 'user_feedback');
       }
@@ -604,7 +622,26 @@ export class DogOrchestrator {
       mode: this.mode,
       consensusThreshold: this.consensusThreshold,
       memoryStats: this.sharedMemory?.getStats() || null,
+      swarmStats: this.swarmConsensus?.getStats() || null,
     };
+  }
+
+  /**
+   * Export swarm consensus state for persistence
+   * @returns {Object|null} State or null if not using swarm
+   */
+  exportSwarmState() {
+    return this.swarmConsensus?.exportState() || null;
+  }
+
+  /**
+   * Import swarm consensus state from persistence
+   * @param {Object} state - State to import
+   */
+  importSwarmState(state) {
+    if (this.swarmConsensus && state) {
+      this.swarmConsensus.importState(state);
+    }
   }
 }
 

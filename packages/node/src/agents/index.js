@@ -82,6 +82,20 @@ export {
   WisdomType as LegacyWisdomType,
 } from './mentor.js';
 
+// P2.4: Swarm Consensus
+export {
+  SwarmConsensus,
+  ConsensusStrategy,
+  DriftType,
+  ConflictResolution,
+  SWARM_CONFIG,
+  DogPosition,
+  ConflictRecord,
+  EmergentPattern,
+  createSwarmConsensus,
+  getSwarmConsensus,
+} from './swarm-consensus.js';
+
 // Collective Dogs + CYNIC (v2)
 export {
   CollectivePack,
@@ -175,6 +189,13 @@ import {
   CollectiveOracle,
   CollectiveDeployer,
 } from './collective/index.js';
+
+// Import swarm consensus for default export
+import {
+  SwarmConsensus,
+  createSwarmConsensus,
+  getSwarmConsensus,
+} from './swarm-consensus.js';
 
 /**
  * Create all four agents with shared options
@@ -384,4 +405,9 @@ export default {
   CollectiveCartographer, // Kingdom (Malkhut)
   CollectiveOracle, // Beauty (Tiferet)
   CollectiveDeployer, // Splendor (Hod)
+
+  // P2.4: Swarm Consensus
+  SwarmConsensus,
+  createSwarmConsensus,
+  getSwarmConsensus,
 };
