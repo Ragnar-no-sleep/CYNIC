@@ -366,6 +366,97 @@ async function main() {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // P0.1: CROSS-SESSION CONTEXT INJECTION (MoltBrain-style)
+    // "Le chien se souvient" - Inject relevant past learnings into session context
+    // ═══════════════════════════════════════════════════════════════════════════
+    try {
+      const contextInjections = [];
+
+      // 1. Inject relevant patterns from session state (persisted via PostgreSQL)
+      if (output.syncStatus?.patterns?.imported > 0 && output.patterns?.length > 0) {
+        const patternContext = output.patterns
+          .filter(p => p.confidence && p.confidence > 0.5)
+          .slice(0, 5)
+          .map(p => `- ${p.type}: ${p.name} (${Math.round((p.confidence || 0) * 100)}% confidence)`)
+          .join('\n');
+        if (patternContext) {
+          contextInjections.push({
+            type: 'patterns',
+            title: 'Relevant patterns from past sessions',
+            content: patternContext,
+          });
+        }
+      }
+
+      // 2. Inject lessons learned (mistakes to avoid)
+      if (output.memories?.lessons?.length > 0) {
+        const lessonContext = output.memories.lessons
+          .map(l => `- Mistake: "${l.mistake}" → Fix: ${l.correction}`)
+          .join('\n');
+        contextInjections.push({
+          type: 'lessons',
+          title: 'Lessons learned (mistakes to avoid)',
+          content: lessonContext,
+        });
+      }
+
+      // 3. Inject recent decisions for consistency
+      if (output.memories?.decisions?.length > 0) {
+        const decisionContext = output.memories.decisions
+          .map(d => `- ${d.title}: ${d.context}`)
+          .join('\n');
+        contextInjections.push({
+          type: 'decisions',
+          title: 'Recent decisions for consistency',
+          content: decisionContext,
+        });
+      }
+
+      // 4. Query brain for semantic memories (if MCP available)
+      try {
+        const projectName = ecosystem.currentProject?.name || 'unknown';
+        const brainMemories = await Promise.race([
+          callBrainTool('brain_memory_search', {
+            query: projectName,
+            limit: 10,
+            minConfidence: 0.5,
+          }),
+          new Promise(resolve => setTimeout(() => resolve(null), 2000)),
+        ]);
+
+        if (brainMemories?.success && brainMemories?.result?.memories?.length > 0) {
+          const memoryContext = brainMemories.result.memories
+            .slice(0, 5)
+            .map(m => `- [${m.type}] ${m.content?.substring(0, 100)}...`)
+            .join('\n');
+          contextInjections.push({
+            type: 'semantic_memories',
+            title: `Relevant memories for ${projectName}`,
+            content: memoryContext,
+          });
+        }
+      } catch (e) {
+        // Brain memories unavailable - continue without
+      }
+
+      // 5. Format as additionalContext for Claude
+      if (contextInjections.length > 0) {
+        output.additionalContext = {
+          title: 'CYNIC Cross-Session Memory Injection',
+          description: 'Relevant learnings from past sessions to guide this session',
+          injections: contextInjections,
+          formatted: contextInjections
+            .map(inj => `## ${inj.title}\n${inj.content}`)
+            .join('\n\n'),
+          count: contextInjections.length,
+          timestamp: new Date().toISOString(),
+        };
+      }
+    } catch (e) {
+      // Context injection failed - continue without
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // MCP BRAIN: Fallback for goals/notifications if not in total memory
     // ═══════════════════════════════════════════════════════════════════════════
     try {
