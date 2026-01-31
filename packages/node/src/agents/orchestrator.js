@@ -336,6 +336,11 @@ export class DogOrchestrator {
   /**
    * Process item with an agent
    * @private
+   *
+   * Agent method mapping (based on actual implementations):
+   * - Guardian, Analyst, Sage, Architect, Scholar: analyze(event, context)
+   * - Janitor, Scout, Cartographer, Oracle, Deployer: process(event, context)
+   * - CYNIC: makeDecision(context) for judgment requests
    */
   async _processWithAgent(agent, dogName, item, injectedContext) {
     // Prepare event-like input for the agent
@@ -347,36 +352,26 @@ export class DogOrchestrator {
       timestamp: Date.now(),
     };
 
-    // Different agents have different methods
-    // Try common patterns
-    if (agent.analyze && dogName === 'ANALYST') {
-      const result = await agent.analyze(item);
+    // Dogs with analyze() method: Guardian, Analyst, Sage, Architect, Scholar
+    const dogsWithAnalyze = ['GUARDIAN', 'ANALYST', 'SAGE', 'ARCHITECT', 'SCHOLAR'];
+    if (dogsWithAnalyze.includes(dogName) && agent.analyze) {
+      const result = await agent.analyze(event, injectedContext);
       return this._normalizeAgentResult(result, dogName);
     }
 
-    if (agent.evaluate && (dogName === 'GUARDIAN' || dogName === 'DEPLOYER')) {
-      const result = await agent.evaluate(item);
+    // CYNIC uses makeDecision for judgment requests
+    if (dogName === 'CYNIC' && agent.makeDecision) {
+      const result = await agent.makeDecision({
+        type: 'judgment',
+        item,
+        context: injectedContext,
+      });
       return this._normalizeAgentResult(result, dogName);
     }
 
-    if (agent.advise && dogName === 'SAGE') {
-      const result = await agent.advise(item);
-      return this._normalizeAgentResult(result, dogName);
-    }
-
-    if (agent.review && dogName === 'ARCHITECT') {
-      const result = await agent.review(item);
-      return this._normalizeAgentResult(result, dogName);
-    }
-
-    if (agent.extract && dogName === 'SCHOLAR') {
-      const result = await agent.extract(item);
-      return this._normalizeAgentResult(result, dogName);
-    }
-
-    // Generic process method fallback
+    // Dogs with process() method: Janitor, Scout, Cartographer, Oracle, Deployer
     if (agent.process) {
-      const result = await agent.process(event);
+      const result = await agent.process(event, injectedContext);
       return this._normalizeAgentResult(result, dogName);
     }
 
