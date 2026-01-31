@@ -882,4 +882,262 @@ export class DogChain {
   }
 }
 
+// =============================================================================
+// P1.4: STREAM CHAIN - Full context preservation between dogs
+// "La chaîne coule" - Context flows like water between dogs
+// =============================================================================
+
+/**
+ * Output transformer types for stream chaining
+ */
+export const StreamTransformers = {
+  /**
+   * Pass full output to next dog (100% context preservation)
+   */
+  FULL: (prevOutput, _context) => ({
+    fullPreviousOutput: prevOutput,
+    previousScore: prevOutput.score,
+    previousVerdict: prevOutput.verdict,
+    previousInsights: prevOutput.insights || [],
+    previousRecommendations: prevOutput.recommendations || [],
+  }),
+
+  /**
+   * Pass only insights (filtered context)
+   */
+  INSIGHTS_ONLY: (prevOutput, _context) => ({
+    insights: prevOutput.insights || [],
+    score: prevOutput.score,
+  }),
+
+  /**
+   * Pass summary (compressed context)
+   */
+  SUMMARY: (prevOutput, context) => ({
+    summary: {
+      dog: prevOutput.dog,
+      score: prevOutput.score,
+      verdict: prevOutput.verdict,
+      keyInsight: (prevOutput.insights || [])[0],
+      chainProgress: context.chainProgress,
+    },
+  }),
+
+  /**
+   * Custom transformer
+   */
+  custom: (fn) => fn,
+};
+
+/**
+ * StreamChain - Enhanced DogChain with 100% context preservation
+ *
+ * Unlike basic DogChain, StreamChain:
+ * - Preserves complete output from each dog
+ * - Supports custom output transformers
+ * - Enables parallel sub-chains
+ * - Allows chain composition
+ */
+export class StreamChain extends DogChain {
+  /**
+   * @param {Object} options
+   * @param {DogOrchestrator} options.orchestrator
+   * @param {string[]} [options.chain]
+   * @param {string} [options.preset]
+   * @param {Function|string} [options.transformer] - Transform output between dogs
+   * @param {boolean} [options.preserveFull] - Preserve full output (100% context)
+   */
+  constructor(options = {}) {
+    super(options);
+
+    // Stream-specific options
+    this.preserveFull = options.preserveFull ?? true;
+    this.outputTransformer = this._resolveTransformer(options.transformer);
+
+    // Stream state
+    this.streamHistory = [];
+
+    // Override context transformer for stream behavior
+    this.contextTransformer = this._streamContextTransformer.bind(this);
+  }
+
+  /**
+   * Resolve transformer from options
+   * @private
+   */
+  _resolveTransformer(transformer) {
+    if (!transformer) return StreamTransformers.FULL;
+    if (typeof transformer === 'function') return transformer;
+    if (StreamTransformers[transformer]) return StreamTransformers[transformer];
+    return StreamTransformers.FULL;
+  }
+
+  /**
+   * Stream context transformer - preserves full context
+   * @private
+   */
+  _streamContextTransformer(ctx, result) {
+    // Store in stream history
+    this.streamHistory.push({
+      dog: result.dog,
+      output: result,
+      timestamp: Date.now(),
+    });
+
+    // Apply output transformer
+    const transformed = this.outputTransformer(result, ctx);
+
+    return {
+      ...ctx,
+      previousResults: [...(ctx.previousResults || []), result],
+      accumulatedInsights: [
+        ...(ctx.accumulatedInsights || []),
+        ...(result.insights || []),
+      ],
+      chainProgress: (ctx.chainProgress || 0) + 1,
+      // Stream-specific: transformed output from previous dog
+      streamInput: transformed,
+      // Full history if preserveFull is true
+      ...(this.preserveFull ? { streamHistory: this.streamHistory } : {}),
+    };
+  }
+
+  /**
+   * Execute stream chain with full context preservation
+   */
+  async execute(item, initialContext = {}) {
+    // Reset stream history
+    this.streamHistory = [];
+
+    // Execute chain with stream context
+    const result = await super.execute(item, {
+      ...initialContext,
+      streamMode: true,
+      preserveFull: this.preserveFull,
+    });
+
+    // Add stream history to result
+    return {
+      ...result,
+      streamHistory: this.streamHistory,
+      streamStats: {
+        totalContextSize: JSON.stringify(this.streamHistory).length,
+        dogsExecuted: this.streamHistory.length,
+        contextPreserved: this.preserveFull ? '100%' : 'filtered',
+      },
+    };
+  }
+
+  /**
+   * Execute multiple chains in parallel and merge results
+   * @param {Array<StreamChain>} chains - Chains to execute in parallel
+   * @param {*} item - Item to process
+   * @param {Object} context - Shared context
+   * @returns {Promise<Object>} Merged results
+   */
+  static async parallel(chains, item, context = {}) {
+    const results = await Promise.allSettled(
+      chains.map(chain => chain.execute(item, context))
+    );
+
+    const successful = results
+      .filter(r => r.status === 'fulfilled')
+      .map(r => r.value);
+
+    const failed = results
+      .filter(r => r.status === 'rejected')
+      .map(r => r.reason?.message || 'Unknown error');
+
+    // Merge insights from all chains
+    const allInsights = successful.flatMap(r => r.insights || []);
+    const uniqueInsights = [...new Set(allInsights.map(i => JSON.stringify(i)))]
+      .map(i => JSON.parse(i));
+
+    // Calculate consensus score
+    const scores = successful
+      .map(r => r.finalScore)
+      .filter(s => typeof s === 'number');
+    const consensusScore = scores.length > 0
+      ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
+      : null;
+
+    return {
+      mode: 'parallel',
+      chains: successful.length,
+      failed: failed.length,
+      results: successful,
+      insights: uniqueInsights,
+      consensusScore,
+      errors: failed,
+      timestamp: Date.now(),
+    };
+  }
+
+  /**
+   * Compose multiple chains into a single chain
+   * @param {Array<string[]>} chainDefinitions - Array of dog arrays
+   * @param {DogOrchestrator} orchestrator
+   * @returns {StreamChain} Composed chain
+   */
+  static compose(chainDefinitions, orchestrator) {
+    const composedChain = chainDefinitions.flat();
+    return new StreamChain({
+      orchestrator,
+      chain: composedChain,
+      preserveFull: true,
+    });
+  }
+
+  /**
+   * Create a chain that branches based on intermediate results
+   * @param {Object} options
+   * @param {string[]} options.initial - Initial dogs
+   * @param {Object} options.branches - Condition → chain mapping
+   * @param {Function} options.condition - Function to evaluate which branch
+   */
+  static conditional(options) {
+    // Return a factory function
+    return async (orchestrator, item, context = {}) => {
+      // Execute initial chain
+      const initialChain = new StreamChain({
+        orchestrator,
+        chain: options.initial,
+      });
+      const initialResult = await initialChain.execute(item, context);
+
+      // Evaluate condition
+      const branchKey = options.condition(initialResult, context);
+      const branchChain = options.branches[branchKey];
+
+      if (!branchChain) {
+        return {
+          ...initialResult,
+          branch: 'none',
+          branchKey,
+        };
+      }
+
+      // Execute branch chain
+      const branch = new StreamChain({
+        orchestrator,
+        chain: branchChain,
+      });
+      const branchResult = await branch.execute(item, {
+        ...context,
+        previousChainResult: initialResult,
+      });
+
+      return {
+        initial: initialResult,
+        branch: branchResult,
+        branchKey,
+        combined: {
+          insights: [...initialResult.insights, ...branchResult.insights],
+          finalScore: branchResult.finalScore,
+        },
+      };
+    };
+  }
+}
+
 export default DogOrchestrator;

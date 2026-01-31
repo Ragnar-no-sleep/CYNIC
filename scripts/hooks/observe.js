@@ -54,6 +54,7 @@ import {
   getFeedbackCollector,
   getSuggestionEngine,
   detectErrorType,  // From pattern-detector.js
+  getReasoningBank,  // P1.2: Trajectory learning
 } from './lib/index.js';
 
 // =============================================================================
@@ -1012,6 +1013,79 @@ async function main() {
         context: { factTypes: facts.map(f => f.type) },
       };
       saveCollectivePattern(factPattern);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // P1.2: TRAJECTORY LEARNING - Store state → action → outcome for replay
+    // "Le chien apprend des chemins" - Learn from successful paths
+    // ═══════════════════════════════════════════════════════════════════════════
+    const reasoningBank = getReasoningBank();
+    if (reasoningBank) {
+      try {
+        // Determine trajectory type from tool
+        const trajectoryType =
+          toolName === 'Bash' && toolInput.command?.match(/test|jest|vitest/i) ? 'problem' :
+          (toolName === 'Write' || toolName === 'Edit') ? 'code' :
+          toolName === 'Bash' && toolInput.command?.startsWith('git ') ? 'deployment' :
+          isError ? 'recovery' :
+          'judgment';
+
+        // Create trajectory from this tool use
+        const trajectory = reasoningBank.startTrajectory(trajectoryType, {
+          tool: toolName,
+          inputSummary: JSON.stringify(toolInput).substring(0, 200),
+          project: detectProject(),
+          timestamp: Date.now(),
+        });
+
+        // Add action
+        trajectory.addAction({
+          type: toolName.toLowerCase(),
+          tool: toolName,
+          input: {
+            file: toolInput.file_path || toolInput.filePath,
+            command: toolInput.command?.substring(0, 100),
+          },
+          dog: getActiveDog(toolName, toolInput, isError)?.name,
+          confidence: isError ? 0.3 : 0.7,
+        });
+
+        // Set outcome
+        trajectory.setOutcome({
+          type: isError ? 'failure' : 'success',
+          success: !isError,
+          error: isError ? (typeof toolOutput === 'string' ? toolOutput.substring(0, 200) : toolOutput?.error) : null,
+          metrics: {
+            successRate: isError ? 0 : 1,
+            outputSize: typeof toolOutput === 'string' ? toolOutput.length : JSON.stringify(toolOutput || {}).length,
+          },
+        });
+
+        // Store successful trajectories (async, non-blocking)
+        if (!isError) {
+          trajectory.userId = user.userId;
+          trajectory.projectId = detectProject()?.name;
+          reasoningBank.store(trajectory).catch(() => {});
+        }
+
+        // Check for replay suggestions on errors
+        if (isError) {
+          const suggestions = reasoningBank.getSuggestions({
+            type: 'error',
+            content: {
+              tool: toolName,
+              error: typeof toolOutput === 'string' ? toolOutput.substring(0, 100) : 'error',
+            },
+          }, { limit: 2, minReward: 0.5 });
+
+          if (suggestions.length > 0) {
+            // Store suggestion for later output
+            process.env.CYNIC_TRAJECTORY_SUGGESTION = JSON.stringify(suggestions[0].suggestion);
+          }
+        }
+      } catch (e) {
+        // Trajectory learning failed - continue without
+      }
     }
 
     // ═══════════════════════════════════════════════════════════════════════════

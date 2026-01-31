@@ -23,3 +23,20 @@ export { FeedbackCollector, getFeedbackCollector, ANTI_PATTERNS } from './feedba
 
 // Suggestion engine (Phase 22)
 export { SuggestionEngine, getSuggestionEngine } from './suggestion-engine.js';
+
+// ReasoningBank (P1.2: Trajectory learning)
+let _reasoningBank = null;
+
+export function getReasoningBank() {
+  if (_reasoningBank) return _reasoningBank;
+
+  try {
+    // Dynamic import to avoid circular dependencies
+    const { createReasoningBank } = require('@cynic/node/learning');
+    _reasoningBank = createReasoningBank();
+    return _reasoningBank;
+  } catch (e) {
+    // ReasoningBank not available - return null
+    return null;
+  }
+}
