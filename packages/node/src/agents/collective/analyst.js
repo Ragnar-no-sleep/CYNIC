@@ -459,8 +459,9 @@ export class CollectiveAnalyst extends BaseAgent {
   async analyze(event, context) {
     this.interactionCount++;
 
-    const tool = event.tool || event.name || 'unknown';
-    const input = event.input || event.params || {};
+    // Support both Claude Code format (tool_name, tool_input) and internal format (tool, input)
+    const tool = event.tool_name || event.tool || event.name || 'unknown';
+    const input = event.tool_input || event.input || event.params || {};
     const output = event.output || event.result || {};
     const success = !event.error && !output.error;
 

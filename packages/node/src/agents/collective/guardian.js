@@ -151,35 +151,47 @@ export class CollectiveGuardian extends BaseAgent {
 
     // Blocked patterns (always block, regardless of profile)
     this.blockedPatterns = [
-      // Destructive commands
-      /rm\s+-rf?\s+[/~]/,                // rm -rf /
-      /rm\s+-rf?\s+\*/,                  // rm -rf *
-      /:\s*\(\)\s*\{\s*:\|:\s*&\s*\}\s*;/, // Fork bomb
-      /dd\s+if=.*of=\/dev\//,            // dd to device
-      /mkfs\./,                          // Format filesystem
-      />\s*\/dev\/sd[a-z]/,              // Write to disk device
+      // Destructive rm commands - root, home, current dir, parent dir
+      // Matches: rm -rf /, rm -rf ~, rm -rf ., rm -rf .., rm -rf /*
+      // But NOT: rm -rf /tmp/, rm -rf ./node_modules, rm -rf dist
+      /rm\s+(-r\s+-f|-f\s+-r|-rf)\s+\/(?!tmp\/)(?!\w)/,  // rm -rf / (not /tmp/ or /path)
+      /rm\s+--recursive\s+--force\s+\/(?!tmp\/)/,        // rm --recursive --force /
+      /rm\s+--force\s+--recursive\s+\/(?!tmp\/)/,        // rm --force --recursive /
+      /rm\s+(-r\s+-f|-f\s+-r|-rf)\s+~(?:\/|$)/,          // rm -rf ~ or rm -rf ~/
+      /rm\s+(-r\s+-f|-f\s+-r|-rf)\s+\.(?:\/)?$/,         // rm -rf . (exactly dot or dot/)
+      /rm\s+(-r\s+-f|-f\s+-r|-rf)\s+\.\.(?:\/)?$/,       // rm -rf .. (exactly dotdot)
+      /rm\s+(-r\s+-f|-f\s+-r|-rf)\s+\/\*/,               // rm -rf /*
+
+      // Fork bomb and system damage
+      /:\s*\(\)\s*\{\s*:\|:\s*&\s*\}\s*;/,               // Fork bomb
+      /dd\s+if=.*of=\/dev\//,                            // dd to device
+      /mkfs\./,                                          // Format filesystem
+      />\s*\/dev\/sd[a-z]/,                              // Write to disk device
 
       // Privilege escalation (dangerous)
-      /chmod\s+777/,                     // World-writable
-      /chmod\s+-R\s+777/,                // Recursive world-writable
-      /chown\s+-R\s+root/,               // Recursive root ownership
+      /chmod\s+777\s+\//,                                // World-writable root
+      /chmod\s+-R\s+777\s+\//,                           // Recursive world-writable root
+      /chown\s+-R\s+root/,                               // Recursive root ownership
 
       // Network dangers (code execution)
-      /curl.*\|\s*sh/,                   // Pipe curl to shell
-      /wget.*\|\s*sh/,                   // Pipe wget to shell
-      /curl.*\|\s*bash/,                 // Pipe curl to bash
-      /wget.*\|\s*bash/,                 // Pipe wget to bash
+      /curl.*\|\s*(?:sh|bash)/,                          // Pipe curl to shell
+      /wget.*(?:-O-|--output-document=-).*\|\s*(?:sh|bash)/, // Pipe wget to shell
 
-      // Git dangers
-      /git\s+push.*--force\s+.*main/,    // Force push to main
-      /git\s+push.*--force\s+.*master/,  // Force push to master
-      /git\s+reset\s+--hard.*HEAD~\d+/,  // Hard reset multiple commits
+      // Git dangers - force push to protected branches
+      /git\s+push\s+(?:--force|-f)\s+\w+\s+(?:main|master)$/, // Force push main/master
+      /git\s+push\s+\w+\s+(?:main|master)\s+(?:--force|-f)$/, // Force push (flag after)
+      /git\s+reset\s+--hard\s+HEAD~\d+/,                 // Hard reset multiple commits
+      /git\s+clean\s+-[a-z]*f[a-z]*d/,                   // git clean with -f and -d
 
       // Database dangers
       /DROP\s+DATABASE/i,
       /DROP\s+TABLE/i,
       /TRUNCATE\s+TABLE/i,
-      /DELETE\s+FROM\s+\w+\s*;/i,        // DELETE without WHERE
+      /DELETE\s+FROM\s+\w+\s*;/i,                        // DELETE without WHERE
+      /DELETE\s+FROM\s+\w+"/i,                           // DELETE FROM users" (in quotes)
+
+      // Sensitive system files
+      /cat\s+\/etc\/(?:shadow|passwd|sudoers)/,          // System credential files
     ];
 
     // Warning patterns (warn but may allow based on profile)
@@ -462,8 +474,9 @@ export class CollectiveGuardian extends BaseAgent {
    * Analyze tool use for risk
    */
   async analyze(event, context) {
-    const tool = event.tool || event.name || 'unknown';
-    const input = event.input || event.params || {};
+    // Support both Claude Code format (tool_name, tool_input) and internal format (tool, input)
+    const tool = event.tool_name || event.tool || event.name || 'unknown';
+    const input = event.tool_input || event.input || event.params || {};
     const command = this._extractCommand(tool, input);
 
     // Get escalation level for this type of command
@@ -883,9 +896,11 @@ export class CollectiveGuardian extends BaseAgent {
     if (input.file_path) paths.push(input.file_path);
     if (input.path) paths.push(input.path);
     if (input.command) {
-      // Extract paths from bash command
-      const matches = input.command.match(/[/~][\w/.~-]+/g) || [];
-      paths.push(...matches);
+      // Extract paths from bash command - include relative paths like .env
+      const absMatches = input.command.match(/[/~][\w/.~-]+/g) || [];
+      const relMatches = input.command.match(/(?:^|\s)(\.[\w.-]+)/g) || [];
+      paths.push(...absMatches);
+      paths.push(...relMatches.map(m => m.trim()));
     }
 
     for (const path of paths) {
