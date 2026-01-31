@@ -759,9 +759,15 @@ async function main() {
     // Detect patterns
     const patterns = detectToolPattern(toolName, toolInput, toolOutput, isError);
 
-    // Save patterns to local collective
+    // Save patterns to local collective AND session state (for cross-session persistence)
+    // "Le chien se souvient de tout" - patterns survive across sessions via PostgreSQL
+    const sessionState = getSessionState();
     for (const pattern of patterns) {
       saveCollectivePattern(pattern);
+      // Also record to session state for persistence via sleep.js → PostgreSQL
+      if (sessionState.isInitialized()) {
+        sessionState.recordPattern(pattern);
+      }
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -794,11 +800,16 @@ async function main() {
             priority: warning.severity === 'medium' ? 'medium' : 'low',
           });
         }
-        saveCollectivePattern({
+        const antiPattern = {
           type: `antipattern_${warning.type}`,
           signature: warning.type,
           description: warning.message,
-        });
+        };
+        saveCollectivePattern(antiPattern);
+        // Also record to session state for cross-session persistence
+        if (sessionState.isInitialized()) {
+          sessionState.recordPattern(antiPattern);
+        }
       }
     }
 
@@ -1438,11 +1449,16 @@ async function main() {
               }
 
               // Save refinement pattern
-              saveCollectivePattern({
+              const refinementPattern = {
                 type: 'self_refinement',
                 signature: `${judgment.verdict}_improved`,
                 description: `Self-refinement: ${refinementResult.original.verdict}→${refinementResult.final.verdict}`,
-              });
+              };
+              saveCollectivePattern(refinementPattern);
+              // Also record to session state for cross-session persistence
+              if (sessionState.isInitialized()) {
+                sessionState.recordPattern(refinementPattern);
+              }
             }
           }
         } catch (e) {
