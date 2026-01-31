@@ -21,6 +21,9 @@ import {
   IntelligentRouter,
   createIntelligentRouter,
   RoutingDecision,
+  DogPerformanceTracker,
+  DogMetrics,
+  createDogPerformanceTracker,
 } from '../src/routing/index.js';
 
 // φ constants
@@ -536,5 +539,226 @@ describe('DOG_CAPABILITIES', () => {
     for (const [dogId, cap] of Object.entries(DOG_CAPABILITIES)) {
       assert.ok(risks.includes(cap.riskTolerance), `Invalid riskTolerance for ${dogId}`);
     }
+  });
+});
+
+describe('DogMetrics', () => {
+  let metrics;
+
+  beforeEach(() => {
+    metrics = new DogMetrics(DogId.SCOUT);
+  });
+
+  describe('recording', () => {
+    it('should record task outcomes', () => {
+      metrics.record({ taskType: TaskType.EXPLORATION, success: true, latency: 100 });
+      metrics.record({ taskType: TaskType.EXPLORATION, success: true, latency: 150 });
+      metrics.record({ taskType: TaskType.EXPLORATION, success: false, latency: 200 });
+
+      assert.strictEqual(metrics.taskCount, 3);
+      assert.strictEqual(metrics.successCount, 2);
+      assert.strictEqual(metrics.failureCount, 1);
+    });
+
+    it('should track escalations', () => {
+      metrics.record({ taskType: TaskType.EXPLORATION, success: true, latency: 100, escalated: true });
+      metrics.record({ taskType: TaskType.EXPLORATION, success: false, latency: 100, escalated: true });
+
+      assert.strictEqual(metrics.escalationCount, 2);
+    });
+
+    it('should track latency stats', () => {
+      metrics.record({ taskType: TaskType.EXPLORATION, success: true, latency: 100 });
+      metrics.record({ taskType: TaskType.EXPLORATION, success: true, latency: 200 });
+      metrics.record({ taskType: TaskType.EXPLORATION, success: true, latency: 150 });
+
+      assert.strictEqual(metrics.minLatency, 100);
+      assert.strictEqual(metrics.maxLatency, 200);
+      assert.strictEqual(metrics.getAvgLatency(), 150);
+    });
+  });
+
+  describe('success rates', () => {
+    it('should calculate overall success rate', () => {
+      metrics.record({ taskType: TaskType.EXPLORATION, success: true, latency: 100 });
+      metrics.record({ taskType: TaskType.EXPLORATION, success: true, latency: 100 });
+      metrics.record({ taskType: TaskType.EXPLORATION, success: false, latency: 100 });
+      metrics.record({ taskType: TaskType.EXPLORATION, success: true, latency: 100 });
+
+      assert.strictEqual(metrics.getSuccessRate(), 0.75);
+    });
+
+    it('should calculate recent success rate', () => {
+      // Fill with successes
+      for (let i = 0; i < 15; i++) {
+        metrics.record({ taskType: TaskType.EXPLORATION, success: true, latency: 100 });
+      }
+      // Recent failures
+      for (let i = 0; i < 5; i++) {
+        metrics.record({ taskType: TaskType.EXPLORATION, success: false, latency: 100 });
+      }
+
+      // Recent window is last 20, so 15 success + 5 fail = 75%
+      assert.strictEqual(metrics.getRecentSuccessRate(), 0.75);
+    });
+
+    it('should calculate per-task-type success rate', () => {
+      metrics.record({ taskType: TaskType.EXPLORATION, success: true, latency: 100 });
+      metrics.record({ taskType: TaskType.EXPLORATION, success: true, latency: 100 });
+      metrics.record({ taskType: TaskType.SEARCH, success: false, latency: 100 });
+      metrics.record({ taskType: TaskType.SEARCH, success: false, latency: 100 });
+
+      assert.strictEqual(metrics.getTaskTypeSuccessRate(TaskType.EXPLORATION), 1);
+      assert.strictEqual(metrics.getTaskTypeSuccessRate(TaskType.SEARCH), 0);
+    });
+  });
+
+  describe('specialization', () => {
+    it('should calculate specialization score', () => {
+      // Only one task type = highly specialized
+      for (let i = 0; i < 10; i++) {
+        metrics.record({ taskType: TaskType.EXPLORATION, success: true, latency: 100 });
+      }
+
+      const score = metrics.getSpecializationScore();
+      assert.strictEqual(score, 1); // Fully specialized
+    });
+
+    it('should have lower score for generalist', () => {
+      // Multiple task types = more generalist
+      const types = [TaskType.EXPLORATION, TaskType.SEARCH, TaskType.RESEARCH, TaskType.NAVIGATION];
+      for (const type of types) {
+        for (let i = 0; i < 5; i++) {
+          metrics.record({ taskType: type, success: true, latency: 100 });
+        }
+      }
+
+      const score = metrics.getSpecializationScore();
+      // 4 equally distributed task types = low Gini, but not 0
+      // Should be notably less than 1 (fully specialized)
+      assert.ok(score < 1); // Less than fully specialized
+    });
+  });
+
+  describe('serialization', () => {
+    it('should serialize to JSON', () => {
+      metrics.record({ taskType: TaskType.EXPLORATION, success: true, latency: 100 });
+
+      const json = metrics.toJSON();
+
+      assert.strictEqual(json.dogId, DogId.SCOUT);
+      assert.ok(json.dogName);
+      assert.ok(json.dogEmoji);
+      assert.strictEqual(json.taskCount, 1);
+      assert.ok(typeof json.successRate === 'number');
+    });
+  });
+});
+
+describe('DogPerformanceTracker', () => {
+  let tracker;
+
+  beforeEach(() => {
+    tracker = createDogPerformanceTracker();
+  });
+
+  describe('recording', () => {
+    it('should record outcomes for dogs', () => {
+      tracker.record(DogId.SCOUT, { taskType: TaskType.EXPLORATION, success: true, latency: 100 });
+      tracker.record(DogId.GUARDIAN, { taskType: TaskType.SECURITY_AUDIT, success: true, latency: 200 });
+
+      const scoutMetrics = tracker.getMetrics(DogId.SCOUT);
+      assert.strictEqual(scoutMetrics.taskCount, 1);
+
+      const guardianMetrics = tracker.getMetrics(DogId.GUARDIAN);
+      assert.strictEqual(guardianMetrics.taskCount, 1);
+    });
+
+    it('should update global stats', () => {
+      tracker.record(DogId.SCOUT, { taskType: TaskType.EXPLORATION, success: true, latency: 100 });
+      tracker.record(DogId.SCOUT, { taskType: TaskType.EXPLORATION, success: false, latency: 100 });
+
+      const global = tracker.getGlobalStats();
+      assert.strictEqual(global.totalTasks, 2);
+      assert.strictEqual(global.successCount, 1);
+    });
+  });
+
+  describe('top dogs', () => {
+    it('should get top performing dogs', () => {
+      // Give Scout good performance
+      for (let i = 0; i < 10; i++) {
+        tracker.record(DogId.SCOUT, { taskType: TaskType.EXPLORATION, success: true, latency: 100 });
+      }
+      // Give Guardian mixed performance
+      for (let i = 0; i < 5; i++) {
+        tracker.record(DogId.GUARDIAN, { taskType: TaskType.SECURITY_AUDIT, success: true, latency: 100 });
+        tracker.record(DogId.GUARDIAN, { taskType: TaskType.SECURITY_AUDIT, success: false, latency: 100 });
+      }
+
+      const top = tracker.getTopDogs(3);
+      assert.ok(top.length >= 1);
+      assert.strictEqual(top[0].dogId, DogId.SCOUT);
+    });
+  });
+
+  describe('underperformers', () => {
+    it('should detect underperforming dogs', () => {
+      // Give Janitor bad performance
+      for (let i = 0; i < 10; i++) {
+        tracker.record(DogId.JANITOR, { taskType: TaskType.CLEANUP, success: false, latency: 100 });
+      }
+
+      const issues = tracker.getUnderperformers();
+      assert.ok(issues.length >= 1);
+      assert.ok(issues.some(i => i.dogId === DogId.JANITOR && i.issue === 'low_success_rate'));
+    });
+  });
+
+  describe('recommended weights', () => {
+    it('should generate weight adjustments', () => {
+      // Good performance on exploration
+      for (let i = 0; i < 10; i++) {
+        tracker.record(DogId.SCOUT, { taskType: TaskType.EXPLORATION, success: true, latency: 100 });
+      }
+
+      const weights = tracker.getRecommendedWeights();
+      assert.ok(weights[DogId.SCOUT]);
+      assert.ok(weights[DogId.SCOUT][TaskType.EXPLORATION] > 0); // Positive adjustment
+    });
+  });
+
+  describe('leaderboard', () => {
+    it('should format leaderboard', () => {
+      for (let i = 0; i < 10; i++) {
+        tracker.record(DogId.SCOUT, { taskType: TaskType.EXPLORATION, success: true, latency: 100 });
+      }
+
+      const leaderboard = tracker.formatLeaderboard();
+      assert.ok(leaderboard.includes('LEADERBOARD'));
+      assert.ok(leaderboard.includes('Scout'));
+    });
+  });
+
+  describe('reset', () => {
+    it('should reset all metrics', () => {
+      tracker.record(DogId.SCOUT, { taskType: TaskType.EXPLORATION, success: true, latency: 100 });
+      tracker.reset();
+
+      const global = tracker.getGlobalStats();
+      assert.strictEqual(global.totalTasks, 0);
+    });
+  });
+
+  describe('export', () => {
+    it('should export metrics', () => {
+      tracker.record(DogId.SCOUT, { taskType: TaskType.EXPLORATION, success: true, latency: 100 });
+
+      const exported = tracker.export();
+      assert.ok(exported.metrics);
+      assert.ok(exported.global);
+      assert.ok(exported.weights);
+      assert.ok(exported.exportedAt);
+    });
   });
 });

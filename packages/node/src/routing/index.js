@@ -58,6 +58,14 @@ export {
   RoutingDecision,
 } from './intelligent-router.js';
 
+// Dog performance tracking
+export {
+  DogPerformanceTracker,
+  DogMetrics,
+  createDogPerformanceTracker,
+  getDogPerformanceTracker,
+} from './dog-performance.js';
+
 // Re-export for convenience
 import { ComplexityClassifier, createComplexityClassifier, ComplexityTier, COMPLEXITY_THRESHOLDS } from './complexity-classifier.js';
 import { TieredRouter, createTieredRouter, HANDLER_COSTS, HANDLER_LATENCIES } from './tiered-router.js';
@@ -65,6 +73,7 @@ import { AgentBooster, createAgentBooster, TransformIntent, TransformStatus } fr
 import { TaskDescriptor, createTaskDescriptor, TaskType, ComplexityLevel, RiskLevel } from './task-descriptor.js';
 import { DogCapabilityMatrix, createDogCapabilityMatrix, getDogCapabilityMatrix, DogId, DOG_CAPABILITIES } from './dog-capabilities.js';
 import { IntelligentRouter, createIntelligentRouter, getIntelligentRouter, RoutingDecision } from './intelligent-router.js';
+import { DogPerformanceTracker, DogMetrics, createDogPerformanceTracker, getDogPerformanceTracker } from './dog-performance.js';
 
 export default {
   // Complexity routing
@@ -97,4 +106,9 @@ export default {
   createIntelligentRouter,
   getIntelligentRouter,
   RoutingDecision,
+  // Performance tracking
+  DogPerformanceTracker,
+  DogMetrics,
+  createDogPerformanceTracker,
+  getDogPerformanceTracker,
 };
