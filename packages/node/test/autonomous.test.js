@@ -9,7 +9,7 @@
  * "φ acts without being asked" - κυνικός
  */
 
-import { describe, it, beforeEach } from 'node:test';
+import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
@@ -379,16 +379,27 @@ describe('DogAutonomousBehaviors', () => {
 // COLLECTIVE PACK INTEGRATION TESTS
 // =============================================================================
 
-// TODO: Fix cleanup - CollectivePack keeps Node running
-describe.skip('CollectivePack with autonomous capabilities', () => {
-  it('creates pack without autonomous repositories', () => {
+describe('CollectivePack with autonomous capabilities', () => {
+  // Track packs for cleanup
+  const packs = [];
+
+  afterEach(async () => {
+    // Cleanup all packs created during tests
+    for (const pack of packs) {
+      await pack.shutdown();
+    }
+    packs.length = 0;
+  });
+
+  it('creates pack without autonomous repositories', async () => {
     const pack = createCollectivePack();
+    packs.push(pack);
     assert.ok(pack);
     assert.equal(pack.hasAutonomousCapabilities(), false);
     assert.equal(pack.getAutonomousCapabilities(), null);
   });
 
-  it('creates pack with autonomous repositories', () => {
+  it('creates pack with autonomous repositories', async () => {
     const mockRepos = {
       goals: { create: async () => ({}) },
       tasks: { create: async () => ({}) },
@@ -397,12 +408,13 @@ describe.skip('CollectivePack with autonomous capabilities', () => {
     };
 
     const pack = createCollectivePack({ autonomousRepositories: mockRepos });
+    packs.push(pack);
     assert.ok(pack);
     assert.equal(pack.hasAutonomousCapabilities(), true);
     assert.ok(pack.getAutonomousCapabilities());
   });
 
-  it('passes autonomous capabilities to dogs', () => {
+  it('passes autonomous capabilities to dogs', async () => {
     const mockRepos = {
       goals: { create: async () => ({}) },
       tasks: { create: async () => ({}) },
@@ -411,6 +423,7 @@ describe.skip('CollectivePack with autonomous capabilities', () => {
     };
 
     const pack = createCollectivePack({ autonomousRepositories: mockRepos });
+    packs.push(pack);
 
     // Check that dogs received autonomous capabilities
     assert.ok(pack.guardian.autonomous);

@@ -41,8 +41,7 @@ import { LearningService } from '../src/judge/learning-service.js';
 
 const log = createLogger('E2E-Test');
 
-// TODO: Fix cleanup - CollectivePack keeps Node running
-describe.skip('Phase 20: E2E Integration', () => {
+describe('Phase 20: E2E Integration', () => {
   let orchestrator;
   let collective;
   let tracer;
@@ -64,7 +63,7 @@ describe.skip('Phase 20: E2E Integration', () => {
     skillRegistry = createSkillRegistry();
 
     // Create collective
-    collective = await createCollectivePack({
+    collective = createCollectivePack({
       enableEventBus: true,
     });
 
@@ -81,9 +80,9 @@ describe.skip('Phase 20: E2E Integration', () => {
     });
   });
 
-  after(() => {
-    // Cleanup
-    if (collective?.stop) collective.stop();
+  after(async () => {
+    // Cleanup - use shutdown() not stop()
+    if (collective?.shutdown) await collective.shutdown();
     if (learningManager?.destroy) learningManager.destroy();
   });
 
