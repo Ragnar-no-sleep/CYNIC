@@ -76,6 +76,17 @@ export {
   getDogPipeline,
 } from './dog-pipeline.js';
 
+// Strategy manager (switching when stuck)
+export {
+  StrategyManager,
+  StrategySuggestion,
+  STUCK_THRESHOLDS,
+  StuckIndicator,
+  StrategyType,
+  createStrategyManager,
+  getStrategyManager,
+} from './strategy-manager.js';
+
 // Re-export for convenience
 import { ComplexityClassifier, createComplexityClassifier, ComplexityTier, COMPLEXITY_THRESHOLDS } from './complexity-classifier.js';
 import { TieredRouter, createTieredRouter, HANDLER_COSTS, HANDLER_LATENCIES } from './tiered-router.js';
@@ -85,6 +96,7 @@ import { DogCapabilityMatrix, createDogCapabilityMatrix, getDogCapabilityMatrix,
 import { IntelligentRouter, createIntelligentRouter, getIntelligentRouter, RoutingDecision } from './intelligent-router.js';
 import { DogPerformanceTracker, DogMetrics, createDogPerformanceTracker, getDogPerformanceTracker } from './dog-performance.js';
 import { DogPipeline, StreamContext, PipelineStage, PipelineTemplates, createDogPipeline, getDogPipeline } from './dog-pipeline.js';
+import { StrategyManager, StrategySuggestion, STUCK_THRESHOLDS, StuckIndicator, StrategyType, createStrategyManager, getStrategyManager } from './strategy-manager.js';
 
 export default {
   // Complexity routing
@@ -129,4 +141,12 @@ export default {
   PipelineTemplates,
   createDogPipeline,
   getDogPipeline,
+  // Strategy manager (switching when stuck)
+  StrategyManager,
+  StrategySuggestion,
+  STUCK_THRESHOLDS,
+  StuckIndicator,
+  StrategyType,
+  createStrategyManager,
+  getStrategyManager,
 };
