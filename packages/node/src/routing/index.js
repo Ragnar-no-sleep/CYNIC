@@ -66,6 +66,16 @@ export {
   getDogPerformanceTracker,
 } from './dog-performance.js';
 
+// Dog pipeline (stream chaining)
+export {
+  DogPipeline,
+  StreamContext,
+  PipelineStage,
+  PipelineTemplates,
+  createDogPipeline,
+  getDogPipeline,
+} from './dog-pipeline.js';
+
 // Re-export for convenience
 import { ComplexityClassifier, createComplexityClassifier, ComplexityTier, COMPLEXITY_THRESHOLDS } from './complexity-classifier.js';
 import { TieredRouter, createTieredRouter, HANDLER_COSTS, HANDLER_LATENCIES } from './tiered-router.js';
@@ -74,6 +84,7 @@ import { TaskDescriptor, createTaskDescriptor, TaskType, ComplexityLevel, RiskLe
 import { DogCapabilityMatrix, createDogCapabilityMatrix, getDogCapabilityMatrix, DogId, DOG_CAPABILITIES } from './dog-capabilities.js';
 import { IntelligentRouter, createIntelligentRouter, getIntelligentRouter, RoutingDecision } from './intelligent-router.js';
 import { DogPerformanceTracker, DogMetrics, createDogPerformanceTracker, getDogPerformanceTracker } from './dog-performance.js';
+import { DogPipeline, StreamContext, PipelineStage, PipelineTemplates, createDogPipeline, getDogPipeline } from './dog-pipeline.js';
 
 export default {
   // Complexity routing
@@ -111,4 +122,11 @@ export default {
   DogMetrics,
   createDogPerformanceTracker,
   getDogPerformanceTracker,
+  // Pipeline (stream chaining)
+  DogPipeline,
+  StreamContext,
+  PipelineStage,
+  PipelineTemplates,
+  createDogPipeline,
+  getDogPipeline,
 };
