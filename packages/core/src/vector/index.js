@@ -231,6 +231,164 @@ export class TfIdfEmbedder {
 }
 
 // =============================================================================
+// OLLAMA EMBEDDING SUPPORT (Local GPU-accelerated)
+// =============================================================================
+
+/**
+ * Ollama Embedder
+ *
+ * Local embedding generation using Ollama.
+ * No external API required, runs on local GPU.
+ *
+ * Recommended models:
+ * - nomic-embed-text (768 dim, fast, good quality)
+ * - mxbai-embed-large (1024 dim, higher quality)
+ * - all-minilm (384 dim, fastest)
+ *
+ * "Local embeddings, local control" - κυνικός
+ */
+export class OllamaEmbedder {
+  /**
+   * @param {Object} options
+   * @param {string} [options.model='nomic-embed-text'] - Ollama embedding model
+   * @param {string} [options.baseUrl='http://localhost:11434'] - Ollama API URL
+   * @param {number} [options.dimension] - Override dimension (auto-detected)
+   * @param {number} [options.timeout=30000] - Request timeout in ms
+   */
+  constructor(options = {}) {
+    this.model = options.model || 'nomic-embed-text';
+    this.baseUrl = options.baseUrl || 'http://localhost:11434';
+    this.dimension = options.dimension || this._getDefaultDimension();
+    this.timeout = options.timeout || 30000;
+    this._available = null; // Cached availability check
+  }
+
+  _getDefaultDimension() {
+    // Known dimensions for popular embedding models
+    const dimensions = {
+      'nomic-embed-text': 768,
+      'mxbai-embed-large': 1024,
+      'all-minilm': 384,
+      'snowflake-arctic-embed': 1024,
+      'bge-large': 1024,
+      'bge-base': 768,
+      'bge-small': 384,
+    };
+    return dimensions[this.model] || 768;
+  }
+
+  /**
+   * Check if Ollama is available
+   * @returns {Promise<boolean>}
+   */
+  async isAvailable() {
+    if (this._available !== null) return this._available;
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+      const response = await fetch(`${this.baseUrl}/api/tags`, {
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+      this._available = response.ok;
+      return this._available;
+    } catch (e) {
+      this._available = false;
+      return false;
+    }
+  }
+
+  /**
+   * Generate embedding for text
+   * @param {string} text
+   * @returns {Promise<number[]>} Embedding vector
+   */
+  async embed(text) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+    try {
+      const response = await fetch(`${this.baseUrl}/api/embeddings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: this.model,
+          prompt: text,
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`Ollama API error: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return data.embedding;
+    } catch (e) {
+      clearTimeout(timeoutId);
+      if (e.name === 'AbortError') {
+        throw new Error(`Ollama timeout after ${this.timeout}ms`);
+      }
+      throw e;
+    }
+  }
+
+  /**
+   * Batch embed multiple texts
+   * @param {string[]} texts
+   * @returns {Promise<number[][]>} Array of embedding vectors
+   */
+  async embedBatch(texts) {
+    // Ollama doesn't support native batch, so parallelize
+    const results = await Promise.all(
+      texts.map(text => this.embed(text))
+    );
+    return results;
+  }
+
+  /**
+   * Pull model if not available
+   * @returns {Promise<boolean>} True if model is ready
+   */
+  async ensureModel() {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/pull`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: this.model }),
+      });
+      return response.ok;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  getDimension() {
+    return this.dimension;
+  }
+
+  export() {
+    return {
+      model: this.model,
+      baseUrl: this.baseUrl,
+      dimension: this.dimension,
+    };
+  }
+
+  import(state) {
+    this.model = state.model || this.model;
+    this.baseUrl = state.baseUrl || this.baseUrl;
+    this.dimension = state.dimension || this.dimension;
+    return this;
+  }
+}
+
+// =============================================================================
 // EXTERNAL EMBEDDING SUPPORT
 // =============================================================================
 
@@ -242,8 +400,8 @@ export class TfIdfEmbedder {
 export class ExternalEmbedder {
   /**
    * @param {Object} options
-   * @param {string} options.provider - 'openai', 'cohere', 'voyage', etc.
-   * @param {string} options.apiKey - API key
+   * @param {string} options.provider - 'openai', 'cohere', 'voyage', 'ollama'
+   * @param {string} options.apiKey - API key (not needed for ollama)
    * @param {string} [options.model] - Model name
    * @param {number} [options.dimension] - Embedding dimension
    */
@@ -253,6 +411,14 @@ export class ExternalEmbedder {
     this.model = options.model || this._getDefaultModel();
     this.dimension = options.dimension || this._getDefaultDimension();
     this.baseUrl = options.baseUrl || this._getDefaultBaseUrl();
+
+    // For Ollama, create an OllamaEmbedder instance
+    if (this.provider === 'ollama') {
+      this._ollamaEmbedder = new OllamaEmbedder({
+        model: this.model,
+        baseUrl: this.baseUrl,
+      });
+    }
   }
 
   _getDefaultModel() {
@@ -260,6 +426,7 @@ export class ExternalEmbedder {
       case 'openai': return 'text-embedding-3-small';
       case 'cohere': return 'embed-english-v3.0';
       case 'voyage': return 'voyage-2';
+      case 'ollama': return 'nomic-embed-text';
       default: return 'embed';
     }
   }
@@ -269,6 +436,7 @@ export class ExternalEmbedder {
       case 'openai': return 1536;
       case 'cohere': return 1024;
       case 'voyage': return 1024;
+      case 'ollama': return 768;
       default: return 768;
     }
   }
@@ -278,6 +446,7 @@ export class ExternalEmbedder {
       case 'openai': return 'https://api.openai.com/v1';
       case 'cohere': return 'https://api.cohere.ai/v1';
       case 'voyage': return 'https://api.voyageai.com/v1';
+      case 'ollama': return 'http://localhost:11434';
       default: return null;
     }
   }
@@ -288,6 +457,11 @@ export class ExternalEmbedder {
    * @returns {Promise<number[]>} Embedding vector
    */
   async embed(text) {
+    // Ollama doesn't need API key
+    if (this.provider === 'ollama') {
+      return this._ollamaEmbedder.embed(text);
+    }
+
     if (!this.apiKey) {
       throw new Error(`API key required for ${this.provider}`);
     }
@@ -308,6 +482,11 @@ export class ExternalEmbedder {
    * @returns {Promise<number[][]>} Array of embedding vectors
    */
   async embedBatch(texts) {
+    // Ollama doesn't need API key
+    if (this.provider === 'ollama') {
+      return this._ollamaEmbedder.embedBatch(texts);
+    }
+
     if (!this.apiKey) {
       throw new Error(`API key required for ${this.provider}`);
     }
@@ -757,6 +936,199 @@ export class SemanticSearch {
 }
 
 // =============================================================================
+// UNIFIED EMBEDDER (Auto-selects best available)
+// =============================================================================
+
+/**
+ * Unified Embedder
+ *
+ * Auto-selects the best available embedding provider:
+ * 1. Ollama (if available locally)
+ * 2. OpenAI (if API key provided)
+ * 3. TF-IDF (always available, no external deps)
+ *
+ * "φ distrusts φ" - Trust but verify availability
+ */
+export class UnifiedEmbedder {
+  /**
+   * @param {Object} options
+   * @param {string} [options.preferredProvider] - Preferred provider: 'ollama', 'openai', 'tfidf'
+   * @param {string} [options.openaiKey] - OpenAI API key
+   * @param {string} [options.ollamaUrl] - Ollama base URL
+   * @param {string} [options.ollamaModel] - Ollama model name
+   * @param {string[]} [options.corpus] - Initial corpus for TF-IDF training
+   */
+  constructor(options = {}) {
+    this.preferredProvider = options.preferredProvider || 'auto';
+    this.openaiKey = options.openaiKey || process.env.OPENAI_API_KEY;
+    this.ollamaUrl = options.ollamaUrl || 'http://localhost:11434';
+    this.ollamaModel = options.ollamaModel || 'nomic-embed-text';
+    this.corpus = options.corpus || [];
+
+    this._activeEmbedder = null;
+    this._providerName = null;
+    this._initialized = false;
+  }
+
+  /**
+   * Initialize and select the best available embedder
+   */
+  async initialize() {
+    if (this._initialized) return this;
+
+    // Try preferred provider first
+    if (this.preferredProvider !== 'auto') {
+      if (this.preferredProvider === 'ollama') {
+        const ollama = new OllamaEmbedder({
+          model: this.ollamaModel,
+          baseUrl: this.ollamaUrl,
+        });
+        if (await ollama.isAvailable()) {
+          this._activeEmbedder = ollama;
+          this._providerName = 'ollama';
+          this._initialized = true;
+          return this;
+        }
+      } else if (this.preferredProvider === 'openai' && this.openaiKey) {
+        this._activeEmbedder = new ExternalEmbedder({
+          provider: 'openai',
+          apiKey: this.openaiKey,
+        });
+        this._providerName = 'openai';
+        this._initialized = true;
+        return this;
+      } else if (this.preferredProvider === 'tfidf') {
+        const tfidf = new TfIdfEmbedder();
+        if (this.corpus.length > 0) {
+          tfidf.train(this.corpus);
+        }
+        this._activeEmbedder = tfidf;
+        this._providerName = 'tfidf';
+        this._initialized = true;
+        return this;
+      }
+    }
+
+    // Auto-select: Try Ollama first (local, fast, free)
+    const ollama = new OllamaEmbedder({
+      model: this.ollamaModel,
+      baseUrl: this.ollamaUrl,
+    });
+
+    if (await ollama.isAvailable()) {
+      this._activeEmbedder = ollama;
+      this._providerName = 'ollama';
+      this._initialized = true;
+      return this;
+    }
+
+    // Try OpenAI if API key available
+    if (this.openaiKey) {
+      this._activeEmbedder = new ExternalEmbedder({
+        provider: 'openai',
+        apiKey: this.openaiKey,
+      });
+      this._providerName = 'openai';
+      this._initialized = true;
+      return this;
+    }
+
+    // Fallback to TF-IDF
+    const tfidf = new TfIdfEmbedder();
+    if (this.corpus.length > 0) {
+      tfidf.train(this.corpus);
+    }
+    this._activeEmbedder = tfidf;
+    this._providerName = 'tfidf';
+    this._initialized = true;
+    return this;
+  }
+
+  /**
+   * Generate embedding for text
+   * @param {string} text
+   * @returns {Promise<number[]>}
+   */
+  async embed(text) {
+    if (!this._initialized) {
+      await this.initialize();
+    }
+
+    // TF-IDF needs training
+    if (this._activeEmbedder instanceof TfIdfEmbedder && !this._activeEmbedder.trained) {
+      this._activeEmbedder.train([text]);
+    }
+
+    const result = this._activeEmbedder.embed(text);
+    return result instanceof Promise ? result : Promise.resolve(result);
+  }
+
+  /**
+   * Batch embed multiple texts
+   * @param {string[]} texts
+   * @returns {Promise<number[][]>}
+   */
+  async embedBatch(texts) {
+    if (!this._initialized) {
+      await this.initialize();
+    }
+
+    // TF-IDF needs training
+    if (this._activeEmbedder instanceof TfIdfEmbedder && !this._activeEmbedder.trained) {
+      this._activeEmbedder.train(texts);
+    }
+
+    if (this._activeEmbedder.embedBatch) {
+      return this._activeEmbedder.embedBatch(texts);
+    }
+
+    // Fallback: embed one at a time
+    return Promise.all(texts.map(t => this.embed(t)));
+  }
+
+  /**
+   * Get the active provider name
+   */
+  getProvider() {
+    return this._providerName || 'uninitialized';
+  }
+
+  /**
+   * Get embedding dimension
+   */
+  getDimension() {
+    if (!this._activeEmbedder) return 0;
+    return this._activeEmbedder.getDimension();
+  }
+
+  /**
+   * Add documents to TF-IDF corpus (only affects TF-IDF provider)
+   * @param {string[]} documents
+   */
+  addToCorpus(documents) {
+    this.corpus = this.corpus.concat(documents);
+    if (this._activeEmbedder instanceof TfIdfEmbedder) {
+      this._activeEmbedder.train(this.corpus);
+    }
+  }
+
+  export() {
+    return {
+      preferredProvider: this.preferredProvider,
+      activeProvider: this._providerName,
+      corpus: this.corpus,
+      embedder: this._activeEmbedder?.export?.() || null,
+    };
+  }
+
+  import(state) {
+    this.preferredProvider = state.preferredProvider || this.preferredProvider;
+    this.corpus = state.corpus || [];
+    return this;
+  }
+}
+
+// =============================================================================
 // EXPORTS
 // =============================================================================
 
@@ -766,7 +1138,9 @@ export default {
 
   // Embedders
   TfIdfEmbedder,
+  OllamaEmbedder,
   ExternalEmbedder,
+  UnifiedEmbedder,
 
   // Similarity
   cosineSimilarity,
