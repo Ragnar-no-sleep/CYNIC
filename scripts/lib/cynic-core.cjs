@@ -1244,6 +1244,59 @@ function mergeToolCounts(remote, local) {
 }
 
 // =============================================================================
+// SESSION PATTERNS - Cross-session pattern persistence
+// =============================================================================
+
+/**
+ * Load session patterns from database (cross-session memory)
+ * Called at session start to restore patterns from previous sessions
+ * @param {string} userId - User ID (hook-generated usr_xxx)
+ * @param {number} limit - Max patterns to load (default 50)
+ * @returns {Promise<Object>} Patterns and stats
+ */
+async function loadSessionPatterns(userId, limit = 50) {
+  try {
+    const result = await callBrainTool('brain_session_patterns_load', { userId, limit });
+    if (result.success) {
+      return {
+        patterns: result.patterns || [],
+        stats: result.stats || {},
+        count: result.count || 0,
+      };
+    }
+    return { patterns: [], stats: {}, count: 0 };
+  } catch (e) {
+    // Silently fail - start fresh
+    return { patterns: [], stats: {}, count: 0 };
+  }
+}
+
+/**
+ * Save session patterns to database (cross-session memory)
+ * Called at session end to persist patterns for next session
+ * @param {string} sessionId - Session ID
+ * @param {string} userId - User ID (hook-generated usr_xxx)
+ * @param {Array} patterns - Patterns detected during session
+ * @returns {Promise<Object>} Save result
+ */
+async function saveSessionPatterns(sessionId, userId, patterns) {
+  if (!patterns || patterns.length === 0) {
+    return { success: true, saved: 0 };
+  }
+
+  try {
+    return await callBrainTool('brain_session_patterns_save', {
+      sessionId,
+      userId,
+      patterns,
+    });
+  } catch (e) {
+    // Silently fail - patterns are lost but not critical
+    return { success: false, saved: 0, error: e.message };
+  }
+}
+
+// =============================================================================
 // CONTRIBUTOR DISCOVERY - "Les rails dans le cerveau"
 // Lazy-loaded for performance (contributor-discovery is heavy)
 // =============================================================================
@@ -1376,6 +1429,10 @@ module.exports = {
   loadProfileFromDB,
   syncProfileToDB,
   mergeProfiles,
+
+  // Cross-Session Pattern Persistence
+  loadSessionPatterns,
+  saveSessionPatterns,
 
   // Contributor Discovery (les rails dans le cerveau)
   getContributorProfile,

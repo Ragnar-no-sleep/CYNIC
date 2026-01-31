@@ -260,6 +260,29 @@ async function main() {
       signalCollector.collectBreak(gapMs);
     }
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SESSION PATTERNS SYNC (Cross-session pattern persistence)
+    // ═══════════════════════════════════════════════════════════════════════════
+    try {
+      const { loadSessionPatterns } = await import('../lib/index.js');
+      const patternResult = await loadSessionPatterns(user.userId, 50);
+      if (patternResult.patterns?.length > 0) {
+        const imported = sessionState.importPatterns(patternResult.patterns);
+        output.patterns = patternResult.patterns.slice(0, 5).map(p => ({
+          type: p.type,
+          name: p.name,
+          confidence: p.confidence,
+        }));
+        output.syncStatus.patterns = {
+          success: true,
+          imported,
+          stats: patternResult.stats,
+        };
+      }
+    } catch (e) {
+      output.syncStatus.failures.push({ type: 'patterns', error: e.message });
+    }
+
     // Update profile
     let profile = updateUserProfile(localProfile, {
       identity: { name: user.name, email: user.email },

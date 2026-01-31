@@ -93,6 +93,10 @@ export const {
   syncProfileToDB,
   mergeProfiles,
 
+  // Cross-Session Pattern Persistence
+  loadSessionPatterns,
+  saveSessionPatterns,
+
   // Contributor Discovery (functions from cynic-core)
   getContributorProfile,
   getContributorByEmail,

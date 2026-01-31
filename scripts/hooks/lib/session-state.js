@@ -512,6 +512,46 @@ class SessionStateManager {
   }
 
   /**
+   * Import patterns from previous sessions (called by awaken.js)
+   * @param {Object[]} patterns - Patterns from database
+   * @returns {number} Number of patterns imported
+   */
+  importPatterns(patterns) {
+    if (!patterns || patterns.length === 0) {
+      return 0;
+    }
+
+    // Mark as imported and add to state
+    for (const pattern of patterns) {
+      this._state.patternsDetected.push({
+        ...pattern,
+        imported: true,
+        timestamp: pattern.detectedAt || Date.now(),
+      });
+    }
+
+    // Trim to max size
+    if (this._state.patternsDetected.length > MAX_PATTERNS) {
+      this._state.patternsDetected = this._state.patternsDetected.slice(-MAX_PATTERNS);
+    }
+
+    this._saveState();
+    return patterns.length;
+  }
+
+  /**
+   * Export patterns for persistence (called by sleep.js)
+   * @param {boolean} onlyNew - Only export patterns detected this session (not imported)
+   * @returns {Object[]} Patterns to save
+   */
+  exportPatterns(onlyNew = true) {
+    if (onlyNew) {
+      return this._state.patternsDetected.filter(p => !p.imported);
+    }
+    return [...this._state.patternsDetected];
+  }
+
+  /**
    * Record a suggestion that was emitted
    */
   recordSuggestion() {

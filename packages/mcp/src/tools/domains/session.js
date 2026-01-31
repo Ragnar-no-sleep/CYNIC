@@ -566,6 +566,150 @@ export function createPreferencesTool(persistence) {
   };
 }
 
+// =============================================================================
+// SESSION PATTERNS TOOLS
+// =============================================================================
+
+/**
+ * Create session patterns save tool
+ * @param {Object} persistence - PersistenceManager instance
+ * @returns {Object} Tool definition
+ */
+export function createSessionPatternsSaveTool(persistence) {
+  return {
+    name: 'brain_session_patterns_save',
+    description: 'Save detected patterns from session to database. Called by sleep.js hook.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        sessionId: {
+          type: 'string',
+          description: 'Session identifier',
+        },
+        userId: {
+          type: 'string',
+          description: 'User UUID',
+        },
+        patterns: {
+          type: 'array',
+          description: 'Array of patterns to save',
+          items: {
+            type: 'object',
+            properties: {
+              type: { type: 'string', description: 'Pattern type (SEQUENCE, ANOMALY, etc.)' },
+              name: { type: 'string', description: 'Pattern name' },
+              confidence: { type: 'number', description: 'Confidence (0-0.618)' },
+              occurrences: { type: 'number', description: 'Occurrence count' },
+              context: { type: 'object', description: 'Pattern context data' },
+            },
+          },
+        },
+      },
+      required: ['sessionId', 'userId', 'patterns'],
+    },
+    handler: async (params) => {
+      const { sessionId, userId, patterns } = params;
+
+      if (!persistence?.sessionPatterns) {
+        return {
+          success: false,
+          error: 'Session patterns persistence not available',
+          timestamp: Date.now(),
+        };
+      }
+
+      if (!patterns || patterns.length === 0) {
+        return {
+          success: true,
+          saved: 0,
+          message: '*yawn* No patterns to save.',
+          timestamp: Date.now(),
+        };
+      }
+
+      try {
+        const count = await persistence.sessionPatterns.savePatterns(sessionId, userId, patterns);
+        return {
+          success: true,
+          saved: count,
+          sessionId,
+          message: `*tail wag* ${count} patterns persisted for future sessions.`,
+          timestamp: Date.now(),
+        };
+      } catch (err) {
+        log.error('Session patterns save error', { sessionId, error: err.message });
+        return {
+          success: false,
+          error: err.message,
+          timestamp: Date.now(),
+        };
+      }
+    },
+  };
+}
+
+/**
+ * Create session patterns load tool
+ * @param {Object} persistence - PersistenceManager instance
+ * @returns {Object} Tool definition
+ */
+export function createSessionPatternsLoadTool(persistence) {
+  return {
+    name: 'brain_session_patterns_load',
+    description: 'Load recent patterns from previous sessions. Called by awaken.js hook.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        userId: {
+          type: 'string',
+          description: 'User UUID',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum patterns to load (default 50)',
+        },
+      },
+      required: ['userId'],
+    },
+    handler: async (params) => {
+      const { userId, limit = 50 } = params;
+
+      if (!persistence?.sessionPatterns) {
+        return {
+          success: false,
+          patterns: [],
+          error: 'Session patterns persistence not available',
+          timestamp: Date.now(),
+        };
+      }
+
+      try {
+        const patterns = await persistence.sessionPatterns.loadRecentPatterns(userId, limit);
+        const stats = await persistence.sessionPatterns.getStats(userId);
+
+        return {
+          success: true,
+          patterns,
+          count: patterns.length,
+          stats,
+          message: patterns.length > 0
+            ? `*ears perk* ${patterns.length} patterns restored from memory.`
+            : `*curious sniff* No patterns from previous sessions.`,
+          timestamp: Date.now(),
+        };
+      } catch (err) {
+        log.error('Session patterns load error', { userId, error: err.message });
+        return {
+          success: false,
+          patterns: [],
+          error: err.message,
+          timestamp: Date.now(),
+        };
+      }
+    },
+  };
+}
+
 /**
  * Factory for session domain tools
  */
@@ -596,6 +740,8 @@ export const sessionFactory = {
       tools.push(createProfileLoadTool(persistence));
       tools.push(createPsychologyTool(persistence));
       tools.push(createPreferencesTool(persistence));
+      tools.push(createSessionPatternsSaveTool(persistence));
+      tools.push(createSessionPatternsLoadTool(persistence));
     }
 
     return tools;

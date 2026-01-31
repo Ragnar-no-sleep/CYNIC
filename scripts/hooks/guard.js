@@ -54,12 +54,15 @@ initOrchestrationClient(orchestrateFull);
 const BASH_DANGER_PATTERNS = [
   { pattern: /rm\s+-rf\s+[/~]/, severity: 'critical', message: 'Recursive deletion from root or home directory', action: 'block' },
   { pattern: /rm\s+-rf\s+\*/, severity: 'critical', message: 'Wildcard recursive deletion', action: 'block' },
+  { pattern: /rm\s+-rf\s+\.$/, severity: 'critical', message: 'Recursive deletion of current directory', action: 'block' },
+  { pattern: /rm\s+-rf\s+\.\s/, severity: 'critical', message: 'Recursive deletion of current directory', action: 'block' },
   { pattern: /:\(\)\{\s*:\|:&\s*\};:/, severity: 'critical', message: 'Fork bomb detected', action: 'block' },
   { pattern: />\s*\/dev\/sd[a-z]/, severity: 'critical', message: 'Direct disk write', action: 'block' },
   { pattern: /mkfs\./, severity: 'critical', message: 'Filesystem format command', action: 'block' },
   { pattern: /dd\s+.*of=\/dev\/sd/, severity: 'critical', message: 'Direct disk write with dd', action: 'block' },
   { pattern: /git\s+push.*--force/, severity: 'high', message: 'Force push will rewrite remote history', action: 'warn' },
-  { pattern: /git\s+reset\s+--hard\s+origin/, severity: 'high', message: 'Hard reset to origin will lose local commits', action: 'warn' },
+  { pattern: /git\s+push.*-f\s/, severity: 'high', message: 'Force push will rewrite remote history', action: 'warn' },
+  { pattern: /git\s+reset\s+--hard/, severity: 'high', message: 'Hard reset will discard uncommitted changes', action: 'warn' },
   { pattern: /npm\s+publish/, severity: 'medium', message: 'Publishing to npm registry', action: 'warn' },
   { pattern: /DROP\s+(TABLE|DATABASE)/i, severity: 'critical', message: 'Database DROP command', action: 'block' },
   { pattern: /TRUNCATE/i, severity: 'high', message: 'TRUNCATE removes all data', action: 'warn' },
@@ -75,6 +78,20 @@ const WRITE_SENSITIVE_PATHS = [
   { pattern: /id_rsa|id_ed25519/, message: 'SSH private key' },
   { pattern: /\.npmrc/, message: 'NPM configuration with potential tokens' },
   { pattern: /\.pypirc/, message: 'PyPI credentials' },
+];
+
+// System paths that should never be written
+const SYSTEM_PATHS = [
+  { pattern: /^\/etc\//, message: 'System configuration directory', action: 'block' },
+  { pattern: /^\/usr\//, message: 'System binaries directory', action: 'block' },
+  { pattern: /^\/bin\//, message: 'System binaries directory', action: 'block' },
+  { pattern: /^\/sbin\//, message: 'System binaries directory', action: 'block' },
+  { pattern: /^\/boot\//, message: 'Boot partition', action: 'block' },
+  { pattern: /^\/dev\//, message: 'Device files', action: 'block' },
+  { pattern: /^\/proc\//, message: 'Process information', action: 'block' },
+  { pattern: /^\/sys\//, message: 'System information', action: 'block' },
+  { pattern: /^C:\\Windows\\/i, message: 'Windows system directory', action: 'block' },
+  { pattern: /^C:\\Program Files/i, message: 'Program Files directory', action: 'block' },
 ];
 
 // =============================================================================
@@ -93,6 +110,15 @@ function analyzeBashCommand(command) {
 
 function analyzeWritePath(filePath) {
   const issues = [];
+
+  // Check system paths first (blocking)
+  for (const { pattern, message, action } of SYSTEM_PATHS) {
+    if (pattern.test(filePath)) {
+      issues.push({ severity: 'critical', message: `Writing to protected ${message}`, action: 'block' });
+    }
+  }
+
+  // Check sensitive paths (warning)
   for (const { pattern, message } of WRITE_SENSITIVE_PATHS) {
     if (pattern.test(filePath)) {
       issues.push({ severity: 'high', message: `Writing to sensitive file: ${message}`, action: 'warn' });

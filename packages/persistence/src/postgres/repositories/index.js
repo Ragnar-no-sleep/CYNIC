@@ -47,3 +47,6 @@ export { UserPreferencesRepository } from './user-preferences.js';
 
 // Phase 20: E2E Integration
 export { OrchestrationDecisionRepository, createOrchestrationDecisionRepository } from './orchestration-decisions.js';
+
+// Phase 22: Session Pattern Persistence
+export { SessionPatternsRepository, createSessionPatternsRepository } from './session-patterns.js';

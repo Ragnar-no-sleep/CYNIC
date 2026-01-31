@@ -28,6 +28,7 @@ import { TriggerRepository } from './postgres/repositories/triggers.js';
 import { DiscoveryRepository } from './postgres/repositories/discovery.js';
 import { ConsciousnessRepository } from './postgres/repositories/consciousness.js';
 import { PsychologyRepository } from './postgres/repositories/psychology.js';
+import { SessionPatternsRepository } from './postgres/repositories/session-patterns.js';
 
 /**
  * Repository definitions for factory registration
@@ -50,6 +51,7 @@ const REPOSITORY_DEFINITIONS = {
   discovery: { Class: DiscoveryRepository, tags: ['emergence'] },
   consciousness: { Class: ConsciousnessRepository, tags: ['emergence'] },
   psychology: { Class: PsychologyRepository, tags: ['psychology'] },
+  sessionPatterns: { Class: SessionPatternsRepository, tags: ['learning', 'emergence'] },
 };
 
 /**

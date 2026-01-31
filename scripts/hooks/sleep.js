@@ -275,6 +275,29 @@ async function main() {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // SYNC: Session Patterns (Cross-session pattern persistence)
+    // ═══════════════════════════════════════════════════════════════════════════
+    try {
+      const { saveSessionPatterns } = await import('../lib/index.js');
+      const sessionState = getSessionState();
+      const patterns = sessionState.exportPatterns(true); // Only new patterns (not imported)
+
+      if (patterns.length > 0) {
+        const patternResult = await retryWithBackoff(
+          () => saveSessionPatterns(output.session.id, user.userId, patterns),
+          { maxRetries: 2 }
+        );
+        if (patternResult.success) {
+          output.syncStatus.patterns = { success: true, saved: patternResult.saved };
+        } else {
+          output.syncStatus.failures.push({ type: 'patterns', error: patternResult.error });
+        }
+      }
+    } catch (e) {
+      output.syncStatus.failures.push({ type: 'patterns', error: e.message });
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // SYNC: Total Memory
     // ═══════════════════════════════════════════════════════════════════════════
     const totalMemory = getTotalMemory();
