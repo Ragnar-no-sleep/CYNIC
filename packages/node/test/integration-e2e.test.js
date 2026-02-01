@@ -413,60 +413,55 @@ describe('Phase 20: Circuit Breaker', () => {
   });
 
   it('should start in closed state', () => {
-    const cb = createCircuitBreaker({ name: 'test' });
+    const cb = createCircuitBreaker({ name: 'test-start' });
     assert.equal(cb.state, CircuitState.CLOSED);
-    assert.equal(cb.isAllowed(), true);
+    assert.equal(cb.canExecute(), true);
   });
 
   it('should track successes', () => {
-    const cb = createCircuitBreaker({ name: 'test-success' });
+    const cb = createCircuitBreaker({ name: 'test-success-track' });
     cb.recordSuccess();
     cb.recordSuccess();
 
     const stats = cb.getStats();
-    assert.equal(stats.successes, 2);
-    assert.equal(stats.totalCalls, 2);
-    assert.equal(stats.state, CircuitState.CLOSED);
+    assert.equal(stats.totalSuccesses, 2);
+    assert.equal(stats.currentState, CircuitState.CLOSED);
   });
 
   it('should open after exceeding failure threshold', () => {
     const cb = createCircuitBreaker({
-      name: 'test-open',
-      failureThreshold: 0.5, // 50% for testing
-      minSamples: 3,
+      name: 'test-open-threshold',
+      failureThreshold: 3, // Open after 3 consecutive failures
     });
 
-    // Record 3 failures to meet minSamples and exceed threshold
+    // Record 3 failures to exceed threshold
     cb.recordFailure();
     cb.recordFailure();
-    cb.recordFailure(); // Opens here (100% failure rate > 50%)
+    cb.recordFailure(); // Opens here
 
     assert.equal(cb.state, CircuitState.OPEN);
-    assert.equal(cb.isAllowed(), false);
+    assert.equal(cb.canExecute(), false);
   });
 
   it('should reject calls when open', () => {
     const cb = createCircuitBreaker({
-      name: 'test-reject-2', // Unique name to avoid registry conflicts
-      failureThreshold: 0.5,
-      minSamples: 2,
+      name: 'test-reject',
+      failureThreshold: 2,
     });
 
     cb.recordFailure();
     cb.recordFailure();
 
     assert.equal(cb.state, CircuitState.OPEN);
-    cb.isAllowed(); // First rejection
-    assert.equal(cb.isAllowed(), false);
-    assert.ok(cb.getStats().rejectedCalls >= 1, 'Should have rejected calls');
+    assert.equal(cb.canExecute(), false); // First rejection
+    assert.equal(cb.canExecute(), false); // Second rejection
   });
 
   it('should transition to half-open after timeout', async () => {
     const cb = createCircuitBreaker({
-      name: 'test-halfopen',
-      failureThreshold: 0.5,
-      minSamples: 2,
-      timeout: 50, // Short timeout for testing
+      name: 'test-halfopen-timeout',
+      failureThreshold: 2,
+      resetTimeoutMs: 30, // Short timeout for testing
     });
 
     cb.recordFailure();
@@ -474,24 +469,28 @@ describe('Phase 20: Circuit Breaker', () => {
     assert.equal(cb.state, CircuitState.OPEN);
 
     // Wait for timeout
-    await new Promise(r => setTimeout(r, 60));
+    await new Promise(r => setTimeout(r, 50));
 
+    // Calling canExecute triggers the transition to HALF_OPEN
+    const allowed = cb.canExecute();
     assert.equal(cb.state, CircuitState.HALF_OPEN);
-    assert.equal(cb.isAllowed(), true);
+    assert.equal(allowed, true);
   });
 
   it('should close after success in half-open', async () => {
     const cb = createCircuitBreaker({
-      name: 'test-close',
-      failureThreshold: 0.5,
-      minSamples: 2,
-      timeout: 30,
+      name: 'test-close-success',
+      failureThreshold: 2,
+      resetTimeoutMs: 20,
+      successThreshold: 1, // Single success to close
     });
 
     cb.recordFailure();
     cb.recordFailure();
-    await new Promise(r => setTimeout(r, 40));
+    await new Promise(r => setTimeout(r, 30));
 
+    // Trigger transition to HALF_OPEN
+    cb.canExecute();
     assert.equal(cb.state, CircuitState.HALF_OPEN);
 
     cb.recordSuccess();
@@ -500,16 +499,17 @@ describe('Phase 20: Circuit Breaker', () => {
 
   it('should re-open on failure in half-open', async () => {
     const cb = createCircuitBreaker({
-      name: 'test-reopen',
-      failureThreshold: 0.5,
-      minSamples: 2,
-      timeout: 30,
+      name: 'test-reopen-failure',
+      failureThreshold: 2,
+      resetTimeoutMs: 20,
     });
 
     cb.recordFailure();
     cb.recordFailure();
-    await new Promise(r => setTimeout(r, 40));
+    await new Promise(r => setTimeout(r, 30));
 
+    // Trigger transition to HALF_OPEN
+    cb.canExecute();
     assert.equal(cb.state, CircuitState.HALF_OPEN);
 
     cb.recordFailure();
@@ -518,9 +518,8 @@ describe('Phase 20: Circuit Breaker', () => {
 
   it('should reset properly', () => {
     const cb = createCircuitBreaker({
-      name: 'test-reset',
-      failureThreshold: 0.5,
-      minSamples: 2,
+      name: 'test-reset-proper',
+      failureThreshold: 2,
     });
 
     cb.recordFailure();
@@ -529,15 +528,15 @@ describe('Phase 20: Circuit Breaker', () => {
 
     cb.reset();
     assert.equal(cb.state, CircuitState.CLOSED);
-    assert.equal(cb.isAllowed(), true);
+    assert.equal(cb.canExecute(), true);
   });
 
-  it('should provide health status', () => {
-    const cb = createCircuitBreaker({ name: 'test-health' });
-    const health = cb.getHealth();
+  it('should provide state info', () => {
+    const cb = createCircuitBreaker({ name: 'test-state-info' });
+    const stateInfo = cb.getState();
 
-    assert.equal(health.name, 'test-health');
-    assert.equal(health.state, CircuitState.CLOSED);
-    assert.equal(health.healthy, true);
+    assert.equal(stateInfo.name, 'test-state-info');
+    assert.equal(stateInfo.state, CircuitState.CLOSED);
+    assert.equal(cb.isClosed, true);
   });
 });

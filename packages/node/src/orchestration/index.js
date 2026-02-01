@@ -53,6 +53,7 @@ export {
   CircuitBreaker,
   CircuitBreakerRegistry,
   CircuitState,
+  createCircuitBreaker,
   withCircuitBreaker,
   getCircuitBreakerRegistry,
 } from '@cynic/core';

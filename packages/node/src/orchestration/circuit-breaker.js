@@ -16,6 +16,7 @@ export {
   CircuitBreakerRegistry,
   CircuitState,
   DEFAULT_CIRCUIT_CONFIG,
+  createCircuitBreaker,
   withCircuitBreaker,
   getCircuitBreakerRegistry,
 } from '@cynic/core';

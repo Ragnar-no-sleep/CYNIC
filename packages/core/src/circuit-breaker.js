@@ -488,6 +488,16 @@ export async function withCircuitBreaker(breaker, fn, options = {}) {
   }
 }
 
+/**
+ * Create a circuit breaker instance
+ *
+ * @param {Object} [options] - Circuit breaker options
+ * @returns {CircuitBreaker}
+ */
+export function createCircuitBreaker(options = {}) {
+  return new CircuitBreaker(options);
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // CIRCUIT BREAKER REGISTRY
 // ═══════════════════════════════════════════════════════════════════════════
