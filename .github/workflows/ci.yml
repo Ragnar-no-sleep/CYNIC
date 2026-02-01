@@ -44,6 +44,24 @@ jobs:
       - name: Run MCP tests
         run: npm test --workspace=@cynic/mcp
 
+      - name: Run persistence tests
+        run: npm test --workspace=@cynic/persistence
+
+      - name: Run identity tests
+        run: npm test --workspace=@cynic/identity
+
+      - name: Run emergence tests
+        run: npm test --workspace=@cynic/emergence
+
+      - name: Run burns tests
+        run: npm test --workspace=@cynic/burns
+
+      - name: Run anchor tests
+        run: npm test --workspace=@cynic/anchor
+
+      - name: Run zk tests
+        run: npm test --workspace=@cynic/zk
+
   consensus-tests:
     name: Consensus Integration Tests
     needs: test
