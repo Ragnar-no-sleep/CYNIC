@@ -163,10 +163,14 @@ export {
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LOCAL PRIVACY STORES (SQLite - never syncs by default)
+// "Your data, your device, your choice" - κυνικός
 // ═══════════════════════════════════════════════════════════════════════════
 
-// X/Twitter local store
+// X/Twitter local store (tweets, users, trends)
 export { LocalXStore } from './sqlite/LocalXStore.js';
+
+// Unified privacy store (E-Score, Learning, Psychology, Patterns, Sessions)
+export { LocalPrivacyStore, SyncStatus } from './sqlite/LocalPrivacyStore.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // VERSION

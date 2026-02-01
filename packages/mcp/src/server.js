@@ -41,6 +41,8 @@ import { LibrarianService } from './librarian-service.js';
 import { AuthService } from './auth-service.js';
 import { DiscoveryService } from './discovery-service.js';
 import { XProxyService } from './services/x-proxy.js';
+// Local Privacy Stores (SQLite - privacy by design)
+import { LocalXStore, LocalPrivacyStore } from '@cynic/persistence';
 
 /**
  * MCP Server for CYNIC
@@ -188,6 +190,13 @@ export class MCPServer {
     // X/Twitter proxy service for social data capture
     this.xProxy = options.xProxy || null;
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // LOCAL PRIVACY STORES (SQLite - "Your data, your device, your choice")
+    // Privacy by design: all sensitive data stays local by default
+    // ═══════════════════════════════════════════════════════════════════════════
+    this.localXStore = options.localXStore || null;
+    this.localPrivacyStore = options.localPrivacyStore || null;
+
     // Ecosystem monitor for GitHub tracking
     this.ecosystemMonitor = options.ecosystemMonitor || null;
 
@@ -327,28 +336,62 @@ export class MCPServer {
       console.error(`   Auth: ${authStatus} (${this.auth.apiKeys.size} keys configured)`);
     }
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // LOCAL PRIVACY STORES (SQLite - privacy by design)
+    // "Your data, your device, your choice" - κυνικός
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // Initialize LocalXStore (for X/Twitter data - always local first)
+    if (!this.localXStore) {
+      try {
+        this.localXStore = new LocalXStore({
+          verbose: process.env.CYNIC_DEBUG === 'true',
+        });
+        await this.localXStore.initialize();
+        console.error(`   LocalXStore: ready (${this.localXStore.dbPath})`);
+      } catch (err) {
+        console.error(`   LocalXStore: FAILED (${err.message})`);
+        this.localXStore = null;
+      }
+    }
+
+    // Initialize LocalPrivacyStore (for E-Score, Learning, Psychology, Patterns)
+    if (!this.localPrivacyStore) {
+      try {
+        this.localPrivacyStore = new LocalPrivacyStore({
+          userId: this.sessionManager?._currentSession?.userId || 'default',
+          verbose: process.env.CYNIC_DEBUG === 'true',
+        });
+        await this.localPrivacyStore.initialize();
+        console.error(`   LocalPrivacyStore: ready (${this.localPrivacyStore.dbPath})`);
+      } catch (err) {
+        console.error(`   LocalPrivacyStore: FAILED (${err.message})`);
+        this.localPrivacyStore = null;
+      }
+    }
+
     // Initialize X/Twitter proxy service if enabled
+    // Writes to LOCAL SQLite first (privacy-first), cloud sync is optional
     if (process.env.CYNIC_X_PROXY_ENABLED === 'true' && !this.xProxy) {
-      const xRepository = this.persistence?.repositories?.xData;
-      if (xRepository) {
+      if (this.localXStore) {
         this.xProxy = new XProxyService({
           port: parseInt(process.env.CYNIC_X_PROXY_PORT || '8888'),
-          xRepository,
-          certPath: process.env.CYNIC_X_PROXY_CERT_PATH || null,
-          keyPath: process.env.CYNIC_X_PROXY_KEY_PATH || null,
+          localStore: this.localXStore,  // PRIMARY: Local SQLite
+          xRepository: this.persistence?.repositories?.xData,  // OPTIONAL: Cloud PostgreSQL
+          sslCaDir: process.env.CYNIC_X_PROXY_CERT_PATH || './.cynic-proxy-certs',
           verbose: process.env.CYNIC_X_PROXY_VERBOSE === 'true',
         });
 
         try {
           await this.xProxy.start();
-          console.error(`   X Proxy: ENABLED (port ${this.xProxy.port})`);
+          console.error(`   X Proxy: ENABLED (port ${this.xProxy.port}) - LOCAL FIRST`);
           console.error(`   Configure browser/system proxy: 127.0.0.1:${this.xProxy.port}`);
         } catch (err) {
           console.error(`   X Proxy: FAILED (${err.message})`);
           this.xProxy = null;
         }
       } else {
-        console.error('   X Proxy: DISABLED (xData repository not available)');
+        console.error('   X Proxy: DISABLED (LocalXStore not available)');
       }
     }
 
@@ -394,6 +437,9 @@ export class MCPServer {
       engineOrchestrator: this.engineOrchestrator,
       // X/Twitter Vision
       xRepository: this.persistence?.repositories?.xData,
+      // Local Privacy Stores (SQLite - privacy by design)
+      localXStore: this.localXStore,
+      localPrivacyStore: this.localPrivacyStore,
     });
   }
 
@@ -1282,9 +1328,29 @@ export class MCPServer {
       try {
         const stats = this.xProxy.getStats();
         await this.xProxy.stop();
-        console.error(`   X Proxy stopped (captured ${stats.tweetsCaptures} tweets, ${stats.usersCaptures} users)`);
+        console.error(`   X Proxy stopped (captured ${stats.tweetsCaptured} tweets, ${stats.usersCaptured} users)`);
       } catch (e) {
         console.error('Error stopping X proxy:', e.message);
+      }
+    }
+
+    // Close local privacy stores (SQLite)
+    if (this.localXStore) {
+      try {
+        const stats = this.localXStore.getStats();
+        this.localXStore.close();
+        console.error(`   LocalXStore closed (${stats.tweets} tweets, ${stats.users} users local)`);
+      } catch (e) {
+        console.error('Error closing LocalXStore:', e.message);
+      }
+    }
+
+    if (this.localPrivacyStore) {
+      try {
+        this.localPrivacyStore.close();
+        console.error('   LocalPrivacyStore closed');
+      } catch (e) {
+        console.error('Error closing LocalPrivacyStore:', e.message);
       }
     }
 

@@ -274,6 +274,7 @@ import {
   createXSearchTool,
   createXAnalyzeTool,
   createXTrendsTool,
+  createXSyncTool,
   socialFactory,
 } from './domains/social.js';
 
@@ -282,6 +283,7 @@ export {
   createXSearchTool,
   createXAnalyzeTool,
   createXTrendsTool,
+  createXSyncTool,
   socialFactory,
 };
 
@@ -356,7 +358,10 @@ export function createAllTools(options = {}) {
     dogOrchestrator = null, // DogOrchestrator for Dogs voting
     engineOrchestrator = null, // EngineOrchestrator for Engines synthesis
     // X/Twitter vision
-    xRepository = null, // XDataRepository for social data
+    xRepository = null, // XDataRepository for cloud social data (optional)
+    // Local Privacy Stores (SQLite - privacy by design)
+    localXStore = null, // LocalXStore for local X data (primary)
+    localPrivacyStore = null, // LocalPrivacyStore for E-Score, Learning, Psychology
   } = options;
 
   // Initialize LSP service for code intelligence
@@ -434,12 +439,13 @@ export function createAllTools(options = {}) {
     createRouterTool(tieredRouter),
     createHyperbolicTool(hyperbolicSpace),
     createSONATool(sona),
-    // X/Twitter Vision Tools (social data capture and analysis)
-    ...(xRepository ? [
-      createXFeedTool(xRepository, persistence),
-      createXSearchTool(xRepository, judge),
-      createXAnalyzeTool(xRepository, judge),
-      createXTrendsTool(xRepository),
+    // X/Twitter Vision Tools (privacy-first: local SQLite, optional cloud sync)
+    ...(localXStore ? [
+      createXFeedTool(localXStore, xRepository),
+      createXSearchTool(localXStore, xRepository, judge),
+      createXAnalyzeTool(localXStore, judge),
+      createXTrendsTool(localXStore, xRepository),
+      createXSyncTool(localXStore, xRepository),
     ] : []),
   ];
 
@@ -520,11 +526,12 @@ export default {
   createNotificationsTool,
   createTasksTool,
   memoryFactory,
-  // Social/X Twitter tools
+  // Social/X Twitter tools (privacy-first)
   createXFeedTool,
   createXSearchTool,
   createXAnalyzeTool,
   createXTrendsTool,
+  createXSyncTool,
   socialFactory,
   // LSP Tools (code intelligence)
   LSPService,
