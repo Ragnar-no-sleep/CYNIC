@@ -33,10 +33,17 @@
 | [DEPLOYMENT.md](./DEPLOYMENT.md) | Production deployment (Docker, Render) |
 | [TESTING-GUIDE.md](./TESTING-GUIDE.md) | Running and writing tests |
 
+### Tutorials & Guides
+| Document | Description |
+|----------|-------------|
+| [TUTORIAL-BUILD-DOG.md](./TUTORIAL-BUILD-DOG.md) | Build your first custom Dog agent |
+| [COOKBOOK.md](./COOKBOOK.md) | Common patterns and recipes |
+
 ### Architecture
 | Document | Description |
 |----------|-------------|
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | 4-layer protocol design |
+| [DIAGRAMS.md](./DIAGRAMS.md) | Mermaid architecture diagrams |
 | [BOOT-SEQUENCE.md](./BOOT-SEQUENCE.md) | MCP server boot sequence and lifecycle |
 | [DOGS.md](./DOGS.md) | Agent system (V1 + V2 Collective) |
 | [GLOSSARY.md](./GLOSSARY.md) | Terms and definitions |
