@@ -74,3 +74,6 @@ export * from './context/index.js';
 
 // CLI Utilities (v1.1: colors, progress, status display)
 export * from './cli/index.js';
+
+// LLM Provider Abstraction (Claude, Ollama, OpenAI)
+export * from './llm/index.js';
