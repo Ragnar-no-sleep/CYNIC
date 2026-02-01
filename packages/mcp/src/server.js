@@ -40,6 +40,7 @@ import { BlockchainBridge } from './blockchain-bridge.js';
 import { LibrarianService } from './librarian-service.js';
 import { AuthService } from './auth-service.js';
 import { DiscoveryService } from './discovery-service.js';
+import { XProxyService } from './services/x-proxy.js';
 
 /**
  * MCP Server for CYNIC
@@ -184,6 +185,9 @@ export class MCPServer {
     // Periodic scheduler for automated tasks (ecosystem awareness)
     this.scheduler = options.scheduler || null;
 
+    // X/Twitter proxy service for social data capture
+    this.xProxy = options.xProxy || null;
+
     // Ecosystem monitor for GitHub tracking
     this.ecosystemMonitor = options.ecosystemMonitor || null;
 
@@ -323,6 +327,31 @@ export class MCPServer {
       console.error(`   Auth: ${authStatus} (${this.auth.apiKeys.size} keys configured)`);
     }
 
+    // Initialize X/Twitter proxy service if enabled
+    if (process.env.CYNIC_X_PROXY_ENABLED === 'true' && !this.xProxy) {
+      const xRepository = this.persistence?.repositories?.xData;
+      if (xRepository) {
+        this.xProxy = new XProxyService({
+          port: parseInt(process.env.CYNIC_X_PROXY_PORT || '8888'),
+          xRepository,
+          certPath: process.env.CYNIC_X_PROXY_CERT_PATH || null,
+          keyPath: process.env.CYNIC_X_PROXY_KEY_PATH || null,
+          verbose: process.env.CYNIC_X_PROXY_VERBOSE === 'true',
+        });
+
+        try {
+          await this.xProxy.start();
+          console.error(`   X Proxy: ENABLED (port ${this.xProxy.port})`);
+          console.error(`   Configure browser/system proxy: 127.0.0.1:${this.xProxy.port}`);
+        } catch (err) {
+          console.error(`   X Proxy: FAILED (${err.message})`);
+          this.xProxy = null;
+        }
+      } else {
+        console.error('   X Proxy: DISABLED (xData repository not available)');
+      }
+    }
+
     // Register tools with current instances
     this.tools = createAllTools({
       judge: this.judge,
@@ -363,6 +392,8 @@ export class MCPServer {
       // Phase 22: Wire orchestrators for brain_orchestrate
       dogOrchestrator: this.dogOrchestrator,
       engineOrchestrator: this.engineOrchestrator,
+      // X/Twitter Vision
+      xRepository: this.persistence?.repositories?.xData,
     });
   }
 
@@ -1243,6 +1274,17 @@ export class MCPServer {
         console.error('   Automation executor stopped');
       } catch (e) {
         console.error('Error stopping automation executor:', e.message);
+      }
+    }
+
+    // Stop X proxy service
+    if (this.xProxy) {
+      try {
+        const stats = this.xProxy.getStats();
+        await this.xProxy.stop();
+        console.error(`   X Proxy stopped (captured ${stats.tweetsCaptures} tweets, ${stats.usersCaptures} users)`);
+      } catch (e) {
+        console.error('Error stopping X proxy:', e.message);
       }
     }
 

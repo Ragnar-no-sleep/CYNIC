@@ -150,7 +150,7 @@ function runPackageTest(pkgName) {
   // node package has 23 files with 600+ tests - even 5 files can timeout on some systems
   const MAX_TEST_FILES = 3;
   let sampled = false;
-  let originalCount = testFiles.length;
+  const originalCount = testFiles.length;
 
   if (testFiles.length > MAX_TEST_FILES) {
     // Sample evenly distributed files for representative coverage
@@ -302,8 +302,8 @@ function scanPackage(pkgName) {
     const failMatch = output.match(/ℹ fail (\d+)/);
 
     // Use extrapolated values if available (for sampled large packages)
-    let tests = result._estimatedTests || parseInt(testsMatch?.[1] || '0', 10);
-    let pass = result._estimatedPass || parseInt(passMatch?.[1] || '0', 10);
+    const tests = result._estimatedTests || parseInt(testsMatch?.[1] || '0', 10);
+    const pass = result._estimatedPass || parseInt(passMatch?.[1] || '0', 10);
     const fail = parseInt(failMatch?.[1] || '0', 10);
 
     // Package is healthy if: has tests, all pass, no failures, exit code 0

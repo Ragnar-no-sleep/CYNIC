@@ -157,7 +157,7 @@ function createMockSQLiteDatabase() {
  */
 function createMockSQLiteClient(options = {}) {
   const mockDb = createMockSQLiteDatabase();
-  let connected = false;
+  const connected = false;
   const stats = {
     queries: 0,
     inserts: 0,

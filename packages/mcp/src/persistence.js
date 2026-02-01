@@ -42,6 +42,8 @@ import {
   createMemoryRetriever,
   // Phase 18: Embedder for vector search
   getEmbedder,
+  // Phase X: X/Twitter Vision
+  XDataRepository,
 } from '@cynic/persistence';
 
 // ISP: Domain-specific adapters
@@ -101,6 +103,9 @@ export class PersistenceManager {
     this._tasks = null;
     this._notifications = null;
     this._memoryRetriever = null;
+
+    // Phase X: X/Twitter Vision
+    this._xData = null;
 
     // Fallback store (file or memory)
     this._fallback = null;
@@ -167,6 +172,9 @@ export class PersistenceManager {
         this._goals = new AutonomousGoalsRepository(this.postgres);
         this._tasks = new AutonomousTasksRepository(this.postgres);
         this._notifications = new ProactiveNotificationsRepository(this.postgres);
+
+        // Phase X: X/Twitter Vision
+        this._xData = new XDataRepository(this.postgres);
 
         // Phase 18: Initialize embedder for vector search
         // Auto-detects OpenAI (if OPENAI_API_KEY set) or falls back to MockEmbedder
@@ -277,6 +285,24 @@ export class PersistenceManager {
 
   /** @returns {MemoryRetriever} */
   get memoryRetriever() { return this._memoryRetriever; }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE X: X/Twitter Vision (direct repo access)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /** @returns {XDataRepository} */
+  get xData() { return this._xData; }
+
+  /**
+   * Repository collection for modular access
+   * Allows server.js to access repositories via this.persistence.repositories.xData
+   * @returns {Object}
+   */
+  get repositories() {
+    return {
+      xData: this._xData,
+    };
+  }
 
   // ═══════════════════════════════════════════════════════════════════════════
   // LEGACY API (backward compatibility - delegates to adapters)

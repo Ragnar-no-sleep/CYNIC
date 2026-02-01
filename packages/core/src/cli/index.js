@@ -357,10 +357,11 @@ export function pad(str, width, align = 'left') {
   switch (align) {
     case 'right':
       return ' '.repeat(padding) + str;
-    case 'center':
+    case 'center': {
       const left = Math.floor(padding / 2);
       const right = padding - left;
       return ' '.repeat(left) + str + ' '.repeat(right);
+    }
     default:
       return str + ' '.repeat(padding);
   }

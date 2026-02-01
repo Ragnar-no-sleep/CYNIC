@@ -284,7 +284,7 @@ async function main() {
     }
 
     // Update profile
-    let profile = updateUserProfile(localProfile, {
+    const profile = updateUserProfile(localProfile, {
       identity: { name: user.name, email: user.email },
       stats: { sessions: (localProfile.stats?.sessions || 0) + 1 },
     });

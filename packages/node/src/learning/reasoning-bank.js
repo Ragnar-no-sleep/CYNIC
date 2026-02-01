@@ -422,7 +422,7 @@ export class ReasoningBank {
     tempTraj.addState(stateObj);
 
     // Find candidates
-    let candidates = [];
+    const candidates = [];
     const searchSet = type ? this.byType.get(type) : new Set(this.trajectories.keys());
 
     for (const id of searchSet || []) {

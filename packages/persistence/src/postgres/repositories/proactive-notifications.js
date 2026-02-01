@@ -159,7 +159,7 @@ export class ProactiveNotificationsRepository extends BaseRepository {
       WHERE user_id = $1 AND notification_type = $2
     `;
     const params = [userId, notificationType];
-    let paramIndex = 3;
+    const paramIndex = 3;
 
     if (!includeDelivered) {
       sql += ' AND delivered = FALSE';

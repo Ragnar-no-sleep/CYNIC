@@ -1873,7 +1873,7 @@ async function main() {
     // Shows observation summary, agent suggestions, and proactive insights
     // ═══════════════════════════════════════════════════════════════════════════
 
-    let outputParts = [];
+    const outputParts = [];
 
     // 0. Active Dog Display - Which Sefirot is speaking
     // "Le Collectif observe - un Chien répond"
@@ -1925,8 +1925,8 @@ async function main() {
     // 2. Agent Suggestion (Seder Hishtalshelut - Lightning Flash)
     // Suggest relevant agent based on error type
     if (suggestionEngine && isError) {
-      const errorText = typeof output === 'string' ? output :
-                        output?.error || output?.message || '';
+      const errorText = typeof toolOutput === 'string' ? toolOutput :
+                        toolOutput?.error || toolOutput?.message || '';
       let errorType = null;
 
       // Detect error type for agent suggestion

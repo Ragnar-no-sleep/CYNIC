@@ -268,6 +268,23 @@ export {
   memoryFactory,
 };
 
+// Social domain (X/Twitter vision: x_feed, x_search, x_analyze, x_trends)
+import {
+  createXFeedTool,
+  createXSearchTool,
+  createXAnalyzeTool,
+  createXTrendsTool,
+  socialFactory,
+} from './domains/social.js';
+
+export {
+  createXFeedTool,
+  createXSearchTool,
+  createXAnalyzeTool,
+  createXTrendsTool,
+  socialFactory,
+};
+
 // NOTE: Memory tools moved to domains/memory.js
 
 /**
@@ -338,6 +355,8 @@ export function createAllTools(options = {}) {
     // Phase 22: Orchestrators for brain_orchestrate
     dogOrchestrator = null, // DogOrchestrator for Dogs voting
     engineOrchestrator = null, // EngineOrchestrator for Engines synthesis
+    // X/Twitter vision
+    xRepository = null, // XDataRepository for social data
   } = options;
 
   // Initialize LSP service for code intelligence
@@ -415,6 +434,13 @@ export function createAllTools(options = {}) {
     createRouterTool(tieredRouter),
     createHyperbolicTool(hyperbolicSpace),
     createSONATool(sona),
+    // X/Twitter Vision Tools (social data capture and analysis)
+    ...(xRepository ? [
+      createXFeedTool(xRepository, persistence),
+      createXSearchTool(xRepository, judge),
+      createXAnalyzeTool(xRepository, judge),
+      createXTrendsTool(xRepository),
+    ] : []),
   ];
 
   for (const tool of toolDefs) {
@@ -494,6 +520,12 @@ export default {
   createNotificationsTool,
   createTasksTool,
   memoryFactory,
+  // Social/X Twitter tools
+  createXFeedTool,
+  createXSearchTool,
+  createXAnalyzeTool,
+  createXTrendsTool,
+  socialFactory,
   // LSP Tools (code intelligence)
   LSPService,
   createLSPTools,

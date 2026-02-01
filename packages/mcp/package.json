@@ -17,6 +17,7 @@
     "test": "node --test test/*.test.js"
   },
   "dependencies": {
+    "@bjowes/http-mitm-proxy": "^0.9.6",
     "@cynic/core": "*",
     "@cynic/node": "*",
     "@cynic/persistence": "*",

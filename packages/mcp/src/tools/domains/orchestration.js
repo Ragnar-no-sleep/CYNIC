@@ -834,7 +834,7 @@ Useful for understanding how CYNIC routes requests and what gets blocked.`,
       switch (query) {
         case 'recent': {
           // Prefer in-memory for speed, fallback to DB
-          let decisions = tracer?.getRecent(limit) || [];
+          const decisions = tracer?.getRecent(limit) || [];
           if (decisions.length === 0 && repo) {
             const dbResults = await repo.getRecent(limit);
             return {
@@ -853,7 +853,7 @@ Useful for understanding how CYNIC routes requests and what gets blocked.`,
         }
 
         case 'blocked': {
-          let blocked = tracer?.getBlocked(limit) || [];
+          const blocked = tracer?.getBlocked(limit) || [];
           if (blocked.length === 0 && repo) {
             const dbResults = await repo.getBlocked(limit);
             return {
@@ -875,7 +875,7 @@ Useful for understanding how CYNIC routes requests and what gets blocked.`,
           if (!domain) {
             return { error: 'domain parameter required for by_domain query' };
           }
-          let decisions = tracer?.getByDomain(domain, limit) || [];
+          const decisions = tracer?.getByDomain(domain, limit) || [];
           if (decisions.length === 0 && repo) {
             const dbResults = await repo.getByDomain(domain, limit);
             return {
@@ -899,7 +899,7 @@ Useful for understanding how CYNIC routes requests and what gets blocked.`,
           if (!userId) {
             return { error: 'userId parameter required for by_user query' };
           }
-          let decisions = tracer?.getByUser(userId, limit) || [];
+          const decisions = tracer?.getByUser(userId, limit) || [];
           if (decisions.length === 0 && repo) {
             const dbResults = await repo.getByUser(userId, limit);
             return {

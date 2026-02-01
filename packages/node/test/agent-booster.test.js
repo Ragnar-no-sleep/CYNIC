@@ -720,7 +720,7 @@ var count = 42;`;
   it('should chain multiple transforms', () => {
     const booster = createAgentBooster();
 
-    let code = `var name = "test"
+    const code = `var name = "test"
 console.log(name)
 debugger`;
 

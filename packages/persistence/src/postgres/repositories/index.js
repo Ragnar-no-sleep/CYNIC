@@ -54,3 +54,6 @@ export { SessionPatternsRepository, createSessionPatternsRepository } from './se
 // M2-M3: Facts and Trajectories (V2 Gap Analysis)
 export { FactsRepository, FactType } from './facts.js';
 export { TrajectoriesRepository, TrajectoryOutcome } from './trajectories.js';
+
+// X/Twitter Vision (social data capture)
+export { XDataRepository } from './x-data.js';
