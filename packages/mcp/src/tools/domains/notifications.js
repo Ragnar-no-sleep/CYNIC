@@ -400,6 +400,255 @@ export function createSlackStatusTool(slackService) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// DISCORD TOOLS
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Create Discord send notification tool
+ *
+ * @param {Object} discordService - DiscordService instance
+ * @returns {Object} Tool definition
+ */
+export function createDiscordSendTool(discordService) {
+  return {
+    name: 'brain_discord_send',
+    description: `Send a notification to Discord. Supports webhook (simple) or bot (advanced) mode.
+Types: insight, warning, danger, achievement, pattern, suggestion, judgment, session_summary
+Set DISCORD_WEBHOOK_URL for webhook mode, or DISCORD_BOT_TOKEN + DISCORD_CHANNEL_ID for bot mode.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        type: {
+          type: 'string',
+          enum: ['insight', 'warning', 'danger', 'achievement', 'pattern', 'suggestion', 'judgment', 'session_summary'],
+          description: 'Notification type',
+        },
+        title: {
+          type: 'string',
+          description: 'Notification title',
+        },
+        message: {
+          type: 'string',
+          description: 'Notification message/body',
+        },
+        priority: {
+          type: 'string',
+          enum: ['critical', 'high', 'medium', 'low', 'info'],
+          description: 'Priority level (affects embed color)',
+        },
+        channelId: {
+          type: 'string',
+          description: 'Discord channel ID (bot mode only, overrides default)',
+        },
+        context: {
+          type: 'object',
+          description: 'Additional context data to include as embed fields',
+        },
+      },
+      required: ['type', 'title', 'message'],
+    },
+    handler: async (params) => {
+      const { type, title, message, priority = 'medium', channelId, context = {} } = params;
+
+      if (!discordService) {
+        return {
+          success: false,
+          error: 'Discord service not available.',
+          message: '*head tilt* Discord not configured. Set DISCORD_WEBHOOK_URL or DISCORD_BOT_TOKEN.',
+          setup: {
+            webhook: 'DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...',
+            bot: 'DISCORD_BOT_TOKEN=... and DISCORD_CHANNEL_ID=...',
+          },
+        };
+      }
+
+      if (!discordService.enabled) {
+        return {
+          success: false,
+          error: 'Discord service disabled',
+          message: '*sniff* Discord disabled. Check environment variables.',
+        };
+      }
+
+      try {
+        // Handle special types
+        if (type === 'judgment' && context.qScore !== undefined) {
+          const result = await discordService.sendJudgment({
+            qScore: context.qScore,
+            verdict: context.verdict || 'BARK',
+            confidence: context.confidence || PHI_INV,
+            summary: message,
+            dimensions: context.dimensions,
+          }, channelId);
+          return {
+            success: result.ok,
+            type: 'judgment',
+            discordResult: result,
+          };
+        }
+
+        if (type === 'danger') {
+          const result = await discordService.sendDangerAlert({
+            threat: message,
+            action: context.action || 'detected',
+            context,
+          });
+          return {
+            success: result.ok,
+            type: 'danger',
+            discordResult: result,
+          };
+        }
+
+        if (type === 'pattern') {
+          const result = await discordService.sendPatternDetected({
+            name: title,
+            occurrences: context.occurrences || 1,
+            recommendation: message,
+          });
+          return {
+            success: result.ok,
+            type: 'pattern',
+            discordResult: result,
+          };
+        }
+
+        if (type === 'session_summary') {
+          const result = await discordService.sendSessionSummary({
+            duration: context.duration,
+            judgmentCount: context.judgmentCount,
+            newPatterns: context.newPatterns,
+            efficiency: context.efficiency,
+            activeDogs: context.activeDogs,
+          });
+          return {
+            success: result.ok,
+            type: 'session_summary',
+            discordResult: result,
+          };
+        }
+
+        // Standard notification
+        const result = await discordService.sendNotification({
+          type,
+          title,
+          message,
+          priority,
+          channelId,
+          context,
+        });
+
+        return {
+          success: result.ok,
+          type,
+          discordResult: result,
+          stats: discordService.getStats(),
+        };
+
+      } catch (err) {
+        log.error('Discord send error', { error: err.message });
+        return {
+          success: false,
+          error: err.message,
+          message: `*GROWL* Discord error: ${err.message}`,
+        };
+      }
+    },
+  };
+}
+
+/**
+ * Create Discord status tool
+ *
+ * @param {Object} discordService - DiscordService instance
+ * @returns {Object} Tool definition
+ */
+export function createDiscordStatusTool(discordService) {
+  return {
+    name: 'brain_discord_status',
+    description: 'Check Discord integration status and health.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['status', 'health', 'stats'],
+          description: 'Action: status (config), health (connection test), stats (usage)',
+        },
+      },
+    },
+    handler: async (params) => {
+      const { action = 'status' } = params;
+
+      if (!discordService) {
+        return {
+          success: false,
+          enabled: false,
+          error: 'Discord service not configured',
+          setup: {
+            webhook: {
+              required: ['DISCORD_WEBHOOK_URL'],
+              how: 'Server Settings → Integrations → Webhooks → New Webhook → Copy URL',
+            },
+            bot: {
+              required: ['DISCORD_BOT_TOKEN', 'DISCORD_CHANNEL_ID'],
+              how: 'Create app at discord.com/developers, add bot, invite to server',
+            },
+          },
+        };
+      }
+
+      try {
+        switch (action) {
+          case 'status': {
+            return {
+              success: true,
+              action: 'status',
+              enabled: discordService.enabled,
+              mode: discordService.mode,
+              hasWebhook: !!discordService.webhookUrl,
+              hasBot: !!discordService.botToken,
+              channelId: discordService.channelId || 'not set',
+              rateLimit: discordService.rateLimit,
+            };
+          }
+
+          case 'health': {
+            const healthy = await discordService.healthCheck();
+            return {
+              success: true,
+              action: 'health',
+              healthy,
+              mode: discordService.mode,
+              message: healthy
+                ? '*tail wag* Discord connection healthy!'
+                : '*sniff* Discord connection failed. Check config.',
+            };
+          }
+
+          case 'stats': {
+            return {
+              success: true,
+              action: 'stats',
+              stats: discordService.getStats(),
+            };
+          }
+
+          default:
+            return { success: false, error: `Unknown action: ${action}` };
+        }
+      } catch (err) {
+        log.error('Discord status error', { error: err.message });
+        return {
+          success: false,
+          error: err.message,
+        };
+      }
+    },
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // HELPERS
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -441,7 +690,7 @@ export const notificationsFactory = {
    * @returns {Array} Tool definitions
    */
   create(options) {
-    const { notificationsRepo, slackService } = options;
+    const { notificationsRepo, slackService, discordService } = options;
     const tools = [];
 
     // Internal notifications tool
@@ -453,10 +702,15 @@ export const notificationsFactory = {
     tools.push(createSlackSendTool(slackService));
     tools.push(createSlackStatusTool(slackService));
 
+    // Discord tools (created even without service for helpful error messages)
+    tools.push(createDiscordSendTool(discordService));
+    tools.push(createDiscordStatusTool(discordService));
+
     log.debug('Notifications tools created', {
       count: tools.length,
       hasRepo: !!notificationsRepo,
       hasSlack: !!slackService?.enabled,
+      hasDiscord: !!discordService?.enabled,
     });
 
     return tools;
