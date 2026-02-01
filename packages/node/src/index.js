@@ -327,3 +327,18 @@ export {
   PoincareOperations,
   HYPERBOLIC_CONFIG,
 } from './embeddings/index.js';
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Workers - Background Task Processing (O4.2)
+// ═══════════════════════════════════════════════════════════════════════════════
+export {
+  WorkerPool,
+  WorkerTask,
+  TaskStatus,
+  WORKER_CONFIG,
+  createWorkerPool,
+  getWorkerPool,
+  resetWorkerPool,
+  registerBuiltinHandlers,
+  BUILTIN_TASK_TYPES,
+} from './workers/index.js';
