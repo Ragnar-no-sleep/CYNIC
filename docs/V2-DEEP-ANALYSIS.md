@@ -123,7 +123,7 @@ After implementing the V2 Gap Analysis plan, a deep audit reveals **critical gap
 | SubagentStart | spawn.js | ✅ NEW |
 | SubagentStop | spawn.js | ✅ NEW |
 | Stop | digest.js | ✅ |
-| PreCompact | ❌ | Missing |
+| PreCompact | ✅ | C-Score integrated |
 | SessionEnd | sleep.js | ✅ |
 
 **Hook Features CYNIC Lacks**:
@@ -161,7 +161,7 @@ After implementing the V2 Gap Analysis plan, a deep audit reveals **critical gap
 7. **Feedback → behavior modification** - Feedback stored but not used
 8. **Vector similarity search** - HNSW exists in Postgres but not used from hooks
 9. **Notification hook** - Not implemented
-10. **PreCompact hook** - Not implemented
+10. **PreCompact hook** - ✅ Implemented with C-Score analysis
 
 ---
 
@@ -267,7 +267,7 @@ The V2 implementation added **hooks** but missed the **intelligence layer**:
 
 | Aspect | Implemented | Missing |
 |--------|-------------|---------|
-| Hook coverage | 10/12 events | Notification, PreCompact |
+| Hook coverage | 11/12 events | Notification only |
 | Hook types | Command only | Prompt, Agent, Async |
 | Memory | Pattern storage | Semantic retrieval, injection |
 | Learning | Feedback storage | Behavior modification |
