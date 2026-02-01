@@ -351,7 +351,20 @@ export class GitHubSource extends Source {
 
 /**
  * Web search source for tracking news
- * Note: Requires external search API or scraping
+ *
+ * Supports custom fetch functions for different search APIs:
+ * - Brave Search API
+ * - SerpAPI
+ * - Custom scraping
+ *
+ * @example
+ * const source = new WebSearchSource({
+ *   query: 'CYNIC crypto',
+ *   fetcher: async (query, options) => {
+ *     const res = await fetch(`https://api.search.brave.com/...`);
+ *     return res.json();
+ *   }
+ * });
  */
 export class WebSearchSource extends Source {
   constructor(config) {
@@ -364,17 +377,69 @@ export class WebSearchSource extends Source {
     this.query = config.query;
     this.domains = config.domains || []; // Allowed domains
     this.excludeDomains = config.excludeDomains || [];
+    this.fetcher = config.fetcher || null; // Custom fetch function
+    this.maxResults = config.maxResults || 10;
   }
 
   /**
-   * Fetch is a placeholder - needs external API
+   * Fetch web search results
+   *
+   * @returns {Promise<Array>} Search results as updates
    */
   async fetch() {
-    // This would need integration with a search API
-    // For now, return empty with a note
-    console.warn('WebSearchSource.fetch() requires external API integration');
+    // Use custom fetcher if provided
+    if (this.fetcher) {
+      try {
+        const results = await this.fetcher(this.query, {
+          domains: this.domains,
+          excludeDomains: this.excludeDomains,
+          maxResults: this.maxResults,
+        });
+
+        const updates = this._transformResults(results);
+        this.markFetched(updates);
+        return updates;
+      } catch (error) {
+        console.error(`WebSearchSource.fetch() error: ${error.message}`);
+        this.markFetched([]);
+        return [];
+      }
+    }
+
+    // No fetcher configured - return empty with guidance
+    console.warn(
+      'WebSearchSource: No fetcher configured. ' +
+      'Provide a fetcher function or use setFetcher() to enable web search.'
+    );
     this.markFetched([]);
     return [];
+  }
+
+  /**
+   * Set custom fetcher function
+   * @param {Function} fetcher - async (query, options) => results[]
+   */
+  setFetcher(fetcher) {
+    this.fetcher = fetcher;
+  }
+
+  /**
+   * Transform raw search results to update format
+   * @private
+   */
+  _transformResults(results) {
+    if (!Array.isArray(results)) return [];
+
+    return results.map((r, i) => ({
+      id: `web-${Date.now()}-${i}`,
+      type: 'web_result',
+      title: r.title || r.name || 'Untitled',
+      url: r.url || r.link || null,
+      snippet: r.snippet || r.description || '',
+      timestamp: r.timestamp || new Date().toISOString(),
+      source: this.name,
+      query: this.query,
+    }));
   }
 
   toJSON() {
@@ -382,6 +447,8 @@ export class WebSearchSource extends Source {
       ...super.toJSON(),
       query: this.query,
       domains: this.domains,
+      maxResults: this.maxResults,
+      hasFetcher: !!this.fetcher,
     };
   }
 }

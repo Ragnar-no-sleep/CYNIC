@@ -10,7 +10,7 @@
 
 'use strict';
 
-import { createHash, randomBytes } from 'crypto';
+import { createHash, randomBytes, generateKeyPairSync } from 'crypto';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join } from 'path';
 
@@ -268,17 +268,22 @@ export function loadWalletFromEnv(envVar = 'CYNIC_SOLANA_KEY') {
  * @returns {{ wallet: CynicWallet, secretKey: Uint8Array }}
  */
 export function generateWallet() {
-  // Generate 32 random bytes for private key
-  const privateKey = randomBytes(32);
+  // Generate ed25519 keypair using Node.js native crypto
+  const { publicKey, privateKey } = generateKeyPairSync('ed25519', {
+    publicKeyEncoding: { type: 'spki', format: 'der' },
+    privateKeyEncoding: { type: 'pkcs8', format: 'der' },
+  });
 
-  // Derive public key using ed25519 (simplified - real impl needs crypto lib)
-  // For now, we'll generate a placeholder public key
-  const publicKey = createHash('sha256').update(privateKey).digest();
+  // Extract raw 32-byte keys from DER encoding
+  // ed25519 public key is last 32 bytes of SPKI DER
+  // ed25519 private key is at offset 16 in PKCS8 DER (32 bytes)
+  const rawPublicKey = publicKey.subarray(-32);
+  const rawPrivateKey = privateKey.subarray(16, 48);
 
-  // Combine into 64-byte secret key (private + public)
+  // Combine into 64-byte secret key (Solana format: private + public)
   const secretKey = new Uint8Array(64);
-  secretKey.set(privateKey, 0);
-  secretKey.set(publicKey, 32);
+  secretKey.set(rawPrivateKey, 0);
+  secretKey.set(rawPublicKey, 32);
 
   return {
     wallet: new CynicWallet({
