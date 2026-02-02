@@ -96,6 +96,17 @@ export {
   getSwarmConsensus,
 } from './swarm-consensus.js';
 
+// Neuronal Consensus (Action Potential Model)
+export {
+  NeuronalConsensus,
+  NEURONAL_CONSTANTS,
+  createNeuronalConsensus,
+  createFastNeuron,
+  createConservativeNeuron,
+  createSecurityNeuron,
+  getDefaultNeuron,
+} from './neuronal-consensus.js';
+
 // Collective Dogs + CYNIC (v2)
 export {
   CollectivePack,
