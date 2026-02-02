@@ -176,13 +176,15 @@ RETURNS INTEGER
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    deleted_count INTEGER;
+    deleted_count INTEGER := 0;
+    rows_affected INTEGER;
 BEGIN
     -- Delete patterns older than 30 days
     DELETE FROM session_patterns
     WHERE detected_at < NOW() - INTERVAL '30 days';
 
-    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+    GET DIAGNOSTICS rows_affected = ROW_COUNT;
+    deleted_count := deleted_count + rows_affected;
 
     -- Keep only 500 most recent per user
     DELETE FROM session_patterns sp
@@ -197,7 +199,8 @@ BEGIN
         WHERE rn <= 500
     );
 
-    GET DIAGNOSTICS deleted_count = deleted_count + ROW_COUNT;
+    GET DIAGNOSTICS rows_affected = ROW_COUNT;
+    deleted_count := deleted_count + rows_affected;
 
     RETURN deleted_count;
 END;

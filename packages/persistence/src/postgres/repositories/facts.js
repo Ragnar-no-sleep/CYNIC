@@ -146,6 +146,48 @@ export class FactsRepository extends BaseRepository {
   }
 
   /**
+   * Update a fact
+   */
+  async update(factId, updates) {
+    const fields = [];
+    const values = [factId];
+    let paramIndex = 2;
+
+    if (updates.content !== undefined) {
+      fields.push(`content = $${paramIndex++}`);
+      values.push(updates.content);
+    }
+    if (updates.confidence !== undefined) {
+      fields.push(`confidence = $${paramIndex++}`);
+      values.push(Math.min(updates.confidence, PHI_INV));
+    }
+    if (updates.relevance !== undefined) {
+      fields.push(`relevance = $${paramIndex++}`);
+      values.push(updates.relevance);
+    }
+    if (updates.context !== undefined) {
+      fields.push(`context = context || $${paramIndex++}::jsonb`);
+      values.push(JSON.stringify(updates.context));
+    }
+    if (updates.tags !== undefined) {
+      fields.push(`tags = $${paramIndex++}`);
+      values.push(updates.tags);
+    }
+
+    if (fields.length === 0) return null;
+
+    fields.push('updated_at = NOW()');
+
+    const { rows } = await this.db.query(`
+      UPDATE facts SET ${fields.join(', ')}
+      WHERE fact_id = $1
+      RETURNING *
+    `, values);
+
+    return rows[0] ? this._mapRow(rows[0]) : null;
+  }
+
+  /**
    * Search facts using full-text search
    */
   async search(query, options = {}) {
@@ -324,6 +366,173 @@ export class FactsRepository extends BaseRepository {
       avgRelevance: parseFloat(stats.avg_relevance) || 0,
       totalAccesses: parseInt(stats.total_accesses) || 0,
     };
+  }
+
+  /**
+   * Query dependency graph using recursive CTE (SUPERMEMORY enhancement)
+   *
+   * Traverses file dependencies stored in context.dependencies.
+   *
+   * @param {string} startPath - File path or symbol to start from
+   * @param {Object} options
+   * @param {number} options.maxDepth - Maximum traversal depth (default: 5)
+   * @param {string} options.direction - 'imports', 'exports', or 'both'
+   * @returns {Promise<Object>} Graph with nodes and edges
+   */
+  async queryDependencyGraph(startPath, options = {}) {
+    const { maxDepth = 5, direction = 'both' } = options;
+
+    // First find the starting node(s)
+    const startQuery = `
+      SELECT fact_id, subject, context->>'path' as file_path,
+             context->'dependencies' as deps
+      FROM facts
+      WHERE fact_type = 'file_structure'
+        AND (subject ILIKE $1 OR context->>'path' ILIKE $1)
+      LIMIT 10
+    `;
+
+    const startNodes = await this.db.query(startQuery, [`%${startPath}%`]);
+
+    if (startNodes.rows.length === 0) {
+      return { nodes: [], edges: [], error: 'No matching files found' };
+    }
+
+    // Build graph using recursive CTE
+    const graphQuery = `
+      WITH RECURSIVE dep_tree AS (
+        -- Base: starting nodes
+        SELECT
+          f.fact_id,
+          f.subject,
+          f.context->>'path' as file_path,
+          f.context->'dependencies'->'imports' as imports,
+          f.context->'dependencies'->'exports' as exports,
+          1 as depth,
+          ARRAY[f.fact_id] as visited
+        FROM facts f
+        WHERE f.fact_id = ANY($1::text[])
+
+        UNION ALL
+
+        -- Recursive: follow imports
+        SELECT
+          f.fact_id,
+          f.subject,
+          f.context->>'path' as file_path,
+          f.context->'dependencies'->'imports' as imports,
+          f.context->'dependencies'->'exports' as exports,
+          dt.depth + 1,
+          dt.visited || f.fact_id
+        FROM facts f
+        CROSS JOIN dep_tree dt
+        CROSS JOIN LATERAL jsonb_array_elements(dt.imports) as imp
+        WHERE f.fact_type = 'file_structure'
+          AND dt.depth < $2
+          AND NOT f.fact_id = ANY(dt.visited)
+          AND (
+            f.context->>'path' LIKE '%' || REPLACE(REPLACE(imp->>'source', './', ''), '../', '') || '%'
+            OR f.subject LIKE '%' || REPLACE(REPLACE(imp->>'source', './', ''), '../', '') || '%'
+          )
+      )
+      SELECT DISTINCT ON (fact_id)
+        fact_id, subject, file_path, imports, exports, depth
+      FROM dep_tree
+      ORDER BY fact_id, depth
+      LIMIT 200
+    `;
+
+    try {
+      const startIds = startNodes.rows.map(r => r.fact_id);
+      const { rows } = await this.db.query(graphQuery, [startIds, maxDepth]);
+
+      // Build nodes and edges
+      const nodes = rows.map(r => ({
+        id: r.fact_id,
+        label: r.file_path || r.subject,
+        path: r.file_path,
+        depth: r.depth,
+        importCount: r.imports?.length || 0,
+        exportCount: r.exports?.length || 0,
+      }));
+
+      const edges = [];
+      const pathToId = new Map(rows.map(r => [r.file_path, r.fact_id]));
+
+      for (const row of rows) {
+        if (row.imports) {
+          for (const imp of row.imports) {
+            const source = imp.source || imp;
+            // Find matching target
+            for (const [targetPath, targetId] of pathToId) {
+              if (targetPath && source &&
+                  (targetPath.includes(source.replace('./', '').replace('../', '')) ||
+                   source.includes(targetPath.split('/').pop()?.replace('.js', '')))) {
+                if (row.fact_id !== targetId) {
+                  edges.push({
+                    source: row.fact_id,
+                    target: targetId,
+                    type: 'imports',
+                  });
+                }
+              }
+            }
+          }
+        }
+      }
+
+      return {
+        startPath,
+        direction,
+        maxDepth,
+        nodes,
+        edges,
+        stats: {
+          nodeCount: nodes.length,
+          edgeCount: edges.length,
+          maxDepthReached: Math.max(...rows.map(r => r.depth), 0),
+        },
+      };
+    } catch (e) {
+      return { error: e.message, nodes: [], edges: [] };
+    }
+  }
+
+  /**
+   * Find all files that import a given file (reverse dependencies)
+   *
+   * @param {string} filePath - File path to search for
+   * @returns {Promise<Array>} List of importing files
+   */
+  async findReverseDependencies(filePath) {
+    const query = `
+      SELECT fact_id, subject, context->>'path' as file_path,
+             context->'dependencies'->'imports' as imports
+      FROM facts
+      WHERE fact_type = 'file_structure'
+        AND context->'dependencies'->'imports' @> $1::jsonb
+    `;
+
+    // Can't use @> directly for partial match, use simpler approach
+    const simpleQuery = `
+      SELECT fact_id, subject, context->>'path' as file_path
+      FROM facts
+      WHERE fact_type = 'file_structure'
+        AND context::text ILIKE $1
+    `;
+
+    const searchTerm = `%${filePath.replace(/\\/g, '/')}%`;
+
+    try {
+      const { rows } = await this.db.query(simpleQuery, [searchTerm]);
+      return rows.map(r => ({
+        factId: r.fact_id,
+        subject: r.subject,
+        path: r.file_path,
+      }));
+    } catch (e) {
+      return [];
+    }
   }
 
   /**

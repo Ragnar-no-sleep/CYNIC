@@ -183,14 +183,14 @@ COMMENT ON FUNCTION search_memories_hnsw IS
 CREATE OR REPLACE VIEW hnsw_index_stats AS
 SELECT
   schemaname,
-  tablename,
-  indexname,
+  relname as tablename,
+  indexrelname as indexname,
   pg_size_pretty(pg_relation_size(indexrelid)) as index_size,
   idx_scan as scans,
   idx_tup_read as tuples_read,
   idx_tup_fetch as tuples_fetched
 FROM pg_stat_user_indexes
-WHERE indexname LIKE '%vector%' OR indexname LIKE '%hnsw%'
+WHERE indexrelname LIKE '%vector%' OR indexrelname LIKE '%hnsw%'
 ORDER BY pg_relation_size(indexrelid) DESC;
 
 COMMENT ON VIEW hnsw_index_stats IS

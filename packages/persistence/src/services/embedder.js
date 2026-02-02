@@ -368,34 +368,97 @@ export class OllamaEmbedder extends Embedder {
 /**
  * Create embedder based on environment and options
  *
- * Default: MockEmbedder (free, local, deterministic)
- * Set CYNIC_EMBEDDER=ollama for local Ollama embeddings (recommended)
- * Set CYNIC_EMBEDDER=openai for OpenAI (requires OPENAI_API_KEY)
+ * Priority:
+ * 1. Explicit CYNIC_EMBEDDER env var
+ * 2. Auto-detect Ollama if running locally (recommended - free & local)
+ * 3. Fall back to MockEmbedder (works but no semantic similarity)
  *
  * @param {Object} options - Embedder options
  * @returns {Embedder} Embedder instance
  */
 export function createEmbedder(options = {}) {
-  // Default to mock - opt-in via CYNIC_EMBEDDER
   const envType = process.env.CYNIC_EMBEDDER?.toLowerCase();
-  const type = options.type || envType || EmbedderType.MOCK;
+  const type = options.type || envType;
 
-  switch (type) {
-    case EmbedderType.OLLAMA:
-    case 'ollama':
-      return new OllamaEmbedder(options);
-    case EmbedderType.OPENAI:
-    case 'openai':
-      return new OpenAIEmbedder(options);
-    case EmbedderType.LOCAL:
-    case 'local':
-      // Future: Support for local models (e.g., sentence-transformers)
-      console.warn('Local embedder not yet implemented, falling back to mock');
-      return new MockEmbedder(options);
-    case EmbedderType.MOCK:
-    case 'mock':
-    default:
-      return new MockEmbedder(options);
+  // Explicit type requested
+  if (type) {
+    switch (type) {
+      case EmbedderType.OLLAMA:
+      case 'ollama':
+        return new OllamaEmbedder(options);
+      case EmbedderType.OPENAI:
+      case 'openai':
+        return new OpenAIEmbedder(options);
+      case EmbedderType.LOCAL:
+      case 'local':
+        console.warn('[Embedder] Local not implemented, falling back to mock');
+        return new MockEmbedder(options);
+      case EmbedderType.MOCK:
+      case 'mock':
+        return new MockEmbedder(options);
+    }
+  }
+
+  // No explicit type - return a lazy embedder that auto-detects
+  return new AutoDetectEmbedder(options);
+}
+
+/**
+ * Auto-detecting Embedder
+ * Tries Ollama first (free, local), falls back to Mock
+ */
+export class AutoDetectEmbedder extends Embedder {
+  constructor(options = {}) {
+    super({ ...options, type: 'auto' });
+    this._realEmbedder = null;
+    this._detectPromise = null;
+    this._options = options;
+  }
+
+  async _detect() {
+    if (this._realEmbedder) return this._realEmbedder;
+    if (this._detectPromise) return this._detectPromise;
+
+    this._detectPromise = (async () => {
+      // Try Ollama first
+      const ollama = new OllamaEmbedder(this._options);
+      if (await ollama.isAvailable()) {
+        if (await ollama.hasModel()) {
+          console.error('[Embedder] ✓ Ollama detected - using semantic embeddings');
+          this._realEmbedder = ollama;
+          this.type = EmbedderType.OLLAMA;
+          this.dimensions = ollama.dimensions;
+          return ollama;
+        } else {
+          console.error(`[Embedder] ⚠ Ollama running but model "${ollama.model}" not installed`);
+          console.error(`[Embedder]   Run: ollama pull ${ollama.model}`);
+        }
+      }
+
+      // Fall back to mock
+      console.error('[Embedder] ⚠ Using MockEmbedder - vector search will be limited');
+      console.error('[Embedder]   For semantic search, install Ollama: https://ollama.ai');
+      this._realEmbedder = new MockEmbedder(this._options);
+      this.type = EmbedderType.MOCK;
+      return this._realEmbedder;
+    })();
+
+    return this._detectPromise;
+  }
+
+  async embed(text) {
+    const embedder = await this._detect();
+    return embedder.embed(text);
+  }
+
+  async embedBatch(texts) {
+    const embedder = await this._detect();
+    return embedder.embedBatch(texts);
+  }
+
+  async embedWithCache(text) {
+    const embedder = await this._detect();
+    return embedder.embedWithCache(text);
   }
 }
 

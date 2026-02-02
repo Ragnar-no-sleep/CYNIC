@@ -70,3 +70,19 @@ export {
   createReasoningBank,
   TrajectoryOutcome,
 } from './reasoning-bank.js';
+
+// Self-Knowledge: Codebase Indexer
+export {
+  CodebaseIndexer,
+  createCodebaseIndexer,
+} from './codebase-indexer.js';
+
+// Telemetry: Usage stats, frictions, benchmarking
+export {
+  TelemetryCollector,
+  createTelemetryCollector,
+  getTelemetry,
+  MetricType,
+  FrictionSeverity,
+  Category as TelemetryCategory,
+} from './telemetry-collector.js';
