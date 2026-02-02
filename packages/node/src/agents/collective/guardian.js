@@ -41,6 +41,7 @@ import {
 } from '../events.js';
 import { ProfileLevel } from '../../profile/calculator.js';
 import { DogAutonomousBehaviors } from './autonomous.js';
+import { detectVulnerabilities, SEVERITY } from './security-detector.js';
 
 /**
  * φ-aligned constants for Guardian
@@ -471,9 +472,15 @@ export class CollectiveGuardian extends BaseAgent {
   }
 
   /**
-   * Analyze tool use for risk
+   * Analyze tool use for risk OR code content for vulnerabilities
    */
   async analyze(event, context) {
+    // Check if this is a code review request (has content/code to analyze)
+    const codeContent = event.item?.content || event.content || event.code || context?.content;
+    if (codeContent && typeof codeContent === 'string' && codeContent.length > 50) {
+      return this._analyzeCode(codeContent, event, context);
+    }
+
     // Support both Claude Code format (tool_name, tool_input) and internal format (tool, input)
     const tool = event.tool_name || event.tool || event.name || 'unknown';
     const input = event.tool_input || event.input || event.params || {};
@@ -576,6 +583,53 @@ export class CollectiveGuardian extends BaseAgent {
       command,
       confidence: 0,
       escalation: 1,
+    };
+  }
+
+  /**
+   * Analyze code content for security vulnerabilities
+   * @private
+   */
+  _analyzeCode(code, event, context) {
+    // Use the security detector
+    const result = detectVulnerabilities(code);
+
+    // Map severity to risk level
+    const severityToRisk = {
+      CRITICAL: RiskLevel.CRITICAL,
+      HIGH: RiskLevel.HIGH,
+      MEDIUM: RiskLevel.MEDIUM,
+      LOW: RiskLevel.LOW,
+      INFO: RiskLevel.SAFE,
+    };
+
+    // Build issues list with full details
+    const issues = result.issues.map(issue => ({
+      type: issue.id,
+      name: issue.name,
+      severity: issue.severity,
+      line: issue.line,
+      description: issue.description,
+      remediation: issue.remediation,
+      code: issue.code,
+    }));
+
+    // Determine if we should block based on critical vulnerabilities
+    const hasCritical = result.issues.some(i => i.severity === 'CRITICAL');
+    const hasHigh = result.issues.some(i => i.severity === 'HIGH');
+
+    return {
+      score: result.score,
+      verdict: result.verdict,
+      blocked: hasCritical,
+      warning: hasHigh && !hasCritical,
+      risk: severityToRisk[result.worstSeverity] || RiskLevel.SAFE,
+      category: RiskCategory.SENSITIVE,
+      issueCount: result.issueCount,
+      issues,
+      summary: result.summary,
+      confidence: Math.min(PHI_INV, result.issueCount > 0 ? PHI_INV : PHI_INV_2),
+      codeAnalysis: true,
     };
   }
 
