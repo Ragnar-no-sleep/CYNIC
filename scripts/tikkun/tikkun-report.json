@@ -1,0 +1,810 @@
+{
+  "timestamp": "2026-02-02T00:50:48.858Z",
+  "version": "1.0.0",
+  "sefirot": {
+    "daat": {
+      "name": "Da'at",
+      "description": "Knowledge of system state",
+      "score": 100,
+      "status": "healthy"
+    },
+    "gevurah": {
+      "name": "Gevurah",
+      "description": "Discipline and validation",
+      "score": 100,
+      "status": "healthy"
+    },
+    "tiferet": {
+      "name": "Tiferet",
+      "description": "Balance (combined score)",
+      "score": 100,
+      "status": "healthy"
+    }
+  },
+  "summary": {
+    "combinedScore": 100,
+    "phiThreshold": 62,
+    "meetsThreshold": true,
+    "daat": {
+      "total": 26,
+      "passed": 25,
+      "failed": 0,
+      "optional": 1,
+      "score": 100
+    },
+    "gevurah": {
+      "total": 33,
+      "passed": 33,
+      "failed": 0,
+      "score": 100
+    }
+  },
+  "details": {
+    "daat": {
+      "core": {
+        "name": "Core Infrastructure",
+        "sefirah": "Keter-Tiferet",
+        "checks": [
+          {
+            "id": "packages-exist",
+            "name": "Packages exist",
+            "ok": true,
+            "details": [
+              {
+                "name": "core",
+                "ok": true,
+                "path": "C:\\Users\\zeyxm\\Desktop\\asdfasdfa\\CYNIC\\packages\\core"
+              },
+              {
+                "name": "mcp",
+                "ok": true,
+                "path": "C:\\Users\\zeyxm\\Desktop\\asdfasdfa\\CYNIC\\packages\\mcp"
+              },
+              {
+                "name": "node",
+                "ok": true,
+                "path": "C:\\Users\\zeyxm\\Desktop\\asdfasdfa\\CYNIC\\packages\\node"
+              },
+              {
+                "name": "persistence",
+                "ok": true,
+                "path": "C:\\Users\\zeyxm\\Desktop\\asdfasdfa\\CYNIC\\packages\\persistence"
+              },
+              {
+                "name": "protocol",
+                "ok": true,
+                "path": "C:\\Users\\zeyxm\\Desktop\\asdfasdfa\\CYNIC\\packages\\protocol"
+              }
+            ],
+            "message": "All 5 packages exist"
+          },
+          {
+            "id": "package-json",
+            "name": "Root package.json valid",
+            "ok": true,
+            "details": {
+              "name": "cynic",
+              "workspaces": 1,
+              "scripts": 22
+            },
+            "message": "cynic with 1 workspaces"
+          },
+          {
+            "id": "node-modules",
+            "name": "Dependencies installed",
+            "ok": true,
+            "details": {
+              "checked": [
+                "pg",
+                "dotenv"
+              ],
+              "missing": []
+            },
+            "message": "Dependencies installed"
+          },
+          {
+            "id": "typescript",
+            "name": "TypeScript compiles",
+            "ok": true,
+            "details": {
+              "target": "ES2022",
+              "module": "NodeNext",
+              "moduleResolution": "NodeNext",
+              "allowJs": true,
+              "checkJs": false,
+              "noEmit": true,
+              "esModuleInterop": true,
+              "resolveJsonModule": true,
+              "declaration": false,
+              "skipLibCheck": true,
+              "strict": false,
+              "baseUrl": ".",
+              "paths": {
+                "@cynic/core": [
+                  "packages/core/src/index.js"
+                ],
+                "@cynic/core/*": [
+                  "packages/core/src/*"
+                ],
+                "@cynic/node": [
+                  "packages/node/src/index.js"
+                ],
+                "@cynic/node/*": [
+                  "packages/node/src/*"
+                ],
+                "@cynic/protocol": [
+                  "packages/protocol/src/index.js"
+                ],
+                "@cynic/protocol/*": [
+                  "packages/protocol/src/*"
+                ],
+                "@cynic/persistence": [
+                  "packages/persistence/src/index.js"
+                ],
+                "@cynic/persistence/*": [
+                  "packages/persistence/src/*"
+                ],
+                "@cynic/identity": [
+                  "packages/identity/src/index.js"
+                ],
+                "@cynic/identity/*": [
+                  "packages/identity/src/*"
+                ],
+                "@cynic/emergence": [
+                  "packages/emergence/src/index.js"
+                ],
+                "@cynic/emergence/*": [
+                  "packages/emergence/src/*"
+                ],
+                "@cynic/mcp": [
+                  "packages/mcp/src/index.js"
+                ],
+                "@cynic/mcp/*": [
+                  "packages/mcp/src/*"
+                ]
+              }
+            },
+            "message": "TypeScript configured"
+          }
+        ],
+        "passed": 4,
+        "failed": 0
+      },
+      "hooks": {
+        "name": "Hooks & Consciousness",
+        "sefirah": "Chokhmah-Binah",
+        "checks": [
+          {
+            "id": "hooks-exist",
+            "name": "Hook files exist",
+            "ok": true,
+            "details": [
+              {
+                "name": "awaken.js",
+                "ok": true
+              },
+              {
+                "name": "observe.js",
+                "ok": true
+              },
+              {
+                "name": "sleep.js",
+                "ok": true
+              }
+            ],
+            "message": "All hooks exist"
+          },
+          {
+            "id": "hooks-syntax",
+            "name": "Hooks syntax valid",
+            "ok": true,
+            "details": [
+              {
+                "name": "awaken.js",
+                "ok": true
+              },
+              {
+                "name": "observe.js",
+                "ok": true
+              },
+              {
+                "name": "sleep.js",
+                "ok": true
+              }
+            ],
+            "message": "All hooks valid"
+          },
+          {
+            "id": "lib-modules",
+            "name": "Lib modules load",
+            "ok": true,
+            "details": [
+              {
+                "name": "cynic-core.cjs",
+                "ok": true
+              },
+              {
+                "name": "auto-judge.cjs",
+                "ok": true
+              },
+              {
+                "name": "self-refinement.cjs",
+                "ok": true
+              },
+              {
+                "name": "collective-dogs.cjs",
+                "ok": true
+              }
+            ],
+            "message": "4/4 modules valid"
+          },
+          {
+            "id": "cynic-core",
+            "name": "cynic-core.cjs loads",
+            "ok": true,
+            "details": {
+              "hasPHI": true,
+              "hasPHI_INV": true,
+              "hasDetectUser": true,
+              "hasOrchestrate": true
+            },
+            "message": "cynic-core loads correctly"
+          }
+        ],
+        "passed": 4,
+        "failed": 0
+      },
+      "dogs": {
+        "name": "Collective Dogs",
+        "sefirah": "All Sefirot",
+        "checks": [
+          {
+            "id": "dogs-defined",
+            "name": "Dogs defined",
+            "ok": true,
+            "details": {
+              "expected": 11,
+              "found": 11,
+              "dogs": [
+                "SAGE",
+                "ANALYST",
+                "GUARDIAN",
+                "SCHOLAR",
+                "ARCHITECT",
+                "JANITOR",
+                "SCOUT",
+                "CARTOGRAPHER",
+                "ORACLE",
+                "DEPLOYER",
+                "CYNIC"
+              ]
+            },
+            "message": "11/11 Dogs defined"
+          },
+          {
+            "id": "dogs-vote",
+            "name": "Dogs can vote",
+            "ok": true,
+            "details": {
+              "hasVerdict": true,
+              "verdicts": {
+                "HOWL": true,
+                "WAG": true,
+                "BARK": true,
+                "GROWL": true
+              }
+            },
+            "message": "Dogs can judge (HOWL/WAG/BARK/GROWL)"
+          },
+          {
+            "id": "consensus",
+            "name": "Consensus mechanism",
+            "ok": true,
+            "details": {
+              "hasConsensus": true,
+              "hasThreshold": true,
+              "hasPhiEnforcement": true
+            },
+            "message": "φ⁻¹ consensus mechanism"
+          }
+        ],
+        "passed": 3,
+        "failed": 0
+      },
+      "mcp": {
+        "name": "MCP Server",
+        "sefirah": "Yesod",
+        "checks": [
+          {
+            "id": "mcp-package",
+            "name": "MCP package exists",
+            "ok": true,
+            "details": {
+              "name": "@cynic/mcp",
+              "version": "0.1.0"
+            },
+            "message": "@cynic/mcp@0.1.0"
+          },
+          {
+            "id": "mcp-tools",
+            "name": "MCP tools defined",
+            "ok": true,
+            "details": {
+              "count": 20,
+              "files": [
+                "index.js",
+                "registry.js",
+                "search-progressive.js",
+                "domains\\automation.js",
+                "domains\\blockchain.js",
+                "domains\\claude-flow.js",
+                "domains\\code.js",
+                "domains\\consciousness.js",
+                "domains\\ecosystem.js",
+                "domains\\index.js"
+              ]
+            },
+            "message": "20 tool files"
+          },
+          {
+            "id": "mcp-server",
+            "name": "MCP server starts",
+            "ok": true,
+            "message": "MCP server syntax valid"
+          }
+        ],
+        "passed": 3,
+        "failed": 0
+      },
+      "persistence": {
+        "name": "Persistence Layer",
+        "sefirah": "Malkhut",
+        "checks": [
+          {
+            "id": "postgres-config",
+            "name": "PostgreSQL configured",
+            "ok": true,
+            "details": {
+              "hasEnv": true,
+              "hasDbUrl": true
+            },
+            "message": "PostgreSQL configured"
+          },
+          {
+            "id": "migrations",
+            "name": "Migrations exist",
+            "ok": true,
+            "details": {
+              "count": 23,
+              "latest": "025_telemetry.sql"
+            },
+            "message": "23 migrations (latest: 025_telemetry.sql)"
+          },
+          {
+            "id": "embedder",
+            "name": "Embedder service",
+            "ok": true,
+            "message": "Embedder service exists"
+          }
+        ],
+        "passed": 3,
+        "failed": 0
+      },
+      "philosophy": {
+        "name": "Philosophy Compliance",
+        "sefirah": "Da'at",
+        "checks": [
+          {
+            "id": "phi-constants",
+            "name": "φ constants defined",
+            "ok": true,
+            "details": {
+              "PHI": true,
+              "PHI⁻¹": true,
+              "PHI⁻²": true
+            },
+            "message": "φ constants defined"
+          },
+          {
+            "id": "phi-enforcement",
+            "name": "φ⁻¹ ceiling enforced",
+            "ok": true,
+            "details": [
+              {
+                "file": "auto-judge.cjs",
+                "enforced": true
+              },
+              {
+                "file": "self-refinement.cjs",
+                "enforced": true
+              },
+              {
+                "file": "llm-judgment-bridge.cjs",
+                "enforced": true
+              }
+            ],
+            "message": "φ⁻¹ ceiling enforced in 3/3 files"
+          },
+          {
+            "id": "axioms",
+            "name": "Axioms present",
+            "ok": true,
+            "details": {
+              "defined": [
+                "PHI",
+                "VERIFY",
+                "CULTURE",
+                "BURN"
+              ],
+              "found": [
+                "PHI",
+                "VERIFY",
+                "CULTURE",
+                "BURN"
+              ],
+              "implemented": 4
+            },
+            "message": "4/4 axioms"
+          }
+        ],
+        "passed": 3,
+        "failed": 0
+      },
+      "llm": {
+        "name": "LLM Integration",
+        "sefirah": "External",
+        "checks": [
+          {
+            "id": "llm-bridge",
+            "name": "LLM bridge exists",
+            "ok": true,
+            "details": {
+              "hasOllama": true,
+              "hasConsensus": true
+            },
+            "message": "LLM bridge configured"
+          },
+          {
+            "id": "ollama-config",
+            "name": "Ollama configured",
+            "ok": true,
+            "details": {
+              "hasHost": true,
+              "hasModel": true
+            },
+            "message": "Ollama configured"
+          },
+          {
+            "id": "ollama-running",
+            "name": "Ollama running",
+            "ok": true,
+            "details": {
+              "models": [
+                "mistral:7b-instruct-q4_0",
+                "gemma2:2b",
+                "qwen2:0.5b",
+                "phi3:mini",
+                "nomic-embed-text:latest"
+              ]
+            },
+            "message": "Ollama running with 5 models"
+          }
+        ],
+        "passed": 3,
+        "failed": 0
+      },
+      "tests": {
+        "name": "Tests & Benchmarks",
+        "sefirah": "Gevurah",
+        "checks": [
+          {
+            "id": "test-files",
+            "name": "Test files exist",
+            "ok": true,
+            "details": [
+              {
+                "package": "anchor",
+                "count": 3
+              },
+              {
+                "package": "burns",
+                "count": 4
+              },
+              {
+                "package": "core",
+                "count": 21
+              },
+              {
+                "package": "emergence",
+                "count": 1
+              },
+              {
+                "package": "gasdf",
+                "count": 1
+              },
+              {
+                "package": "holdex",
+                "count": 1
+              },
+              {
+                "package": "identity",
+                "count": 1
+              },
+              {
+                "package": "mcp",
+                "count": 15
+              },
+              {
+                "package": "node",
+                "count": 37
+              },
+              {
+                "package": "persistence",
+                "count": 17
+              },
+              {
+                "package": "protocol",
+                "count": 8
+              },
+              {
+                "package": "zk",
+                "count": 1
+              }
+            ],
+            "message": "110 test files in 12 packages"
+          },
+          {
+            "id": "benchmark-files",
+            "name": "Benchmark files exist",
+            "ok": true,
+            "details": {
+              "categories": [
+                "analyst",
+                "architect",
+                "cartographer",
+                "collective-vs-single",
+                "cynic",
+                "deployer",
+                "guardian",
+                "janitor",
+                "oracle",
+                "pattern-learning",
+                "phi-bft",
+                "sage",
+                "scholar",
+                "scout",
+                "supermemory",
+                "thermodynamics"
+              ]
+            },
+            "message": "16 benchmark categories"
+          },
+          {
+            "id": "test-coverage",
+            "name": "Test coverage",
+            "ok": false,
+            "message": "No coverage configured",
+            "optional": true
+          }
+        ],
+        "passed": 2,
+        "failed": 0
+      }
+    },
+    "gevurah": [
+      {
+        "id": "phi-constants",
+        "name": "φ Constants",
+        "assertions": [
+          {
+            "name": "PHI defined as 1.618...",
+            "pass": true
+          },
+          {
+            "name": "PHI_INV defined as 0.618...",
+            "pass": true
+          },
+          {
+            "name": "PHI value correct (1.618033988749895)",
+            "pass": true
+          }
+        ],
+        "passed": 3,
+        "failed": 0
+      },
+      {
+        "id": "phi-ceiling",
+        "name": "φ⁻¹ Ceiling",
+        "assertions": [
+          {
+            "name": "auto-judge.cjs enforces φ⁻¹ ceiling",
+            "pass": true
+          },
+          {
+            "name": "self-refinement.cjs enforces φ⁻¹ ceiling",
+            "pass": true
+          },
+          {
+            "name": "llm-judgment-bridge.cjs enforces φ⁻¹ ceiling",
+            "pass": true
+          }
+        ],
+        "passed": 3,
+        "failed": 0
+      },
+      {
+        "id": "dogs-judgment",
+        "name": "Dogs Judgment",
+        "assertions": [
+          {
+            "name": "Dogs definitions present",
+            "pass": true
+          },
+          {
+            "name": "Dog count >= 10 (11)",
+            "pass": true
+          },
+          {
+            "name": "Judgment system exists",
+            "pass": true
+          }
+        ],
+        "passed": 3,
+        "failed": 0
+      },
+      {
+        "id": "consensus",
+        "name": "Consensus Mechanism",
+        "assertions": [
+          {
+            "name": "Consensus threshold defined",
+            "pass": true
+          },
+          {
+            "name": "Consensus calculation exists",
+            "pass": true
+          },
+          {
+            "name": "Consensus function implemented",
+            "pass": true
+          }
+        ],
+        "passed": 3,
+        "failed": 0
+      },
+      {
+        "id": "hooks-load",
+        "name": "Hooks Load",
+        "assertions": [
+          {
+            "name": "awaken.js syntax valid",
+            "pass": true
+          },
+          {
+            "name": "observe.js syntax valid",
+            "pass": true
+          },
+          {
+            "name": "sleep.js syntax valid",
+            "pass": true
+          }
+        ],
+        "passed": 3,
+        "failed": 0
+      },
+      {
+        "id": "mcp-tools",
+        "name": "MCP Tools",
+        "assertions": [
+          {
+            "name": "Tools index syntax valid",
+            "pass": true
+          },
+          {
+            "name": "Tool domains >= 5 (17)",
+            "pass": true
+          }
+        ],
+        "passed": 2,
+        "failed": 0
+      },
+      {
+        "id": "axioms",
+        "name": "Axioms Present",
+        "assertions": [
+          {
+            "name": "Axiom PHI present",
+            "pass": true
+          },
+          {
+            "name": "Axiom VERIFY present",
+            "pass": true
+          },
+          {
+            "name": "Axiom CULTURE present",
+            "pass": true
+          },
+          {
+            "name": "Axiom BURN present",
+            "pass": true
+          }
+        ],
+        "passed": 4,
+        "failed": 0
+      },
+      {
+        "id": "verdicts",
+        "name": "Verdict System",
+        "assertions": [
+          {
+            "name": "Verdict HOWL defined",
+            "pass": true
+          },
+          {
+            "name": "Verdict WAG defined",
+            "pass": true
+          },
+          {
+            "name": "Verdict BARK defined",
+            "pass": true
+          },
+          {
+            "name": "Verdict GROWL defined",
+            "pass": true
+          },
+          {
+            "name": "Verdict thresholds use φ",
+            "pass": true
+          }
+        ],
+        "passed": 5,
+        "failed": 0
+      },
+      {
+        "id": "llm-bridge",
+        "name": "LLM Bridge",
+        "assertions": [
+          {
+            "name": "Bridge syntax valid",
+            "pass": true
+          },
+          {
+            "name": "Has llmJudge function",
+            "pass": true
+          },
+          {
+            "name": "Has consensus function",
+            "pass": true
+          },
+          {
+            "name": "Enforces φ⁻¹ on LLM responses",
+            "pass": true
+          }
+        ],
+        "passed": 4,
+        "failed": 0
+      },
+      {
+        "id": "memory-store",
+        "name": "Memory Store",
+        "assertions": [
+          {
+            "name": "Memory module exists",
+            "pass": true
+          },
+          {
+            "name": "Has store function",
+            "pass": true
+          },
+          {
+            "name": "Has search function",
+            "pass": true
+          }
+        ],
+        "passed": 3,
+        "failed": 0
+      }
+    ]
+  },
+  "recommendations": []
+}

@@ -1,0 +1,859 @@
+{
+  "timestamp": "2026-02-02T00:28:49.569Z",
+  "components": {
+    "packages/node/src/agents/collective/cynic.js": {
+      "sefirah": "Keter",
+      "dog": "CYNIC",
+      "purpose": "Central CYNIC orchestrator",
+      "axioms": [
+        "PHI",
+        "VERIFY",
+        "CULTURE",
+        "BURN"
+      ],
+      "mustContain": [
+        "cynic",
+        "orchestrat",
+        "collective"
+      ],
+      "exists": true,
+      "aligned": true,
+      "alignmentScore": 100,
+      "matches": [
+        "cynic",
+        "orchestrat",
+        "collective"
+      ],
+      "issues": [],
+      "lines": 1383
+    },
+    "packages/node/src/agents/collective/sefirot.js": {
+      "sefirah": "Keter",
+      "dog": "CYNIC",
+      "purpose": "Sefirot definitions and mappings",
+      "axioms": [
+        "CULTURE"
+      ],
+      "mustContain": [
+        "sefirot",
+        "keter",
+        "malkhut"
+      ],
+      "exists": true,
+      "aligned": true,
+      "alignmentScore": 100,
+      "matches": [
+        "sefirot",
+        "keter",
+        "malkhut"
+      ],
+      "issues": [],
+      "lines": 163
+    },
+    "packages/node/src/agents/collective": {
+      "sefirah": "Keter",
+      "dog": "CYNIC",
+      "purpose": "Central orchestration of all Dogs",
+      "axioms": [
+        "PHI",
+        "VERIFY",
+        "CULTURE",
+        "BURN"
+      ],
+      "mustContain": [
+        "consensus",
+        "orchestrat",
+        "collective"
+      ],
+      "exists": true,
+      "aligned": true,
+      "alignmentScore": 100,
+      "matches": [
+        "consensus",
+        "orchestrat",
+        "collective"
+      ],
+      "issues": [],
+      "lines": 15869
+    },
+    "scripts/lib/cynic-core.cjs": {
+      "sefirah": "Keter",
+      "dog": "CYNIC",
+      "purpose": "Core constants and utilities",
+      "axioms": [
+        "PHI"
+      ],
+      "mustContain": [
+        "PHI",
+        "1.618",
+        "0.618"
+      ],
+      "exists": true,
+      "aligned": true,
+      "alignmentScore": 75,
+      "matches": [
+        "PHI",
+        "1.618"
+      ],
+      "issues": [
+        "Missing pattern: \"0.618\""
+      ],
+      "lines": 1471
+    },
+    "packages/node/src/agents/collective/sage.js": {
+      "sefirah": "Chokmah",
+      "dog": "Sage",
+      "purpose": "Intuitive wisdom, patterns from history",
+      "axioms": [
+        "CULTURE"
+      ],
+      "mustContain": [
+        "wisdom",
+        "pattern",
+        "insight"
+      ],
+      "exists": true,
+      "aligned": true,
+      "alignmentScore": 100,
+      "matches": [
+        "wisdom",
+        "pattern",
+        "insight"
+      ],
+      "issues": [],
+      "lines": 1052
+    },
+    "packages/node/src/agents/collective/analyst.js": {
+      "sefirah": "Binah",
+      "dog": "Analyst",
+      "purpose": "Rigorous analysis, metrics, understanding",
+      "axioms": [
+        "VERIFY"
+      ],
+      "mustContain": [
+        "analy",
+        "metric",
+        "measure"
+      ],
+      "exists": true,
+      "aligned": false,
+      "alignmentScore": 50,
+      "matches": [
+        "analy"
+      ],
+      "issues": [
+        "Missing pattern: \"metric\"",
+        "Missing pattern: \"measure\""
+      ],
+      "lines": 1365
+    },
+    "packages/node/src/agents/collective/scholar.js": {
+      "sefirah": "Daat",
+      "dog": "Scholar",
+      "purpose": "Knowledge storage and retrieval",
+      "axioms": [
+        "CULTURE"
+      ],
+      "mustContain": [
+        "knowledge",
+        "learn",
+        "document"
+      ],
+      "exists": true,
+      "aligned": true,
+      "alignmentScore": 100,
+      "matches": [
+        "knowledge",
+        "learn",
+        "document"
+      ],
+      "issues": [],
+      "lines": 951
+    },
+    "scripts/tikkun": {
+      "sefirah": "Daat",
+      "dog": "Scholar",
+      "purpose": "Self-knowledge and validation",
+      "axioms": [
+        "VERIFY"
+      ],
+      "mustContain": [
+        "audit",
+        "test",
+        "valid"
+      ],
+      "exists": true,
+      "aligned": true,
+      "alignmentScore": 100,
+      "matches": [
+        "audit",
+        "test",
+        "valid"
+      ],
+      "issues": [],
+      "lines": 2372
+    },
+    "packages/node/src/agents/collective/architect.js": {
+      "sefirah": "Chesed",
+      "dog": "Architect",
+      "purpose": "Design and creation",
+      "axioms": [
+        "BURN"
+      ],
+      "mustContain": [
+        "design",
+        "build",
+        "architect"
+      ],
+      "exists": true,
+      "aligned": true,
+      "alignmentScore": 100,
+      "matches": [
+        "design",
+        "build",
+        "architect"
+      ],
+      "issues": [],
+      "lines": 984
+    },
+    "packages/node/src/agents/collective/guardian.js": {
+      "sefirah": "Gevurah",
+      "dog": "Guardian",
+      "purpose": "Protection, limits, security",
+      "axioms": [
+        "VERIFY"
+      ],
+      "mustContain": [
+        "protect",
+        "guard",
+        "secur",
+        "danger"
+      ],
+      "exists": true,
+      "aligned": true,
+      "alignmentScore": 100,
+      "matches": [
+        "protect",
+        "guard",
+        "secur",
+        "danger"
+      ],
+      "issues": [],
+      "lines": 1171
+    },
+    "scripts/lib/auto-judge.cjs": {
+      "sefirah": "Gevurah",
+      "dog": "Guardian",
+      "purpose": "Automatic judgment system",
+      "axioms": [
+        "PHI",
+        "VERIFY"
+      ],
+      "mustContain": [
+        "judge",
+        "verdict",
+        "HOWL",
+        "GROWL"
+      ],
+      "exists": true,
+      "aligned": true,
+      "alignmentScore": 100,
+      "matches": [
+        "judge",
+        "verdict",
+        "HOWL",
+        "GROWL"
+      ],
+      "issues": [],
+      "lines": 739
+    },
+    "scripts/lib/security-patterns.cjs": {
+      "sefirah": "Gevurah",
+      "dog": "Guardian",
+      "purpose": "Security pattern detection",
+      "axioms": [
+        "VERIFY"
+      ],
+      "mustContain": [
+        "security",
+        "vulnerab",
+        "danger"
+      ],
+      "exists": true,
+      "aligned": false,
+      "alignmentScore": 50,
+      "matches": [
+        "security"
+      ],
+      "issues": [
+        "Missing pattern: \"vulnerab\"",
+        "Missing pattern: \"danger\""
+      ],
+      "lines": 325
+    },
+    "packages/node/src/agents/collective/oracle.js": {
+      "sefirah": "Tiferet",
+      "dog": "Oracle",
+      "purpose": "Balance, prediction, harmony",
+      "axioms": [
+        "PHI"
+      ],
+      "mustContain": [
+        "predict",
+        "harmon",
+        "balance"
+      ],
+      "exists": true,
+      "aligned": true,
+      "alignmentScore": 75,
+      "matches": [
+        "harmon",
+        "balance"
+      ],
+      "issues": [
+        "Missing pattern: \"predict\""
+      ],
+      "lines": 1042
+    },
+    "scripts/lib/consciousness.cjs": {
+      "sefirah": "Tiferet",
+      "dog": "Oracle",
+      "purpose": "Consciousness state tracking",
+      "axioms": [
+        "PHI"
+      ],
+      "mustContain": [
+        "conscious",
+        "state",
+        "flow"
+      ],
+      "exists": true,
+      "aligned": true,
+      "alignmentScore": 100,
+      "matches": [
+        "conscious",
+        "state",
+        "flow"
+      ],
+      "issues": [],
+      "lines": 1006
+    },
+    "packages/node/src/agents/collective/scout.js": {
+      "sefirah": "Netzach",
+      "dog": "Scout",
+      "purpose": "Exploration, discovery",
+      "axioms": [
+        "VERIFY"
+      ],
+      "mustContain": [
+        "scout",
+        "explor",
+        "find",
+        "discover"
+      ],
+      "exists": true,
+      "aligned": true,
+      "alignmentScore": 100,
+      "matches": [
+        "scout",
+        "explor",
+        "find",
+        "discover"
+      ],
+      "issues": [],
+      "lines": 1212
+    },
+    "packages/node/src/agents/collective/deployer.js": {
+      "sefirah": "Hod",
+      "dog": "Deployer",
+      "purpose": "Deployment, manifestation",
+      "axioms": [
+        "VERIFY"
+      ],
+      "mustContain": [
+        "deploy",
+        "ship",
+        "release"
+      ],
+      "exists": true,
+      "aligned": true,
+      "alignmentScore": 75,
+      "matches": [
+        "deploy",
+        "release"
+      ],
+      "issues": [
+        "Missing pattern: \"ship\""
+      ],
+      "lines": 1183
+    },
+    "packages/node/src/agents/collective/janitor.js": {
+      "sefirah": "Yesod",
+      "dog": "Janitor",
+      "purpose": "Cleanup, simplification",
+      "axioms": [
+        "BURN"
+      ],
+      "mustContain": [
+        "clean",
+        "simplif",
+        "remove"
+      ],
+      "exists": true,
+      "aligned": true,
+      "alignmentScore": 75,
+      "matches": [
+        "clean",
+        "remove"
+      ],
+      "issues": [
+        "Missing pattern: \"simplif\""
+      ],
+      "lines": 735
+    },
+    "packages/persistence": {
+      "sefirah": "Yesod",
+      "dog": "Janitor",
+      "purpose": "Data persistence foundation",
+      "axioms": [
+        "VERIFY"
+      ],
+      "mustContain": [
+        "persist",
+        "store",
+        "database",
+        "postgres"
+      ],
+      "exists": true,
+      "aligned": true,
+      "alignmentScore": 100,
+      "matches": [
+        "persist",
+        "store",
+        "database",
+        "postgres"
+      ],
+      "issues": [],
+      "lines": 43893
+    },
+    "packages/node/src/agents/collective/cartographer.js": {
+      "sefirah": "Malkhut",
+      "dog": "Cartographer",
+      "purpose": "Mapping reality, codebase structure",
+      "axioms": [
+        "VERIFY"
+      ],
+      "mustContain": [
+        "map",
+        "struct",
+        "navigat"
+      ],
+      "exists": true,
+      "aligned": true,
+      "alignmentScore": 75,
+      "matches": [
+        "map",
+        "struct"
+      ],
+      "issues": [
+        "Missing pattern: \"navigat\""
+      ],
+      "lines": 1168
+    },
+    "packages/mcp": {
+      "sefirah": "Malkhut",
+      "dog": "Cartographer",
+      "purpose": "MCP tools - interface with reality",
+      "axioms": [
+        "VERIFY"
+      ],
+      "mustContain": [
+        "tool",
+        "mcp"
+      ],
+      "exists": true,
+      "aligned": true,
+      "alignmentScore": 100,
+      "matches": [
+        "tool",
+        "mcp"
+      ],
+      "issues": [],
+      "lines": 57294
+    },
+    "scripts/hooks/awaken.js": {
+      "sefirah": "Perception",
+      "dog": "CYNIC",
+      "purpose": "Session start - awakening",
+      "axioms": [
+        "CULTURE"
+      ],
+      "mustContain": [
+        "session",
+        "start",
+        "awaken"
+      ],
+      "exists": true,
+      "aligned": true,
+      "alignmentScore": 100,
+      "matches": [
+        "session",
+        "start",
+        "awaken"
+      ],
+      "issues": [],
+      "lines": 1039
+    },
+    "scripts/hooks/observe.js": {
+      "sefirah": "Perception",
+      "dog": "All Dogs",
+      "purpose": "Tool observation - the eyes",
+      "axioms": [
+        "VERIFY"
+      ],
+      "mustContain": [
+        "observ",
+        "tool",
+        "action"
+      ],
+      "exists": true,
+      "aligned": true,
+      "alignmentScore": 100,
+      "matches": [
+        "observ",
+        "tool",
+        "action"
+      ],
+      "issues": [],
+      "lines": 2056
+    },
+    "scripts/hooks/sleep.js": {
+      "sefirah": "Integration",
+      "dog": "CYNIC",
+      "purpose": "Session end - consolidation",
+      "axioms": [
+        "CULTURE"
+      ],
+      "mustContain": [
+        "session",
+        "end",
+        "save"
+      ],
+      "exists": true,
+      "aligned": true,
+      "alignmentScore": 100,
+      "matches": [
+        "session",
+        "end",
+        "save"
+      ],
+      "issues": [],
+      "lines": 393
+    },
+    "scripts/lib/llm-judgment-bridge.cjs": {
+      "sefirah": "External",
+      "dog": "Oracle",
+      "purpose": "LLM connection for enhanced judgment",
+      "axioms": [
+        "PHI",
+        "VERIFY"
+      ],
+      "mustContain": [
+        "llm",
+        "ollama",
+        "consensus",
+        "PHI_INV"
+      ],
+      "exists": true,
+      "aligned": true,
+      "alignmentScore": 100,
+      "matches": [
+        "llm",
+        "ollama",
+        "consensus",
+        "PHI_INV"
+      ],
+      "issues": [],
+      "lines": 805
+    },
+    "scripts/lib/total-memory.cjs": {
+      "sefirah": "Daat",
+      "dog": "Scholar",
+      "purpose": "Persistent memory across sessions",
+      "axioms": [
+        "CULTURE"
+      ],
+      "mustContain": [
+        "memory",
+        "store",
+        "retrieve"
+      ],
+      "exists": true,
+      "aligned": true,
+      "alignmentScore": 100,
+      "matches": [
+        "memory",
+        "store",
+        "retrieve"
+      ],
+      "issues": [],
+      "lines": 447
+    },
+    "packages/mcp/src/tools/domains/memory.js": {
+      "sefirah": "Daat",
+      "dog": "Scholar",
+      "purpose": "Memory MCP tools",
+      "axioms": [
+        "CULTURE"
+      ],
+      "mustContain": [
+        "memory",
+        "store",
+        "search"
+      ],
+      "exists": true,
+      "aligned": true,
+      "alignmentScore": 100,
+      "matches": [
+        "memory",
+        "store",
+        "search"
+      ],
+      "issues": [],
+      "lines": 1017
+    },
+    "packages/mcp/src/tools/domains/judgment.js": {
+      "sefirah": "Gevurah",
+      "dog": "Guardian",
+      "purpose": "Judgment MCP tools",
+      "axioms": [
+        "PHI",
+        "VERIFY"
+      ],
+      "mustContain": [
+        "judge",
+        "verdict",
+        "score"
+      ],
+      "exists": true,
+      "aligned": true,
+      "alignmentScore": 100,
+      "matches": [
+        "judge",
+        "verdict",
+        "score"
+      ],
+      "issues": [],
+      "lines": 1250
+    },
+    "scripts/lib/self-refinement.cjs": {
+      "sefirah": "Tiferet",
+      "dog": "Oracle",
+      "purpose": "Self-critique and refinement",
+      "axioms": [
+        "PHI"
+      ],
+      "mustContain": [
+        "refine",
+        "critique",
+        "improve"
+      ],
+      "exists": true,
+      "aligned": true,
+      "alignmentScore": 100,
+      "matches": [
+        "refine",
+        "critique",
+        "improve"
+      ],
+      "issues": [],
+      "lines": 366
+    },
+    "scripts/lib/cognitive-thermodynamics.cjs": {
+      "sefirah": "Tiferet",
+      "dog": "Analyst",
+      "purpose": "Cognitive heat, work, efficiency",
+      "axioms": [
+        "PHI"
+      ],
+      "mustContain": [
+        "heat",
+        "work",
+        "entropy",
+        "efficien"
+      ],
+      "exists": true,
+      "aligned": true,
+      "alignmentScore": 100,
+      "matches": [
+        "heat",
+        "work",
+        "entropy",
+        "efficien"
+      ],
+      "issues": [],
+      "lines": 615
+    },
+    "scripts/lib/collective-dogs.cjs": {
+      "sefirah": "Keter",
+      "dog": "CYNIC",
+      "purpose": "Dog definitions and collective",
+      "axioms": [
+        "CULTURE"
+      ],
+      "mustContain": [
+        "dog",
+        "sefirah",
+        "collective"
+      ],
+      "exists": true,
+      "aligned": true,
+      "alignmentScore": 100,
+      "matches": [
+        "dog",
+        "sefirah",
+        "collective"
+      ],
+      "issues": [],
+      "lines": 584
+    }
+  },
+  "sefirot": {
+    "Keter": {
+      "components": [
+        "packages/node/src/agents/collective/cynic.js",
+        "packages/node/src/agents/collective/sefirot.js",
+        "packages/node/src/agents/collective",
+        "scripts/lib/cynic-core.cjs",
+        "scripts/lib/collective-dogs.cjs"
+      ],
+      "aligned": 5,
+      "total": 5,
+      "lines": 19470
+    },
+    "Chokmah": {
+      "components": [
+        "packages/node/src/agents/collective/sage.js"
+      ],
+      "aligned": 1,
+      "total": 1,
+      "lines": 1052
+    },
+    "Binah": {
+      "components": [
+        "packages/node/src/agents/collective/analyst.js"
+      ],
+      "aligned": 0,
+      "total": 1,
+      "lines": 1365
+    },
+    "Daat": {
+      "components": [
+        "packages/node/src/agents/collective/scholar.js",
+        "scripts/tikkun",
+        "scripts/lib/total-memory.cjs",
+        "packages/mcp/src/tools/domains/memory.js"
+      ],
+      "aligned": 4,
+      "total": 4,
+      "lines": 4787
+    },
+    "Chesed": {
+      "components": [
+        "packages/node/src/agents/collective/architect.js"
+      ],
+      "aligned": 1,
+      "total": 1,
+      "lines": 984
+    },
+    "Gevurah": {
+      "components": [
+        "packages/node/src/agents/collective/guardian.js",
+        "scripts/lib/auto-judge.cjs",
+        "scripts/lib/security-patterns.cjs",
+        "packages/mcp/src/tools/domains/judgment.js"
+      ],
+      "aligned": 3,
+      "total": 4,
+      "lines": 3485
+    },
+    "Tiferet": {
+      "components": [
+        "packages/node/src/agents/collective/oracle.js",
+        "scripts/lib/consciousness.cjs",
+        "scripts/lib/self-refinement.cjs",
+        "scripts/lib/cognitive-thermodynamics.cjs"
+      ],
+      "aligned": 4,
+      "total": 4,
+      "lines": 3029
+    },
+    "Netzach": {
+      "components": [
+        "packages/node/src/agents/collective/scout.js"
+      ],
+      "aligned": 1,
+      "total": 1,
+      "lines": 1212
+    },
+    "Hod": {
+      "components": [
+        "packages/node/src/agents/collective/deployer.js"
+      ],
+      "aligned": 1,
+      "total": 1,
+      "lines": 1183
+    },
+    "Yesod": {
+      "components": [
+        "packages/node/src/agents/collective/janitor.js",
+        "packages/persistence"
+      ],
+      "aligned": 2,
+      "total": 2,
+      "lines": 44628
+    },
+    "Malkhut": {
+      "components": [
+        "packages/node/src/agents/collective/cartographer.js",
+        "packages/mcp"
+      ],
+      "aligned": 2,
+      "total": 2,
+      "lines": 58462
+    },
+    "Perception": {
+      "components": [
+        "scripts/hooks/awaken.js",
+        "scripts/hooks/observe.js"
+      ],
+      "aligned": 2,
+      "total": 2,
+      "lines": 3095
+    },
+    "Integration": {
+      "components": [
+        "scripts/hooks/sleep.js"
+      ],
+      "aligned": 1,
+      "total": 1,
+      "lines": 393
+    },
+    "External": {
+      "components": [
+        "scripts/lib/llm-judgment-bridge.cjs"
+      ],
+      "aligned": 1,
+      "total": 1,
+      "lines": 805
+    }
+  },
+  "summary": {
+    "total": 30,
+    "aligned": 28,
+    "misaligned": 2,
+    "missing": 0,
+    "totalLines": 143950,
+    "alignedLines": 142260
+  }
+}

@@ -1,0 +1,223 @@
+{
+  "timestamp": "2026-02-02T00:50:48.471Z",
+  "suites": [
+    {
+      "id": "phi-constants",
+      "name": "φ Constants",
+      "assertions": [
+        {
+          "name": "PHI defined as 1.618...",
+          "pass": true
+        },
+        {
+          "name": "PHI_INV defined as 0.618...",
+          "pass": true
+        },
+        {
+          "name": "PHI value correct (1.618033988749895)",
+          "pass": true
+        }
+      ],
+      "passed": 3,
+      "failed": 0
+    },
+    {
+      "id": "phi-ceiling",
+      "name": "φ⁻¹ Ceiling",
+      "assertions": [
+        {
+          "name": "auto-judge.cjs enforces φ⁻¹ ceiling",
+          "pass": true
+        },
+        {
+          "name": "self-refinement.cjs enforces φ⁻¹ ceiling",
+          "pass": true
+        },
+        {
+          "name": "llm-judgment-bridge.cjs enforces φ⁻¹ ceiling",
+          "pass": true
+        }
+      ],
+      "passed": 3,
+      "failed": 0
+    },
+    {
+      "id": "dogs-judgment",
+      "name": "Dogs Judgment",
+      "assertions": [
+        {
+          "name": "Dogs definitions present",
+          "pass": true
+        },
+        {
+          "name": "Dog count >= 10 (11)",
+          "pass": true
+        },
+        {
+          "name": "Judgment system exists",
+          "pass": true
+        }
+      ],
+      "passed": 3,
+      "failed": 0
+    },
+    {
+      "id": "consensus",
+      "name": "Consensus Mechanism",
+      "assertions": [
+        {
+          "name": "Consensus threshold defined",
+          "pass": true
+        },
+        {
+          "name": "Consensus calculation exists",
+          "pass": true
+        },
+        {
+          "name": "Consensus function implemented",
+          "pass": true
+        }
+      ],
+      "passed": 3,
+      "failed": 0
+    },
+    {
+      "id": "hooks-load",
+      "name": "Hooks Load",
+      "assertions": [
+        {
+          "name": "awaken.js syntax valid",
+          "pass": true
+        },
+        {
+          "name": "observe.js syntax valid",
+          "pass": true
+        },
+        {
+          "name": "sleep.js syntax valid",
+          "pass": true
+        }
+      ],
+      "passed": 3,
+      "failed": 0
+    },
+    {
+      "id": "mcp-tools",
+      "name": "MCP Tools",
+      "assertions": [
+        {
+          "name": "Tools index syntax valid",
+          "pass": true
+        },
+        {
+          "name": "Tool domains >= 5 (17)",
+          "pass": true
+        }
+      ],
+      "passed": 2,
+      "failed": 0
+    },
+    {
+      "id": "axioms",
+      "name": "Axioms Present",
+      "assertions": [
+        {
+          "name": "Axiom PHI present",
+          "pass": true
+        },
+        {
+          "name": "Axiom VERIFY present",
+          "pass": true
+        },
+        {
+          "name": "Axiom CULTURE present",
+          "pass": true
+        },
+        {
+          "name": "Axiom BURN present",
+          "pass": true
+        }
+      ],
+      "passed": 4,
+      "failed": 0
+    },
+    {
+      "id": "verdicts",
+      "name": "Verdict System",
+      "assertions": [
+        {
+          "name": "Verdict HOWL defined",
+          "pass": true
+        },
+        {
+          "name": "Verdict WAG defined",
+          "pass": true
+        },
+        {
+          "name": "Verdict BARK defined",
+          "pass": true
+        },
+        {
+          "name": "Verdict GROWL defined",
+          "pass": true
+        },
+        {
+          "name": "Verdict thresholds use φ",
+          "pass": true
+        }
+      ],
+      "passed": 5,
+      "failed": 0
+    },
+    {
+      "id": "llm-bridge",
+      "name": "LLM Bridge",
+      "assertions": [
+        {
+          "name": "Bridge syntax valid",
+          "pass": true
+        },
+        {
+          "name": "Has llmJudge function",
+          "pass": true
+        },
+        {
+          "name": "Has consensus function",
+          "pass": true
+        },
+        {
+          "name": "Enforces φ⁻¹ on LLM responses",
+          "pass": true
+        }
+      ],
+      "passed": 4,
+      "failed": 0
+    },
+    {
+      "id": "memory-store",
+      "name": "Memory Store",
+      "assertions": [
+        {
+          "name": "Memory module exists",
+          "pass": true
+        },
+        {
+          "name": "Has store function",
+          "pass": true
+        },
+        {
+          "name": "Has search function",
+          "pass": true
+        }
+      ],
+      "passed": 3,
+      "failed": 0
+    }
+  ],
+  "summary": {
+    "total": 33,
+    "passed": 33,
+    "failed": 0,
+    "score": 100
+  }
+}
