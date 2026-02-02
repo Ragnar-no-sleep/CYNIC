@@ -24,8 +24,11 @@
 'use strict';
 
 import crypto from 'crypto';
-import { createLogger, globalEventBus, EventType } from '@cynic/core';
+import { createLogger, globalEventBus, EventType, PHI_INV } from '@cynic/core';
 import { OperatorRegistry } from './operator-registry.js';
+
+// P0.2: Finality timeout for P2P consensus (φ-scaled: 32 confirmations × 400ms slot)
+const FINALITY_TIMEOUT_MS = 32 * 400 * PHI_INV; // ~8 seconds
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PHASE 5: BLOCKCHAIN EVENTS
@@ -143,6 +146,10 @@ export class PoJChainManager {
     // Track anchor status per block
     this._anchorStatus = new Map();
 
+    // P0.2: Track blocks pending consensus finality (when P2P enabled)
+    this._pendingFinality = new Map(); // blockHash → { block, timeout, resolve, reject }
+    this._finalitySubscription = null;
+
     // Stats
     this._stats = {
       blocksCreated: 0,
@@ -154,6 +161,9 @@ export class PoJChainManager {
       signatureFailures: 0,
       blocksAnchored: 0,
       anchorsFailed: 0,
+      // P0.2: Finality stats
+      blocksFinalized: 0,
+      finalityTimeouts: 0,
     };
 
     this._initialized = false;
@@ -201,6 +211,17 @@ export class PoJChainManager {
       }
     } else {
       log.warn('PoJ chain: no persistence available (CYNIC cannot verify itself!)');
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // P0.2: Subscribe to poj:block:finalized for consensus integration
+    // When P2P is enabled, blocks should only anchor after consensus finality
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (this._p2pEnabled) {
+      this._finalitySubscription = globalEventBus.subscribe('poj:block:finalized', (event) => {
+        this._onBlockFinalized(event.payload || event);
+      });
+      log.info('PoJ finality subscription active (P2P consensus mode)');
     }
 
     this._initialized = true;
@@ -333,22 +354,50 @@ export class PoJChainManager {
         this._stats.blocksCreated++;
         this._stats.lastBlockTime = new Date();
 
-        // Queue for Solana anchoring if enabled
-        if (this._anchorQueue && this._autoAnchor) {
-          this._anchorBlock(block);
-        } else {
-          // Mark as PENDING anchor status
-          this._anchorStatus.set(block.hash, {
-            status: AnchorStatus.PENDING,
-            slot: block.slot,
-          });
-        }
-
-        // Propose to P2P network for distributed consensus (φ-BFT)
+        // ═══════════════════════════════════════════════════════════════════════
+        // P0.2: Consensus-aware anchoring
+        //
+        // When P2P is enabled:
+        //   1. Propose block to P2P network
+        //   2. Wait for consensus finality (poj:block:finalized)
+        //   3. THEN anchor to Solana
+        //
+        // When P2P is disabled:
+        //   - Anchor immediately (local operation, no consensus)
+        //
+        // "Don't trust, verify" - only anchor what consensus verifies
+        // ═══════════════════════════════════════════════════════════════════════
         if (this._p2pEnabled) {
+          // Propose to P2P network for distributed consensus (φ-BFT)
           this._proposeToP2P(block).catch(err => {
             log.warn('P2P propose failed (non-blocking)', { error: err.message });
           });
+
+          // Mark as pending finality (not anchored yet!)
+          this._anchorStatus.set(block.hash, {
+            status: AnchorStatus.PENDING,
+            slot: block.slot,
+            awaitingFinality: true,
+          });
+
+          // Wait for finality in background (non-blocking for create flow)
+          // The finality handler will trigger anchoring when consensus is reached
+          if (this._anchorQueue && this._autoAnchor) {
+            this._waitForFinality(block).catch(err => {
+              log.warn('Finality wait error', { slot: block.slot, error: err.message });
+            });
+          }
+        } else {
+          // Local mode: anchor immediately (no consensus required)
+          if (this._anchorQueue && this._autoAnchor) {
+            this._anchorBlock(block);
+          } else {
+            // Mark as PENDING anchor status
+            this._anchorStatus.set(block.hash, {
+              status: AnchorStatus.PENDING,
+              slot: block.slot,
+            });
+          }
         }
 
         log.info('PoJ block created', { slot: block.slot, judgments: judgments.length });
@@ -437,6 +486,102 @@ export class PoJChainManager {
       });
       this._stats.anchorsFailed++;
     }
+  }
+
+  /**
+   * P0.2: Handle block finalized event from consensus layer
+   *
+   * When P2P consensus is enabled, this triggers anchoring only after
+   * the block has reached φ⁻¹ (61.8%) supermajority.
+   *
+   * "Don't trust, verify" - now we only anchor verified consensus blocks
+   *
+   * @param {Object} event - Finality event
+   * @private
+   */
+  _onBlockFinalized(event) {
+    const { blockHash, slot, status, confirmations } = event;
+
+    // Check if we're waiting for this block's finality
+    const pending = this._pendingFinality.get(blockHash);
+    if (!pending) {
+      // Not our block or already processed
+      log.debug('Finality event for unknown/processed block', { slot, blockHash: blockHash?.slice(0, 16) });
+      return;
+    }
+
+    // Clear timeout
+    if (pending.timeout) {
+      clearTimeout(pending.timeout);
+    }
+
+    log.info('PoJ block finalized through consensus', {
+      slot,
+      confirmations,
+      status,
+    });
+
+    this._stats.blocksFinalized++;
+
+    // Now anchor the block (consensus verified)
+    if (this._anchorQueue && this._autoAnchor) {
+      this._anchorBlock(pending.block);
+    }
+
+    // Resolve the promise if someone is awaiting
+    if (pending.resolve) {
+      pending.resolve({ finalized: true, slot, confirmations });
+    }
+
+    // Remove from pending
+    this._pendingFinality.delete(blockHash);
+  }
+
+  /**
+   * P0.2: Wait for block finality through P2P consensus
+   *
+   * Returns a promise that resolves when the block is finalized
+   * or rejects on timeout.
+   *
+   * @param {Object} block - Block awaiting finality
+   * @param {number} [timeoutMs] - Timeout in ms (default: FINALITY_TIMEOUT_MS)
+   * @returns {Promise<{finalized: boolean, slot: number}>}
+   * @private
+   */
+  _waitForFinality(block, timeoutMs = FINALITY_TIMEOUT_MS) {
+    return new Promise((resolve, reject) => {
+      const blockHash = block.hash;
+
+      // Set timeout
+      const timeout = setTimeout(() => {
+        const pending = this._pendingFinality.get(blockHash);
+        if (pending) {
+          this._pendingFinality.delete(blockHash);
+          this._stats.finalityTimeouts++;
+
+          log.warn('Finality timeout - anchoring anyway (fallback)', {
+            slot: block.slot,
+            timeoutMs,
+          });
+
+          // Fallback: anchor without consensus (better than losing data)
+          if (this._anchorQueue && this._autoAnchor) {
+            this._anchorBlock(block);
+          }
+
+          resolve({ finalized: false, slot: block.slot, fallback: true });
+        }
+      }, timeoutMs);
+
+      // Store pending
+      this._pendingFinality.set(blockHash, {
+        block,
+        timeout,
+        resolve,
+        reject,
+        createdAt: Date.now(),
+      });
+    });
   }
 
   /**
@@ -714,6 +859,10 @@ export class PoJChainManager {
       anchoringEnabled: this.isAnchoringEnabled,
       anchoredBlocks: anchoredCount,
       pendingAnchors: pendingAnchorCount,
+      // P0.2: Consensus status
+      p2pEnabled: this._p2pEnabled,
+      p2pNodeUrl: this._p2pNodeUrl || null,
+      pendingFinality: this._pendingFinality.size,
     };
 
     // Add operator info
@@ -898,6 +1047,28 @@ export class PoJChainManager {
       clearTimeout(this._batchTimer);
       this._batchTimer = null;
     }
+
+    // P0.2: Cleanup finality subscription
+    if (this._finalitySubscription) {
+      try {
+        if (typeof this._finalitySubscription === 'function') {
+          this._finalitySubscription();
+        }
+      } catch (e) { /* ignore */ }
+      this._finalitySubscription = null;
+    }
+
+    // Clear pending finality timeouts
+    for (const [hash, pending] of this._pendingFinality.entries()) {
+      if (pending.timeout) {
+        clearTimeout(pending.timeout);
+      }
+      // Reject any pending promises
+      if (pending.reject) {
+        pending.reject(new Error('PoJChainManager closing'));
+      }
+    }
+    this._pendingFinality.clear();
   }
 }
 

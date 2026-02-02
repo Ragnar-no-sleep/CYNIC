@@ -44,6 +44,8 @@ import {
   getEmbedder,
   // Phase X: X/Twitter Vision
   XDataRepository,
+  // P1.1: Facts Repository (was disconnected from MCP)
+  FactsRepository,
 } from '@cynic/persistence';
 
 // ISP: Domain-specific adapters
@@ -106,6 +108,9 @@ export class PersistenceManager {
 
     // Phase X: X/Twitter Vision
     this._xData = null;
+
+    // P1.1: Facts Repository (was disconnected from MCP)
+    this._facts = null;
 
     // Fallback store (file or memory)
     this._fallback = null;
@@ -175,6 +180,9 @@ export class PersistenceManager {
 
         // Phase X: X/Twitter Vision
         this._xData = new XDataRepository(this.postgres);
+
+        // P1.1: Facts Repository (was disconnected from MCP)
+        this._facts = new FactsRepository(this.postgres);
 
         // Phase 18: Initialize embedder for vector search
         // Auto-detects Ollama (local, free) first, falls back to Mock
@@ -424,6 +432,9 @@ export class PersistenceManager {
   /** @returns {SessionRepository|null} */
   get sessions() { return this._sessions; }
 
+  /** @returns {FactsRepository|null} P1.1: Now exposed via MCP */
+  get facts() { return this._facts; }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // HEALTH & LIFECYCLE
   // ═══════════════════════════════════════════════════════════════════════════
@@ -529,7 +540,108 @@ export class PersistenceManager {
       psychology: this._psychologyAdapter?.isAvailable || false,
       sessions: !!this.sessionStore,
       cache: !!this.redis,
+      // P1.1: Facts capability
+      facts: !!this._facts,
     };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // P1.1: FACTS API (session context, auto-extracted knowledge)
+  // "Don't trust, verify" - but remember what you've learned
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Store a fact extracted from tool output or conversation
+   * @param {Object} fact - Fact data
+   * @returns {Promise<Object|null>}
+   */
+  async storeFact(fact) {
+    if (!this._facts) return null;
+    try {
+      return await this._facts.create(fact);
+    } catch (err) {
+      log.warn('Failed to store fact', { error: err.message });
+      return null;
+    }
+  }
+
+  /**
+   * Search facts using full-text search
+   * @param {string} query - Search query
+   * @param {Object} [options] - Search options
+   * @returns {Promise<Array>}
+   */
+  async searchFacts(query, options = {}) {
+    if (!this._facts) return [];
+    try {
+      return await this._facts.search(query, options);
+    } catch (err) {
+      log.warn('Failed to search facts', { error: err.message });
+      return [];
+    }
+  }
+
+  /**
+   * Semantic search facts combining FTS + vector similarity
+   * @param {string} query - Search query
+   * @param {Object} [options] - Search options with optional embedding
+   * @returns {Promise<Array>}
+   */
+  async semanticSearchFacts(query, options = {}) {
+    if (!this._facts) return [];
+    try {
+      return await this._facts.semanticSearch(query, options);
+    } catch (err) {
+      log.warn('Failed to semantic search facts', { error: err.message });
+      return [];
+    }
+  }
+
+  /**
+   * Get facts for a session
+   * @param {string} sessionId - Session ID
+   * @param {number} [limit=50] - Max results
+   * @returns {Promise<Array>}
+   */
+  async getSessionFacts(sessionId, limit = 50) {
+    if (!this._facts) return [];
+    try {
+      return await this._facts.findBySession(sessionId, limit);
+    } catch (err) {
+      log.warn('Failed to get session facts', { error: err.message });
+      return [];
+    }
+  }
+
+  /**
+   * Get facts for a user
+   * @param {string} userId - User ID
+   * @param {Object} [options] - Query options
+   * @returns {Promise<Array>}
+   */
+  async getUserFacts(userId, options = {}) {
+    if (!this._facts) return [];
+    try {
+      return await this._facts.findByUser(userId, options);
+    } catch (err) {
+      log.warn('Failed to get user facts', { error: err.message });
+      return [];
+    }
+  }
+
+  /**
+   * Get facts statistics
+   * @param {string} [userId] - Optional user filter
+   * @returns {Promise<Object>}
+   */
+  async getFactsStats(userId = null) {
+    if (!this._facts) return { total: 0, types: 0, tools: 0 };
+    try {
+      return await this._facts.getStats(userId);
+    } catch (err) {
+      log.warn('Failed to get facts stats', { error: err.message });
+      return { total: 0, types: 0, tools: 0 };
+    }
   }
 }
 

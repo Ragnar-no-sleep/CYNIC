@@ -18,6 +18,9 @@
 import { EventEmitter } from 'events';
 import { MessageType } from '../gossip/message.js';
 import { ConsensusStateTree } from './merkle-state.js';
+import { globalEventBus, createLogger } from '@cynic/core';
+
+const log = createLogger('ConsensusGossip');
 
 /**
  * ConsensusGossip Bridge
@@ -273,6 +276,10 @@ export class ConsensusGossip extends EventEmitter {
 
   /**
    * Broadcast finality notification
+   *
+   * P0.4: Also publishes to globalEventBus as 'poj:block:finalized'
+   * This bridges consensus finality → MCP → persistence → metrics
+   *
    * @private
    */
   async _broadcastFinality(event) {
@@ -286,6 +293,26 @@ export class ConsensusGossip extends EventEmitter {
 
     const sent = await this.gossip.broadcastFinality(finality);
     this.stats.finalityBroadcast++;
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // P0.4: Publish to globalEventBus - bridges consensus layer to MCP layer
+    // This was subscribed in ServiceInitializer but never published!
+    // "Don't trust, verify" - now we can verify finality across layers
+    // ═══════════════════════════════════════════════════════════════════════════
+    try {
+      globalEventBus.publish('poj:block:finalized', {
+        slot: event.slot,
+        blockHash: event.blockHash,
+        status: event.status || 'FINALIZED',
+        confirmations: event.confirmations,
+        probability: event.probability || 1.0,
+        timestamp: Date.now(),
+      }, { source: 'ConsensusGossip' });
+      log.debug('Block finalized → globalEventBus', { slot: event.slot });
+    } catch (err) {
+      // Non-blocking - gossip broadcast already succeeded
+      log.warn('globalEventBus publish failed', { error: err.message });
+    }
 
     this.emit('finality:broadcast', { blockHash: event.blockHash, peers: sent });
     return sent;
@@ -380,6 +407,9 @@ export class ConsensusGossip extends EventEmitter {
 
   /**
    * Handle received finality notification
+   *
+   * P0.4: Also publishes to globalEventBus for MCP layer integration
+   *
    * @private
    */
   async _handleFinality(message) {
@@ -393,6 +423,25 @@ export class ConsensusGossip extends EventEmitter {
       status: payload.status,
       from: sender,
     });
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // P0.4: Publish received finality to globalEventBus
+    // This allows nodes that receive finality from network to also update their state
+    // ═══════════════════════════════════════════════════════════════════════════
+    try {
+      globalEventBus.publish('poj:block:finalized', {
+        slot: payload.slot,
+        blockHash: payload.blockHash,
+        status: payload.status || 'FINALIZED',
+        confirmations: payload.confirmations,
+        probability: payload.probability || 1.0,
+        receivedFrom: sender,
+        timestamp: Date.now(),
+      }, { source: 'ConsensusGossip:received' });
+    } catch (err) {
+      // Non-blocking
+      log.warn('globalEventBus publish (received) failed', { error: err.message });
+    }
   }
 
   /**

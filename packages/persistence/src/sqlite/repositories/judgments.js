@@ -49,7 +49,9 @@ export class SQLiteJudgmentRepository extends BaseRepository {
    * Store a new judgment
    */
   async create(judgment) {
-    const judgmentId = generateJudgmentId();
+    // CRITICAL: Preserve original judgment ID for PoJ chain traceability
+    // If judgment.id exists (from DogOrchestrator), use it. Never overwrite.
+    const judgmentId = judgment.id || judgment.judgmentId || judgment.judgment_id || generateJudgmentId();
     const itemHash = hashContent(judgment.item?.content || judgment.itemContent);
 
     const item = judgment.item || {};

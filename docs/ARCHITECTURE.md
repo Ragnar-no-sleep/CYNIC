@@ -1540,6 +1540,256 @@ Thresholds:
 
 ---
 
-**Document Version**: 1.2.0
-**Last Updated**: 2026-01-28
-**Status**: ACTIVE - Context Intelligence & Pack Coordination implemented
+## 18. L0 Hooks - Ambient Consciousness Layer
+
+> "Le chien observe, protège, et apprend" - The hooks are CYNIC's senses
+
+### 18.1 Overview
+
+L0 Hooks form CYNIC's ambient consciousness - the sensory layer that perceives every interaction without interference. These hooks fire on Claude Code events and feed data to higher layers.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    L0 HOOKS ARCHITECTURE                         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Claude Code Events                                              │
+│         │                                                        │
+│         ▼                                                        │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │                      HOOK LAYER                              ││
+│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐       ││
+│  │  │ SessionStart│ PreToolUse │PostToolUse│ SessionEnd│       ││
+│  │  │  awaken.js │  guard.js  │ observe.js│  sleep.js │       ││
+│  │  └─────┬──────┘ └─────┬────┘ └────┬─────┘ └────┬─────┘       ││
+│  │        │              │           │            │              ││
+│  │        ▼              ▼           ▼            ▼              ││
+│  │  ┌───────────────────────────────────────────────────────┐  ││
+│  │  │              COLLECTIVE BRAIN (MCP)                    │  ││
+│  │  │  memory_store │ patterns │ triggers │ psychology      │  ││
+│  │  └───────────────────────────────────────────────────────┘  ││
+│  └─────────────────────────────────────────────────────────────┘│
+│                                                                  │
+│  Key Principle: Hooks NEVER block unless protecting from danger │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 18.2 The 14 Hooks
+
+| Hook | Event | Behavior | Purpose |
+|------|-------|----------|---------|
+| **awaken.js** | SessionStart | Non-blocking | Awakens CYNIC, injects facts, shows TUI |
+| **guard.js** | PreToolUse | **Blocking** | Protects against dangerous operations |
+| **observe.js** | PostToolUse | Non-blocking | Pattern detection, fact extraction, telemetry |
+| **perceive.js** | PreToolUse | Non-blocking | Pre-analysis, context gathering |
+| **pre-tool.js** | PreToolUse | Non-blocking | Tool validation, pre-processing |
+| **digest.js** | PreCompact | Non-blocking | Knowledge extraction before compaction |
+| **compact.js** | PreCompact | Non-blocking | Context pruning and summarization |
+| **error.js** | Error | Non-blocking | Error pattern learning |
+| **notify.js** | Notification | Non-blocking | Alert routing to Dogs |
+| **permission.js** | Permission | Non-blocking | Permission tracking |
+| **sleep.js** | SessionEnd | Non-blocking | Session summary, profile save |
+| **spawn.js** | SubagentStop | Non-blocking | Subagent result processing |
+| **ralph-loop.js** | UserPromptSubmit | Non-blocking | Autonomous loop continuation |
+| **setup-ralph-loop.js** | - | Utility | Ralph loop initialization |
+
+### 18.3 observe.js - The Critical Learning Engine
+
+The largest hook (~88KB), observe.js is CYNIC's primary learning mechanism.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    OBSERVE.JS ARCHITECTURE                       │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  PostToolUse Event                                               │
+│         │                                                        │
+│         ▼                                                        │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │  1. ANTI-PATTERN DETECTION                                   ││
+│  │     • Error loops (same error 3x in 5min)                   ││
+│  │     • Edit without Read (missing context)                    ││
+│  │     • Commit without Test (risky workflow)                   ││
+│  │     • File hotspots (same file causing errors)              ││
+│  └─────────────────────────────────────────────────────────────┘│
+│         │                                                        │
+│         ▼                                                        │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │  2. DOG ROUTING (Sefirot Mapping)                            ││
+│  │     Tool → Dog                                               ││
+│  │     ─────────────────────────                                ││
+│  │     Read/Glob/Grep → 🔍 Scout (Netzach)                      ││
+│  │     Write/Edit    → 🏗️ Architect (Chesed)                    ││
+│  │     Error         → 🛡️ Guardian (Gevurah)                    ││
+│  │     git push      → 🚀 Deployer (Hod)                        ││
+│  │     git log/diff  → 📊 Analyst (Binah)                       ││
+│  │     WebSearch     → 📚 Scholar (Daat)                        ││
+│  │     Task          → 🧠 CYNIC (Keter)                         ││
+│  └─────────────────────────────────────────────────────────────┘│
+│         │                                                        │
+│         ▼                                                        │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │  3. FACT EXTRACTION (MoltBrain-style)                        ││
+│  │     From Read: function/class definitions, exports           ││
+│  │     From Bash: git state, test results, branch info          ││
+│  │     From Write/Edit: file modifications                      ││
+│  │     From package.json: dependencies, scripts                 ││
+│  │                                                              ││
+│  │     → Stored to brain_memory_store for semantic retrieval    ││
+│  └─────────────────────────────────────────────────────────────┘│
+│         │                                                        │
+│         ▼                                                        │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │  4. LEARNING FEEDBACK                                        ││
+│  │     • Test results → sendTestFeedback()                      ││
+│  │     • Commit success → sendCommitFeedback()                  ││
+│  │     • Build results → sendBuildFeedback()                    ││
+│  │                                                              ││
+│  │     → External validation for self-refinement                ││
+│  └─────────────────────────────────────────────────────────────┘│
+│         │                                                        │
+│         ▼                                                        │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │  5. TELEMETRY & ORCHESTRATION                                ││
+│  │     • recordMetric() - tool usage stats                      ││
+│  │     • recordFriction() - error patterns                      ││
+│  │     • orchestrateFull() - decision tracing                   ││
+│  │     • autoOrchestrator.postAnalyze() - Dog consultation      ││
+│  └─────────────────────────────────────────────────────────────┘│
+│                                                                  │
+│  OUTPUT: { continue: true } (NEVER blocks)                      │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 18.4 guard.js - The Protective Layer
+
+The only hook designed to BLOCK operations when danger is detected.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    GUARD.JS DANGER PATTERNS                      │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  SEVERITY: CRITICAL (Always Block)                              │
+│  ══════════════════════════════════                             │
+│  • rm -rf / or ~ (root/home deletion)                           │
+│  • rm -rf * (wildcard deletion)                                 │
+│  • Fork bomb :(){:|:&};:                                        │
+│  • Direct disk writes (> /dev/sd*)                              │
+│  • mkfs (filesystem format)                                     │
+│  • dd to disk                                                   │
+│  • DROP TABLE/DATABASE                                          │
+│                                                                  │
+│  SEVERITY: HIGH (Warn + Require Confirmation)                   │
+│  ════════════════════════════════════════════                   │
+│  • git push --force                                             │
+│  • git reset --hard                                             │
+│  • TRUNCATE                                                     │
+│                                                                  │
+│  SEVERITY: MEDIUM (Warn)                                        │
+│  ════════════════════════                                       │
+│  • npm publish                                                  │
+│                                                                  │
+│  SENSITIVE PATHS (Write Protection)                             │
+│  ═══════════════════════════════════                            │
+│  • .env, credentials, .ssh/, .aws/                              │
+│  • .kube/config, id_rsa, .npmrc, .pypirc                        │
+│                                                                  │
+│  SYSTEM PATHS (Always Block)                                    │
+│  ════════════════════════════                                   │
+│  • /etc/, /usr/, /bin/, /sbin/, /boot/, /dev/, /proc/, /sys/    │
+│  • C:\Windows\, C:\Program Files\                               │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 18.5 awaken.js - Session Initialization
+
+Runs at SessionStart to establish CYNIC's presence and inject cross-session knowledge.
+
+**Key Features:**
+- Loads user profile and merges with PostgreSQL data
+- Injects up to 50 relevant facts from previous sessions (M2.1)
+- Displays TUI dashboard with ecosystem status, psychology, thermodynamics
+- Starts brain session for telemetry tracking
+- Initializes OrchestrationClient
+
+**Fact Injection (M2.1):**
+```javascript
+// Configuration
+FACT_INJECTION_LIMIT = 50        // Max facts per session
+FACT_MIN_CONFIDENCE = 0.382      // φ⁻² minimum
+
+// Facts are retrieved by:
+// 1. User's historical facts
+// 2. Current project relevance
+// 3. Confidence threshold
+// 4. Recency (fresher facts prioritized)
+```
+
+### 18.6 Hook Event Flow
+
+```
+SESSION LIFECYCLE
+═════════════════
+
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│SessionStart │────►│   WORKING   │────►│ SessionEnd  │
+│  awaken.js  │     │   PHASE     │     │  sleep.js   │
+└─────────────┘     └─────────────┘     └─────────────┘
+      │                   │                    │
+      │                   │                    │
+      ▼                   ▼                    ▼
+  Load profile       For each tool:       Save profile
+  Inject facts       ├─ PreToolUse        Store session
+  Show TUI           │   ├─ guard.js      Summary to MCP
+  Start session      │   ├─ perceive.js
+                     │   └─ pre-tool.js
+                     │
+                     ├─ [Tool Executes]
+                     │
+                     └─ PostToolUse
+                         └─ observe.js
+```
+
+### 18.7 φ-Aligned Thresholds in Hooks
+
+All hooks use φ-derived thresholds for consistency:
+
+| Threshold | Value | Usage |
+|-----------|-------|-------|
+| Error loop window | 5 min | Time window for detecting same error |
+| Error loop count | 3 | Errors before warning (Fib(4)) |
+| Fact injection limit | 50 | Max facts per session |
+| Min confidence | 38.2% (φ⁻²) | Minimum for fact injection |
+| Max confidence | 61.8% (φ⁻¹) | Cap on any judgment |
+
+### 18.8 Hook Output Protocol
+
+All hooks communicate via JSON to stdout:
+
+```javascript
+// Non-blocking hooks (observe, awaken, perceive, etc.)
+{ continue: true }
+
+// Blocking hooks (guard.js on danger)
+{
+  continue: false,
+  reason: "DANGER: rm -rf / detected",
+  severity: "critical"
+}
+
+// With system message injection
+{
+  continue: true,
+  message: "CYNIC AWAKENING - Session data..."
+}
+```
+
+---
+
+**Document Version**: 1.3.0
+**Last Updated**: 2026-02-02
+**Status**: ACTIVE - L0 Hooks documented, Context Intelligence & Pack Coordination implemented

@@ -32,6 +32,21 @@ import { LibrarianService } from '../librarian-service.js';
 import { DiscoveryService } from '../discovery-service.js';
 import { MetricsService } from '../metrics-service.js';
 
+// ═══════════════════════════════════════════════════════════════════════════
+// SOLANA ANCHORING (Task #29) - "Onchain is truth"
+// ═══════════════════════════════════════════════════════════════════════════
+let anchorModule = null;
+async function getAnchorModule() {
+  if (anchorModule) return anchorModule;
+  try {
+    anchorModule = await import('@cynic/anchor');
+    return anchorModule;
+  } catch (e) {
+    log.debug('Anchor module not available (optional)', { error: e.message });
+    return null;
+  }
+}
+
 /**
  * @typedef {Object} ServiceConfig
  * @property {string} [dataDir] - Data directory for file persistence
@@ -63,6 +78,7 @@ import { MetricsService } from '../metrics-service.js';
  * @property {Object} [tokenOptimizer] - Token compression
  * @property {Object} [hyperbolicSpace] - Hierarchical embeddings
  * @property {Object} [complexityClassifier] - Complexity classification
+ * @property {Object} [anchorIntegration] - Solana anchoring for PoJ blocks
  */
 
 /**
@@ -119,6 +135,8 @@ export class ServiceInitializer {
       tokenOptimizer: this._createTokenOptimizer.bind(this),
       hyperbolicSpace: this._createHyperbolicSpace.bind(this),
       sona: this._createSONA.bind(this),
+      // Solana Anchoring (Task #29)
+      anchorIntegration: this._createAnchorIntegration.bind(this),
     };
   }
 
@@ -173,6 +191,11 @@ export class ServiceInitializer {
     // 5. PoJ Chain manager (depends on persistence)
     if (!services.pojChainManager) {
       services.pojChainManager = await this.factories.pojChainManager(services);
+    }
+
+    // 5b. Anchor Integration (depends on pojChainManager) - "Onchain is truth"
+    if (!services.anchorIntegration) {
+      services.anchorIntegration = await this.factories.anchorIntegration(services);
     }
 
     // 6. Librarian (depends on persistence)
@@ -518,6 +541,145 @@ export class ServiceInitializer {
     }
 
     return pojChainManager;
+  }
+
+  /**
+   * Create Anchor Integration - Solana anchoring for PoJ blocks
+   * Task #29: "Onchain is truth" - Wire PoJ chain to Solana
+   *
+   * Requires:
+   * - CYNIC_SOLANA_CLUSTER: devnet/testnet/mainnet-beta (default: devnet)
+   * - CYNIC_WALLET_PATH: Path to Solana wallet JSON
+   * - CYNIC_ANCHOR_ENABLED: true/false (default: true if wallet exists)
+   */
+  async _createAnchorIntegration(services) {
+    const anchor = await getAnchorModule();
+    if (!anchor) {
+      log.debug('Anchor integration skipped (module not available)');
+      return null;
+    }
+
+    // Check if pojChainManager exists
+    if (!services.pojChainManager) {
+      log.debug('Anchor integration skipped (no pojChainManager)');
+      return null;
+    }
+
+    // Configuration from environment
+    const cluster = process.env.CYNIC_SOLANA_CLUSTER || 'devnet';
+    const walletPath = process.env.CYNIC_WALLET_PATH;
+    const enabled = process.env.CYNIC_ANCHOR_ENABLED !== 'false';
+
+    if (!enabled) {
+      log.debug('Anchor integration disabled via CYNIC_ANCHOR_ENABLED=false');
+      return null;
+    }
+
+    try {
+      // Load wallet if path provided
+      let wallet = null;
+      if (walletPath) {
+        try {
+          wallet = anchor.CynicWallet.fromFile(walletPath);
+          log.info('Solana wallet loaded', { path: walletPath, publicKey: wallet.publicKey });
+        } catch (e) {
+          log.warn('Wallet load failed, using simulation mode', { error: e.message });
+        }
+      }
+
+      // Create standalone anchorer (not full integration, since pojChainManager
+      // uses globalEventBus instead of EventEmitter)
+      const anchorer = anchor.createAnchorer({
+        cluster,
+        wallet,
+        useAnchorProgram: true,
+        onAnchor: (record) => {
+          log.info('Block anchored to Solana', {
+            merkleRoot: record.merkleRoot?.slice(0, 16) + '...',
+            signature: record.signature?.slice(0, 20) + '...',
+            slot: record.slot,
+          });
+          // Emit via global event bus for metrics
+          globalEventBus.publish('poj:block:anchored', {
+            merkleRoot: record.merkleRoot,
+            signature: record.signature,
+            slot: record.slot,
+            timestamp: Date.now(),
+          });
+        },
+        onError: (record, error) => {
+          log.error('Anchor failed', {
+            merkleRoot: record.merkleRoot?.slice(0, 16) + '...',
+            error: error.message,
+          });
+        },
+      });
+
+      // Subscribe to globalEventBus for block creation events
+      // This bridges the gap: pojChainManager → globalEventBus → anchorer
+      const unsubscribe = globalEventBus.subscribe('poj:block:created', async (event) => {
+        const { slot, hash, judgmentCount, judgmentsRoot, judgmentIds } = event.payload || {};
+
+        // Use judgmentsRoot (the actual field name from PoJChainManager)
+        const merkleRoot = judgmentsRoot;
+
+        if (!merkleRoot) {
+          log.debug('Block has no merkle root, skipping anchor', { slot });
+          return;
+        }
+
+        log.info('Anchoring PoJ block', { slot, judgmentCount, merkleRoot: merkleRoot?.slice(0, 16) + '...' });
+
+        try {
+          // Use judgment IDs from event, or fetch from persistence
+          let itemIds = judgmentIds || [];
+          if (itemIds.length === 0 && services.persistence?.pojBlocks) {
+            const block = await services.persistence.pojBlocks.findByNumber(slot);
+            itemIds = block?.judgment_ids || [];
+          }
+
+          // Anchor the merkle root to Solana
+          anchorer.setBlockHeight(slot);
+          await anchorer.anchor(merkleRoot, itemIds);
+        } catch (e) {
+          log.error('Block anchor failed', { slot, error: e.message });
+        }
+      });
+
+      // Create wrapper object with stats and cleanup
+      const integration = {
+        anchorer,
+        cluster,
+        hasWallet: !!wallet,
+        unsubscribe,
+        getStats: () => ({
+          ...anchorer.getStats(),
+          cluster,
+          hasWallet: !!wallet,
+          mode: wallet ? 'LIVE' : 'SIMULATION',
+        }),
+        stop: () => {
+          if (typeof unsubscribe === 'function') unsubscribe();
+        },
+      };
+
+      // Track stats in pojChainManager
+      services.pojChainManager.isAnchoringEnabled = true;
+      services.pojChainManager.getAnchorStatus = () => integration.getStats();
+      services.pojChainManager.getPendingAnchors = () => anchorer.getPendingAnchors?.() || [];
+
+      log.info('Anchor integration ready', {
+        cluster,
+        hasWallet: !!wallet,
+        autoAnchor: true,
+        mode: wallet ? 'LIVE' : 'SIMULATION',
+      });
+
+      return integration;
+    } catch (e) {
+      log.error('Anchor integration failed', { error: e.message });
+      return null;
+    }
   }
 
   async _createLibrarian(services) {

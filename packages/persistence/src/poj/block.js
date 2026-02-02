@@ -182,7 +182,12 @@ export class Attestation {
 }
 
 /**
- * Judgment Reference - minimal judgment data for block inclusion
+ * Judgment Reference - judgment data for block inclusion
+ *
+ * EXTENDED (P0.3): Now includes votes and dimensions for on-chain verification.
+ * This allows consensus to be verified from the chain alone without database.
+ *
+ * "Don't trust, verify" - VERIFY axiom demands complete data on-chain
  */
 export class JudgmentRef {
   constructor({
@@ -191,18 +196,63 @@ export class JudgmentRef {
     qScore,
     verdict,
     timestamp,
+    // P0.3: Extended fields for consensus verification
+    votes,          // Array of {dog, score, weight, response}
+    dimensions,     // Object of dimension scores
+    consensus,      // {ratio, reached, threshold, votingDogs}
+    confidence,     // φ-bounded confidence (max 61.8%)
   }) {
     this.id = id;
     this.qScore = qScore;
     this.verdict = verdict;
     this.timestamp = timestamp || Date.now();
-    // Auto-generate CID if not provided
+
+    // P0.3: Store vote breakdown for chain verification
+    this.votes = votes || [];
+    this.dimensions = dimensions || {};
+    this.consensus = consensus || null;
+    this.confidence = confidence ?? PHI_INV; // Default to max φ⁻¹
+
+    // Auto-generate CID including new fields for complete verification
     this.cid = cid || createCID(JSON.stringify({
       id: this.id,
       qScore: this.qScore,
       verdict: this.verdict,
       timestamp: this.timestamp,
+      // Include votes hash in CID for tamper detection
+      votesHash: this.votes.length > 0
+        ? crypto.createHash('sha256')
+            .update(JSON.stringify(this.votes))
+            .digest('hex').slice(0, 16)
+        : null,
+      dimensionsHash: Object.keys(this.dimensions).length > 0
+        ? crypto.createHash('sha256')
+            .update(JSON.stringify(this.dimensions))
+            .digest('hex').slice(0, 16)
+        : null,
     }));
+  }
+
+  /**
+   * Verify consensus was valid
+   * @returns {boolean} True if consensus meets φ⁻¹ threshold
+   */
+  verifyConsensus() {
+    if (!this.consensus) return false;
+    return this.consensus.reached && this.consensus.ratio >= PHI_INV;
+  }
+
+  /**
+   * Get vote breakdown by response type
+   * @returns {Object} {allow: number, block: number, warn: number}
+   */
+  getVoteBreakdown() {
+    const breakdown = { allow: 0, block: 0, warn: 0, abstain: 0 };
+    for (const vote of this.votes) {
+      const response = vote.response || 'abstain';
+      breakdown[response] = (breakdown[response] || 0) + (vote.weight || 1);
+    }
+    return breakdown;
   }
 
   toJSON() {
@@ -212,6 +262,11 @@ export class JudgmentRef {
       qScore: this.qScore,
       verdict: this.verdict,
       timestamp: this.timestamp,
+      // P0.3: Include extended fields
+      votes: this.votes,
+      dimensions: this.dimensions,
+      consensus: this.consensus,
+      confidence: this.confidence,
     };
   }
 
@@ -477,15 +532,28 @@ export function createBlock({
   stateRoot = '',
 }) {
   const judgmentRefs = judgments.map(j => {
+    // Extract core fields
     const id = j.id || j.data?.id;
-    const qScore = j.qScore || j.data?.qScore;
+    const qScore = j.qScore || j.global_score || j.data?.qScore;
     const verdict = j.verdict || j.data?.verdict;
     const timestamp = j.timestamp || Date.now();
 
-    // Auto-generate CID if not provided
-    const cid = j.cid || createCID(JSON.stringify({ id, qScore, verdict, timestamp }));
+    // P0.3: Extract extended fields for consensus verification
+    const votes = j.votes || j.data?.votes || [];
+    const dimensions = j.dimensions || j.dimensionScores || j.dimension_scores || j.data?.dimensions || {};
+    const consensus = j.consensus || j.data?.consensus || null;
+    const confidence = j.confidence || j.data?.confidence || PHI_INV;
 
-    return new JudgmentRef({ id, cid, qScore, verdict, timestamp });
+    return new JudgmentRef({
+      id,
+      qScore,
+      verdict,
+      timestamp,
+      votes,
+      dimensions,
+      consensus,
+      confidence,
+    });
   });
 
   const header = new PoJBlockHeader({
