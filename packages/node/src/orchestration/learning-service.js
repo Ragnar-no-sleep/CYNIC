@@ -1,19 +1,19 @@
 /**
- * CYNIC Q-Learning Router
+ * CYNIC Learning Service
  *
- * @deprecated Use QLearningService from './learning-service.js' instead.
- * This module's features have been extracted to QLearningService for
- * integration with KabbalisticRouter. This file is kept for backward
- * compatibility only.
- *
- * Replaces rule-based routing with learned routing.
- * Tracks dog success/failure per task type and updates routing weights.
+ * Extracted from QLearningRouter - provides learning capabilities
+ * that feed into KabbalisticRouter for weight optimization.
  *
  * "Le chien apprend qui appeler" - CYNIC learns who to call
  *
- * Inspired by Claude-flow's Q-Learning Router (84.8% SWE-Bench accuracy).
+ * Features preserved:
+ * - Q-Table algorithm
+ * - Reward system (φ-aligned)
+ * - Feature extraction
+ * - Episode management
+ * - Exploration/exploitation
  *
- * @module @cynic/node/orchestration/q-learning-router
+ * @module @cynic/node/orchestration/learning-service
  */
 
 'use strict';
@@ -21,13 +21,13 @@
 import { PHI_INV, PHI_INV_2 } from '@cynic/core';
 
 // =============================================================================
-// CONFIGURATION
+// CONFIGURATION (φ-aligned)
 // =============================================================================
 
 /**
- * Q-Learning hyperparameters (φ-aligned)
+ * Learning hyperparameters
  */
-export const Q_CONFIG = {
+export const LEARNING_CONFIG = {
   // Learning rate - how much new info overrides old (φ⁻¹)
   learningRate: PHI_INV,          // 0.618
 
@@ -57,7 +57,7 @@ export const Q_CONFIG = {
 };
 
 /**
- * State features for Q-table
+ * State features for learning
  */
 export const StateFeatures = {
   // Task type features
@@ -86,23 +86,6 @@ export const StateFeatures = {
   TOOL_TASK: 'tool:task',
 };
 
-/**
- * Available actions (dogs)
- */
-export const Actions = {
-  GUARDIAN: 'GUARDIAN',
-  ANALYST: 'ANALYST',
-  ARCHITECT: 'ARCHITECT',
-  SCOUT: 'SCOUT',
-  SCHOLAR: 'SCHOLAR',
-  SAGE: 'SAGE',
-  ORACLE: 'ORACLE',
-  JANITOR: 'JANITOR',
-  DEPLOYER: 'DEPLOYER',
-  CARTOGRAPHER: 'CARTOGRAPHER',
-  CYNIC: 'CYNIC',
-};
-
 // =============================================================================
 // Q-TABLE
 // =============================================================================
@@ -113,7 +96,6 @@ export const Actions = {
 export class QTable {
   constructor() {
     // Q(s, a) = expected reward for taking action a in state s
-    // Stored as: { stateKey: { action: qValue } }
     this.table = new Map();
 
     // Visit counts for each state-action pair
@@ -212,39 +194,53 @@ export class QTable {
 }
 
 // =============================================================================
-// Q-LEARNING ROUTER
+// LEARNING SERVICE
 // =============================================================================
 
 /**
- * Q-Learning Router - Learned dog selection
+ * QLearningService - Provides learning capabilities for KabbalisticRouter
+ *
+ * Usage:
+ * 1. Call startEpisode() before routing
+ * 2. Call recordAction() for each dog that processes
+ * 3. Call endEpisode() with outcome to update weights
+ * 4. Use getRecommendedWeights() to feed into RelationshipGraph
  */
-export class QLearningRouter {
+export class QLearningService {
   /**
    * @param {Object} options
-   * @param {Object} [options.config] - Q-Learning configuration
+   * @param {Object} [options.config] - Learning configuration
    * @param {QTable} [options.qTable] - Existing Q-table
    * @param {Object} [options.persistence] - Persistence layer
+   * @param {string} [options.serviceId] - Service identifier for persistence
    */
   constructor(options = {}) {
-    this.config = { ...Q_CONFIG, ...options.config };
+    this.config = { ...LEARNING_CONFIG, ...options.config };
     this.qTable = options.qTable || new QTable();
     this.persistence = options.persistence || null;
+    this.serviceId = options.serviceId || 'default';
 
     // Current exploration rate (decays over time)
     this.explorationRate = this.config.explorationRate;
 
-    // History for episode tracking
+    // Episode tracking
     this.currentEpisode = null;
     this.episodeHistory = [];
+    this.maxEpisodeHistory = 1000;
 
     // Stats
     this.stats = {
-      routingDecisions: 0,
-      explorations: 0,
-      exploitations: 0,
+      episodes: 0,
+      updates: 0,
       correctPredictions: 0,
       totalFeedback: 0,
     };
+
+    // Debounced persistence (5s debounce)
+    this._persistTimeout = null;
+    this._persistDebounceMs = 5000;
+    this._initialized = false;
+    this._initializing = null;
   }
 
   // ===========================================================================
@@ -342,97 +338,13 @@ export class QLearningRouter {
   }
 
   // ===========================================================================
-  // ACTION SELECTION
+  // EPISODE MANAGEMENT
   // ===========================================================================
 
   /**
-   * Select best action (dog) for given state
-   * Uses ε-greedy policy with softmax
-   */
-  selectAction(features, availableActions = null) {
-    const actions = availableActions || Object.values(Actions);
-    this.stats.routingDecisions++;
-
-    // Exploration: random action
-    if (Math.random() < this.explorationRate) {
-      this.stats.explorations++;
-      const randomIndex = Math.floor(Math.random() * actions.length);
-      return {
-        action: actions[randomIndex],
-        method: 'exploration',
-        confidence: this.explorationRate,
-      };
-    }
-
-    // Exploitation: select best action using softmax
-    this.stats.exploitations++;
-    const qValues = actions.map(a => ({
-      action: a,
-      q: this.qTable.get(features, a),
-      visits: this.qTable.getVisits(features, a),
-    }));
-
-    // Softmax selection
-    const temperature = this.config.temperature;
-    const maxQ = Math.max(...qValues.map(v => v.q));
-    const expValues = qValues.map(v => ({
-      ...v,
-      exp: Math.exp((v.q - maxQ) / temperature),
-    }));
-    const sumExp = expValues.reduce((s, v) => s + v.exp, 0);
-    const probs = expValues.map(v => ({
-      ...v,
-      prob: v.exp / sumExp,
-    }));
-
-    // Select based on probability
-    const rand = Math.random();
-    let cumProb = 0;
-    for (const p of probs) {
-      cumProb += p.prob;
-      if (rand <= cumProb) {
-        return {
-          action: p.action,
-          method: 'exploitation',
-          qValue: p.q,
-          confidence: p.prob,
-          visits: p.visits,
-        };
-      }
-    }
-
-    // Fallback to highest Q-value
-    const best = qValues.reduce((a, b) => (a.q > b.q ? a : b));
-    return {
-      action: best.action,
-      method: 'exploitation',
-      qValue: best.q,
-      confidence: 1.0,
-      visits: best.visits,
-    };
-  }
-
-  /**
-   * Get top-k actions for a state
-   */
-  getTopActions(features, k = 3) {
-    const actions = Object.values(Actions);
-    const qValues = actions.map(a => ({
-      action: a,
-      q: this.qTable.get(features, a),
-      visits: this.qTable.getVisits(features, a),
-    }));
-
-    qValues.sort((a, b) => b.q - a.q);
-    return qValues.slice(0, k);
-  }
-
-  // ===========================================================================
-  // LEARNING
-  // ===========================================================================
-
-  /**
-   * Start a new routing episode
+   * Start a learning episode
+   * @param {Object} context - Routing context
+   * @returns {string} Episode ID
    */
   startEpisode(context) {
     const features = this.extractFeatures(context);
@@ -452,7 +364,9 @@ export class QLearningRouter {
   }
 
   /**
-   * Record an action taken in current episode
+   * Record an action (dog) in current episode
+   * @param {string} action - Dog name
+   * @param {Object} metadata - Additional metadata
    */
   recordAction(action, metadata = {}) {
     if (!this.currentEpisode) return;
@@ -468,7 +382,9 @@ export class QLearningRouter {
   }
 
   /**
-   * End episode and update Q-values based on outcome
+   * End episode and update Q-values
+   * @param {Object} outcome - Episode outcome
+   * @returns {Object} Episode summary
    */
   endEpisode(outcome) {
     if (!this.currentEpisode) return null;
@@ -482,26 +398,8 @@ export class QLearningRouter {
     const reward = this._calculateReward(outcome);
     episode.reward = reward;
 
-    // Update Q-values for each action in episode
-    for (let i = 0; i < episode.actions.length; i++) {
-      const action = episode.actions[i].action;
-      const isLast = i === episode.actions.length - 1;
-
-      // Q-learning update: Q(s,a) += α * (r + γ * max(Q(s',a')) - Q(s,a))
-      const currentQ = this.qTable.get(episode.features, action);
-
-      // For last action, no future state
-      // For intermediate actions, use discounted future reward
-      const futureQ = isLast ? 0 :
-        Math.max(...Object.values(Actions).map(a =>
-          this.qTable.get(episode.features, a)
-        ));
-
-      const target = reward + this.config.discountFactor * futureQ;
-      const newQ = currentQ + this.config.learningRate * (target - currentQ);
-
-      this.qTable.set(episode.features, action, newQ);
-    }
+    // Q-learning update for each action
+    this._updateQValues(episode, reward);
 
     // Decay exploration rate
     this.explorationRate = Math.max(
@@ -510,24 +408,52 @@ export class QLearningRouter {
     );
 
     // Update stats
+    this.stats.episodes++;
     this.stats.totalFeedback++;
     if (outcome.success || outcome.type === 'success') {
       this.stats.correctPredictions++;
     }
 
-    // Store episode in history
+    // Store in history
     this.episodeHistory.push(episode);
-    if (this.episodeHistory.length > 1000) {
-      this.episodeHistory.shift(); // Keep last 1000 episodes
+    if (this.episodeHistory.length > this.maxEpisodeHistory) {
+      this.episodeHistory.shift();
     }
 
-    // Clear current episode
+    // Clear current
     this.currentEpisode = null;
 
-    // Persist if available
+    // Persist Q-Table (debounced) and episode
     this._persist();
+    this._persistEpisode(episode).catch(() => {});
 
     return episode;
+  }
+
+  /**
+   * Update Q-values using Bellman equation
+   * @private
+   */
+  _updateQValues(episode, reward) {
+    for (let i = 0; i < episode.actions.length; i++) {
+      const action = episode.actions[i].action;
+      const isLast = i === episode.actions.length - 1;
+
+      const currentQ = this.qTable.get(episode.features, action);
+
+      // For last action, no future state
+      const futureQ = isLast ? 0 :
+        Math.max(...this._getAllActions().map(a =>
+          this.qTable.get(episode.features, a)
+        ));
+
+      // Q(s,a) += α * (r + γ * max(Q(s',a')) - Q(s,a))
+      const target = reward + this.config.discountFactor * futureQ;
+      const newQ = currentQ + this.config.learningRate * (target - currentQ);
+
+      this.qTable.set(episode.features, action, newQ);
+      this.stats.updates++;
+    }
   }
 
   /**
@@ -538,7 +464,7 @@ export class QLearningRouter {
     const rewards = this.config.rewards;
 
     if (outcome.blocked) {
-      return rewards.blocked; // Blocking dangerous operations is good
+      return rewards.blocked;
     }
     if (outcome.success === true || outcome.type === 'success') {
       return rewards.success;
@@ -553,83 +479,66 @@ export class QLearningRouter {
       return rewards.partialSuccess;
     }
 
-    // Use score if available
+    // Use score if available (normalize 0-100 to -1 to 1)
     if (typeof outcome.score === 'number') {
-      return (outcome.score - 50) / 50; // Normalize 0-100 to -1 to 1
+      return (outcome.score - 50) / 50;
     }
 
     return 0;
   }
 
+  /**
+   * Get all possible actions (dogs)
+   * @private
+   */
+  _getAllActions() {
+    return [
+      'guardian', 'analyst', 'architect', 'scout', 'scholar',
+      'sage', 'oracle', 'janitor', 'deployer', 'cartographer', 'cynic',
+    ];
+  }
+
   // ===========================================================================
-  // ROUTING API
+  // WEIGHT RECOMMENDATIONS
   // ===========================================================================
 
   /**
-   * Route a task to the best dog(s)
-   * Main API for routing decisions
+   * Get recommended weights for dogs based on learning
+   * Use this to feed into RelationshipGraph
+   *
+   * @param {string[]} features - Current state features
+   * @returns {Object} Dog weights { dogName: weight }
    */
-  route(context, options = {}) {
-    const {
-      count = 1,                    // Number of dogs to return
-      mustInclude = [],             // Dogs that must be included
-      exclude = [],                 // Dogs to exclude
-    } = options;
+  getRecommendedWeights(features) {
+    const weights = {};
+    const actions = this._getAllActions();
 
-    // Extract features
-    const features = this.extractFeatures(context);
-
-    // Get available actions
-    let availableActions = Object.values(Actions).filter(a => !exclude.includes(a));
-
-    // Start episode
-    this.startEpisode(context);
-
-    // Select actions
-    const selections = [];
-
-    // Include required dogs first
-    for (const dog of mustInclude) {
-      if (availableActions.includes(dog)) {
-        selections.push({
-          action: dog,
-          method: 'required',
-          confidence: 1.0,
-        });
-        availableActions = availableActions.filter(a => a !== dog);
-      }
+    for (const action of actions) {
+      const q = this.qTable.get(features, action);
+      // Normalize Q-value to 0-1 weight (sigmoid-like)
+      weights[action] = 1 / (1 + Math.exp(-q));
     }
 
-    // Select remaining dogs
-    while (selections.length < count && availableActions.length > 0) {
-      const selection = this.selectAction(features, availableActions);
-      selections.push(selection);
-      this.recordAction(selection.action, { method: selection.method });
-      availableActions = availableActions.filter(a => a !== selection.action);
-    }
-
-    return {
-      episodeId: this.currentEpisode?.id,
-      features,
-      selections,
-      dogs: selections.map(s => s.action),
-      primaryDog: selections[0]?.action,
-      confidence: selections[0]?.confidence || 0,
-      explorationRate: this.explorationRate,
-    };
+    return weights;
   }
 
   /**
-   * Provide feedback for a routing decision
+   * Get top-k recommended dogs for features
+   * @param {string[]} features - State features
+   * @param {number} k - Number of dogs to return
+   * @returns {Array} Top dogs with scores
    */
-  feedback(episodeId, outcome) {
-    // If no current episode, try to find it
-    if (!this.currentEpisode || this.currentEpisode.id !== episodeId) {
-      // Can't update past episodes without more infrastructure
-      return null;
-    }
+  getTopDogs(features, k = 3) {
+    const weights = this.getRecommendedWeights(features);
+    const sorted = Object.entries(weights)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, k);
 
-    return this.endEpisode(outcome);
+    return sorted.map(([dog, weight]) => ({
+      dog,
+      weight: Math.round(weight * 1000) / 1000,
+      visits: this.qTable.getVisits(features, dog),
+    }));
   }
 
   // ===========================================================================
@@ -637,56 +546,164 @@ export class QLearningRouter {
   // ===========================================================================
 
   /**
-   * Persist Q-table
+   * Schedule debounced persistence
    * @private
    */
-  async _persist() {
+  _schedulePersist() {
+    if (this._persistTimeout) {
+      clearTimeout(this._persistTimeout);
+    }
+    this._persistTimeout = setTimeout(() => {
+      this._doPersist().catch(() => {});
+    }, this._persistDebounceMs);
+  }
+
+  /**
+   * Persist learning state immediately
+   * @private
+   */
+  async _doPersist() {
     if (!this.persistence?.query) return;
 
     try {
-      const data = {
-        qTable: this.qTable.toJSON(),
-        explorationRate: this.explorationRate,
-        stats: this.stats,
-        timestamp: Date.now(),
-      };
+      const qTableData = this.qTable.toJSON();
 
+      // Use UPSERT to handle both new and existing service_ids
       await this.persistence.query(`
-        INSERT INTO q_learning_router (id, data, updated_at)
-        VALUES ('default', $1, NOW())
-        ON CONFLICT (id) DO UPDATE SET
-          data = $1,
+        INSERT INTO qlearning_state (service_id, q_table, exploration_rate, stats, version)
+        VALUES ($4, $1, $2, $3, 1)
+        ON CONFLICT (service_id) DO UPDATE SET
+          q_table = $1,
+          exploration_rate = $2,
+          stats = $3,
+          version = qlearning_state.version + 1,
           updated_at = NOW()
-      `, [JSON.stringify(data)]);
+      `, [
+        JSON.stringify(qTableData),
+        this.explorationRate,
+        JSON.stringify(this.stats),
+        this.serviceId,
+      ]);
     } catch (e) {
-      // Persistence failed - continue without
+      // Log but don't throw - persistence is best-effort
+      // console.error('[QLearningService] Persist failed:', e.message);
     }
   }
 
   /**
-   * Load Q-table from persistence
+   * Persist (debounced)
+   * @private
+   */
+  _persist() {
+    this._schedulePersist();
+  }
+
+  /**
+   * Persist episode to database
+   * @private
+   */
+  async _persistEpisode(episode) {
+    if (!this.persistence?.query) return;
+
+    try {
+      await this.persistence.query(`
+        INSERT INTO qlearning_episodes (
+          episode_id, service_id, features, task_type, tool,
+          actions, outcome, reward, duration_ms
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        ON CONFLICT (episode_id) DO NOTHING
+      `, [
+        episode.id,
+        this.serviceId,
+        episode.features,
+        episode.context?.taskType || null,
+        episode.context?.tool || null,
+        JSON.stringify(episode.actions),
+        JSON.stringify(episode.outcome || {}),
+        episode.reward,
+        episode.duration,
+      ]);
+    } catch (e) {
+      // Episode persistence is optional - don't throw
+    }
+  }
+
+  /**
+   * Initialize from persistence (call once on startup)
+   */
+  async initialize() {
+    if (this._initialized) return true;
+    if (this._initializing) return this._initializing;
+
+    this._initializing = this._doInitialize();
+    return this._initializing;
+  }
+
+  /**
+   * @private
+   */
+  async _doInitialize() {
+    const loaded = await this.load();
+    this._initialized = true;
+    this._initializing = null;
+    return loaded;
+  }
+
+  /**
+   * Load learning state from persistence
    */
   async load() {
     if (!this.persistence?.query) return false;
 
     try {
       const result = await this.persistence.query(
-        'SELECT data FROM q_learning_router WHERE id = $1',
-        ['default']
+        'SELECT q_table, exploration_rate, stats FROM qlearning_state WHERE service_id = $1',
+        [this.serviceId]
       );
 
-      if (result.rows?.[0]?.data) {
-        const data = result.rows[0].data;
-        this.qTable = QTable.fromJSON(data.qTable);
-        this.explorationRate = data.explorationRate || this.config.explorationRate;
-        this.stats = { ...this.stats, ...data.stats };
+      if (result.rows?.[0]) {
+        const row = result.rows[0];
+
+        // Load Q-Table
+        if (row.q_table) {
+          const qData = typeof row.q_table === 'string'
+            ? JSON.parse(row.q_table)
+            : row.q_table;
+          this.qTable = QTable.fromJSON(qData);
+        }
+
+        // Load exploration rate
+        if (row.exploration_rate != null) {
+          this.explorationRate = parseFloat(row.exploration_rate);
+        }
+
+        // Load stats
+        if (row.stats) {
+          const statsData = typeof row.stats === 'string'
+            ? JSON.parse(row.stats)
+            : row.stats;
+          this.stats = { ...this.stats, ...statsData };
+        }
+
         return true;
       }
     } catch (e) {
       // Load failed - start fresh
+      // console.error('[QLearningService] Load failed:', e.message);
     }
 
     return false;
+  }
+
+  /**
+   * Force immediate persistence (call on shutdown)
+   */
+  async flush() {
+    if (this._persistTimeout) {
+      clearTimeout(this._persistTimeout);
+      this._persistTimeout = null;
+    }
+    await this._doPersist();
   }
 
   // ===========================================================================
@@ -694,7 +711,7 @@ export class QLearningRouter {
   // ===========================================================================
 
   /**
-   * Get router statistics
+   * Get service statistics
    */
   getStats() {
     const accuracy = this.stats.totalFeedback > 0
@@ -711,25 +728,7 @@ export class QLearningRouter {
   }
 
   /**
-   * Get Q-value heatmap for debugging
-   */
-  getQHeatmap() {
-    const heatmap = {};
-    const features = Object.values(StateFeatures);
-    const actions = Object.values(Actions);
-
-    for (const feature of features) {
-      heatmap[feature] = {};
-      for (const action of actions) {
-        heatmap[feature][action] = this.qTable.get([feature], action);
-      }
-    }
-
-    return heatmap;
-  }
-
-  /**
-   * Get best dogs per task type
+   * Get best dogs per task type (for debugging)
    */
   getBestDogsPerTask() {
     const taskFeatures = Object.values(StateFeatures).filter(f => f.startsWith('task:'));
@@ -737,12 +736,8 @@ export class QLearningRouter {
 
     for (const feature of taskFeatures) {
       const taskType = feature.replace('task:', '');
-      const topActions = this.getTopActions([feature], 3);
-      result[taskType] = topActions.map(a => ({
-        dog: a.action,
-        qValue: Math.round(a.q * 100) / 100,
-        visits: a.visits,
-      }));
+      const topDogs = this.getTopDogs([feature], 3);
+      result[taskType] = topDogs;
     }
 
     return result;
@@ -750,31 +745,71 @@ export class QLearningRouter {
 }
 
 /**
- * Create a Q-Learning Router instance
+ * Create a QLearningService instance
  */
-export function createQLearningRouter(options = {}) {
-  return new QLearningRouter(options);
+export function createQLearningService(options = {}) {
+  return new QLearningService(options);
 }
 
 // Singleton instance
-let _router = null;
+let _service = null;
+let _serviceInitPromise = null;
 
 /**
- * Get the global Q-Learning Router instance
+ * Get the global QLearningService instance
+ * @param {Object} options - Options for creating the service
+ * @returns {QLearningService}
  */
-export function getQLearningRouter() {
-  if (!_router) {
-    _router = createQLearningRouter();
+export function getQLearningService(options) {
+  if (!_service) {
+    _service = createQLearningService(options);
   }
-  return _router;
+  return _service;
+}
+
+/**
+ * Get the global QLearningService instance with async initialization
+ * Ensures persistence is loaded before returning.
+ * @param {Object} options - Options for creating the service
+ * @returns {Promise<QLearningService>}
+ */
+export async function getQLearningServiceAsync(options) {
+  const service = getQLearningService(options);
+
+  if (!_serviceInitPromise && !service._initialized) {
+    _serviceInitPromise = service.initialize().finally(() => {
+      _serviceInitPromise = null;
+    });
+  }
+
+  if (_serviceInitPromise) {
+    await _serviceInitPromise;
+  }
+
+  return service;
+}
+
+/**
+ * Reset singleton for testing
+ * @private
+ */
+export function _resetQLearningServiceForTesting() {
+  if (_service) {
+    if (_service._persistTimeout) {
+      clearTimeout(_service._persistTimeout);
+    }
+    _service = null;
+  }
+  _serviceInitPromise = null;
 }
 
 export default {
-  QLearningRouter,
+  QLearningService,
   QTable,
-  Q_CONFIG,
+  LEARNING_CONFIG,
   StateFeatures,
-  Actions,
-  createQLearningRouter,
-  getQLearningRouter,
+  createQLearningService,
+  getQLearningService,
+  getQLearningServiceAsync,
+  _resetQLearningServiceForTesting,
 };

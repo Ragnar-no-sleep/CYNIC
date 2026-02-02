@@ -17,7 +17,7 @@
 'use strict';
 
 import { EventEmitter } from 'events';
-import { createLogger, PHI_INV, getCircuitBreakerRegistry } from '@cynic/core';
+import { createLogger, PHI_INV, PHI_INV_2, getCircuitBreakerRegistry } from '@cynic/core';
 import {
   DecisionEvent,
   DecisionStage,
@@ -52,6 +52,9 @@ export class UnifiedOrchestrator extends EventEmitter {
    * @param {Object} options - Options
    * @param {Object} [options.dogOrchestrator] - DogOrchestrator instance
    * @param {Object} [options.engineOrchestrator] - EngineOrchestrator instance
+   * @param {Object} [options.kabbalisticRouter] - KabbalisticRouter instance (for low-confidence escalation)
+   * @param {Object} [options.learningService] - QLearningService instance (for Q-learning routing)
+   * @param {Object} [options.costOptimizer] - CostOptimizer instance (for tier selection)
    * @param {Object} [options.skillRegistry] - SkillRegistry instance
    * @param {Object} [options.persistence] - PersistenceManager instance
    * @param {Object} [options.eventBus] - EventBus instance
@@ -62,10 +65,23 @@ export class UnifiedOrchestrator extends EventEmitter {
 
     this.dogOrchestrator = options.dogOrchestrator || null;
     this.engineOrchestrator = options.engineOrchestrator || null;
+    this.kabbalisticRouter = options.kabbalisticRouter || null;
+    this.learningService = options.learningService || null;
+    this.costOptimizer = options.costOptimizer || null;
     this.skillRegistry = options.skillRegistry || null;
     this.persistence = options.persistence || null;
     this.eventBus = options.eventBus || getEventBus();
     this.decisionTracer = options.decisionTracer || null;
+
+    // Wire learning and cost services to kabbalistic router if available
+    if (this.kabbalisticRouter) {
+      if (this.learningService) {
+        this.kabbalisticRouter.setLearningService(this.learningService);
+      }
+      if (this.costOptimizer) {
+        this.kabbalisticRouter.setCostOptimizer(this.costOptimizer);
+      }
+    }
 
     // Circuit breakers for external calls
     const cbRegistry = getCircuitBreakerRegistry();
@@ -73,6 +89,7 @@ export class UnifiedOrchestrator extends EventEmitter {
       judgment: cbRegistry.get('orchestrator:judgment', { timeout: 8000 }),
       synthesis: cbRegistry.get('orchestrator:synthesis', { timeout: 8000 }),
       skill: cbRegistry.get('orchestrator:skill', { timeout: 13000 }),
+      escalation: cbRegistry.get('orchestrator:escalation', { timeout: 13000 }),
     };
 
     // User profile cache (per-session)
@@ -90,6 +107,7 @@ export class UnifiedOrchestrator extends EventEmitter {
       judgmentsRequested: 0,
       synthesisRequested: 0,
       skillsInvoked: 0,
+      escalationsTriggered: 0,
       blocked: 0,
       errors: 0,
     };
@@ -589,7 +607,7 @@ export class UnifiedOrchestrator extends EventEmitter {
    * @returns {Object}
    */
   getStats() {
-    return {
+    const stats = {
       ...this.stats,
       circuitBreakers: {
         judgment: this._circuitBreakers.judgment.getStats(),
@@ -597,6 +615,23 @@ export class UnifiedOrchestrator extends EventEmitter {
         skill: this._circuitBreakers.skill.getStats(),
       },
     };
+
+    // Add learning stats if available
+    if (this.learningService) {
+      stats.learning = this.learningService.getStats();
+    }
+
+    // Add cost stats if available
+    if (this.costOptimizer) {
+      stats.cost = this.costOptimizer.getStats();
+    }
+
+    // Add kabbalistic router stats if available
+    if (this.kabbalisticRouter) {
+      stats.kabbalistic = this.kabbalisticRouter.getStats();
+    }
+
+    return stats;
   }
 
   /**
@@ -641,6 +676,48 @@ export class UnifiedOrchestrator extends EventEmitter {
       ...update,
       timestamp: Date.now(),
     });
+  }
+
+  /**
+   * Set learning service at runtime
+   *
+   * @param {Object} learningService - LearningService instance
+   */
+  setLearningService(learningService) {
+    this.learningService = learningService;
+    if (this.kabbalisticRouter) {
+      this.kabbalisticRouter.setLearningService(learningService);
+    }
+  }
+
+  /**
+   * Set cost optimizer at runtime
+   *
+   * @param {Object} costOptimizer - CostOptimizer instance
+   */
+  setCostOptimizer(costOptimizer) {
+    this.costOptimizer = costOptimizer;
+    if (this.kabbalisticRouter) {
+      this.kabbalisticRouter.setCostOptimizer(costOptimizer);
+    }
+  }
+
+  /**
+   * Get learned weights from learning service (via kabbalistic router)
+   *
+   * @returns {Object|null} Learned weights or null
+   */
+  getLearnedWeights() {
+    return this.kabbalisticRouter?.getLearnedWeights() || null;
+  }
+
+  /**
+   * Apply learned weights to relationship graph
+   *
+   * @returns {boolean} True if weights were applied
+   */
+  applyLearnedWeights() {
+    return this.kabbalisticRouter?.applyLearnedWeights() || false;
   }
 }
 

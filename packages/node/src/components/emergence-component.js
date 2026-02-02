@@ -22,8 +22,8 @@ import { DogOrchestrator, DogMode } from '../agents/orchestrator.js';
 import {
   AgentEventBus,
   EventPriority,
-  createCollectivePack,
 } from '../agents/index.js';
+import { getCollectivePack, getSharedMemory } from '../collective-singleton.js';
 
 /**
  * Emergence Component - manages consciousness and collective awareness
@@ -75,8 +75,9 @@ export class EmergenceComponent extends EventEmitter {
       nodeId: options.nodeId,
     });
 
-    // The collective pack (11 dogs)
-    this._collectivePack = createCollectivePack({
+    // The collective pack (11 dogs) - USE SINGLETON
+    // "One pack, one truth" - ensures all components share same Dogs
+    this._collectivePack = getCollectivePack({
       eventBus: this._eventBus,
       sharedMemory: this._sharedMemory,
       nodeId: options.nodeId,

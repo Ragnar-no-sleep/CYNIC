@@ -126,6 +126,21 @@ export {
 } from './agents/index.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// Collective Singleton - "One pack, one truth"
+// Use these instead of createCollectivePack() directly
+// ═══════════════════════════════════════════════════════════════════════════════
+export {
+  getCollectivePack,
+  getCollectivePackAsync,
+  getSharedMemory,
+  awakenCynic,
+  saveState as saveCollectiveState,
+  getSingletonStatus,
+  isReady as isCollectiveReady,
+  _resetForTesting as _resetCollectiveForTesting,
+} from './collective-singleton.js';
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // Solana Anchoring - "Onchain is truth"
 // @deprecated Import directly from @cynic/anchor instead
 // These re-exports will be removed in v2.0
@@ -251,6 +266,41 @@ export {
   // Automation Executor
   AutomationExecutor,
   createAutomationExecutor,
+  // Skeptic Service - Kabbalistic verification
+  SkepticService,
+  createSkepticService,
+  ClaimType,
+  VerificationStatus,
+  SkepticVerdict,
+  // Orchestration Visibility
+  OrchestrationVisibility,
+  VisibilityLevel,
+  createOrchestrationVisibility,
+  getOrchestrationVisibility,
+  // HeartbeatService - Continuous health monitoring (AXE 5: OBSERVE)
+  HeartbeatService,
+  HealthStatus,
+  createHeartbeatService,
+  createDefaultChecks,
+  getHeartbeatService,
+  // SLATracker - 99.9% uptime compliance (AXE 5: OBSERVE)
+  SLATracker,
+  SLAStatus,
+  SLA_TARGETS,
+  createSLATracker,
+  getSLATracker,
+  // ConsciousnessBridge - System health to awareness (AXE 5: OBSERVE)
+  ConsciousnessBridge,
+  ObservationType,
+  createConsciousnessBridge,
+  getConsciousnessBridge,
+  wireConsciousness,
+  // EmergenceDetector - Cross-session pattern analysis (AXE 6: EMERGE)
+  EmergenceDetector,
+  PatternCategory,
+  SignificanceLevel,
+  createEmergenceDetector,
+  getEmergenceDetector,
 } from './services/index.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -275,6 +325,15 @@ export {
   DecisionTracer,
   StorageMode,
   createDecisionTracer,
+  // Q-Learning Service (AXE 2: PERSIST)
+  QLearningService,
+  QLearningQTable,
+  QLearningStateFeatures,
+  LEARNING_CONFIG,
+  createQLearningService,
+  getQLearningService,
+  getQLearningServiceAsync,
+  _resetQLearningServiceForTesting,
 } from './orchestration/index.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -296,6 +355,12 @@ export {
   createAgentBooster,
   TransformIntent,
   TransformStatus,
+  // LLM Router - Tier → Provider selection (Task #21)
+  LLMRouter,
+  TIER_MODEL_MAP,
+  TIER_PROVIDER_CONFIG,
+  createLLMRouter,
+  getLLMRouter,
 } from './routing/index.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════

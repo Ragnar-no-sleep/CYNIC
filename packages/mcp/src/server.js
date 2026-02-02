@@ -25,7 +25,8 @@ import { ServiceInitializer } from './server/ServiceInitializer.js';
 // Get __dirname equivalent for ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = join(__filename, '..');
-import { CYNICJudge, createCollectivePack, LearningService, createEScoreCalculator, createEmergenceLayer, DogOrchestrator, SharedMemory, createAutonomousDaemon } from '@cynic/node';
+import { CYNICJudge, LearningService, createEScoreCalculator, createEmergenceLayer, DogOrchestrator, createAutonomousDaemon, getCollectivePack, getSharedMemory, createHeartbeatService, createSLATracker, createConsciousnessBridge, createDefaultChecks, createEmergenceDetector } from '@cynic/node';
+import { UnifiedOrchestrator } from '@cynic/node/orchestration/unified-orchestrator.js';
 import { createPatternDetector } from '@cynic/emergence';
 import { createAllTools } from './tools/index.js';
 import { createThermodynamicsTracker } from './thermodynamics-tracker.js';
@@ -120,14 +121,42 @@ export class MCPServer {
       timeout: 5000,
     });
 
-    // Shared Memory for collective knowledge (Layer 2 + 3)
-    this.sharedMemory = options.sharedMemory || new SharedMemory();
+    // ═══════════════════════════════════════════════════════════════════════════
+    // COLLECTIVE SINGLETON - "One pack, one truth"
+    // Use singletons to ensure all components share the same Dogs and Memory
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // Shared Memory for collective knowledge (Layer 2 + 3) - SINGLETON
+    this.sharedMemory = options.sharedMemory || getSharedMemory();
+
+    // Collective Pack with 11 Dogs - SINGLETON
+    // This is the source of truth for all Dog instances
+    this.collectivePack = options.collectivePack || getCollectivePack({
+      sharedMemory: this.sharedMemory,
+      judge: this.judge,
+      persistence: options.persistence || null,
+      consensusThreshold: 0.618,  // φ⁻¹
+    });
 
     // Dog Orchestrator for parallel judgment voting (11 Dogs)
+    // Now properly wired to the CollectivePack singleton!
     this.dogOrchestrator = options.dogOrchestrator || new DogOrchestrator({
+      collectivePack: this.collectivePack,  // ✅ WIRED to singleton!
       sharedMemory: this.sharedMemory,
       mode: 'parallel',  // All dogs vote in parallel
       consensusThreshold: 0.618,  // φ⁻¹ consensus
+    });
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // UNIFIED ORCHESTRATOR - Single entry point for ALL orchestration
+    // Coordinates: Dog voting, Engine synthesis, Skill invocation, Learning
+    // "φ coordinates all" - κυνικός
+    // ═══════════════════════════════════════════════════════════════════════════
+    this.unifiedOrchestrator = options.unifiedOrchestrator || new UnifiedOrchestrator({
+      dogOrchestrator: this.dogOrchestrator,
+      engineOrchestrator: this.engineOrchestrator,
+      persistence: null, // Set later after persistence is initialized
+      eventBus: null, // Will use global event bus
     });
 
     // Burn Verifier (optional - requires Solana RPC connection)
@@ -280,6 +309,15 @@ export class MCPServer {
     Object.assign(this, services);
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // WIRE UNIFIED ORCHESTRATOR (now that persistence is available)
+    // "φ coordinates all" - κυνικός
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (this.unifiedOrchestrator && this.persistence) {
+      this.unifiedOrchestrator.persistence = this.persistence;
+      console.error('   UnifiedOrchestrator: wired with persistence');
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // MCPServer-specific initialization (not in ServiceInitializer)
     // ═══════════════════════════════════════════════════════════════════════════
 
@@ -347,6 +385,91 @@ export class MCPServer {
       } catch (err) {
         console.error(`   AutonomousDaemon: FAILED (${err.message})`);
         this.autonomousDaemon = null;
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // AXE 5: OBSERVE - Continuous health monitoring for 99.9% uptime
+    // HeartbeatService → SLATracker → ConsciousnessBridge
+    // "Le chien surveille tout" - κυνικός
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (!this.heartbeatService && this.persistence?.pool) {
+      try {
+        // Create health checks for all components
+        const healthChecks = createDefaultChecks({
+          pool: this.persistence.pool,
+          redis: this.persistence.redis,
+          mcpUrl: this.mode === 'http' ? `http://localhost:${this.port}` : null,
+          collectivePack: this.collectivePack,
+        });
+
+        // HeartbeatService - continuous health monitoring
+        this.heartbeatService = createHeartbeatService({
+          components: healthChecks,
+          config: {
+            intervalMs: 30000,  // Ping every 30s
+            timeoutMs: 5000,    // 5s component timeout
+          },
+        });
+
+        // SLATracker - 99.9% uptime compliance
+        this.slaTracker = createSLATracker({
+          heartbeat: this.heartbeatService,
+          alertManager: {
+            critical: (msg, data) => console.error(`🔴 SLA CRITICAL: ${msg}`, data),
+            warning: (msg, data) => console.error(`⚠️ SLA WARNING: ${msg}`, data),
+          },
+        });
+
+        // ConsciousnessBridge - wire health to consciousness
+        this.consciousnessBridge = createConsciousnessBridge({
+          consciousness: this.collectivePack?.consciousness || null,
+          heartbeat: this.heartbeatService,
+          slaTracker: this.slaTracker,
+        });
+
+        // Start heartbeat monitoring
+        this.heartbeatService.start();
+        console.error('   HeartbeatService: ACTIVE (30s interval, φ-aligned thresholds)');
+        console.error('   SLATracker: ACTIVE (99.9% uptime target)');
+        console.error('   ConsciousnessBridge: ACTIVE (health → awareness)');
+      } catch (err) {
+        console.error(`   ObservabilityStack: FAILED (${err.message})`);
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // AXE 6: EMERGE - Cross-session pattern detection
+    // Detects: recurring mistakes, successful strategies, user preferences
+    // "From chaos, patterns emerge" - κυνικός
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (!this.emergenceDetector && this.persistence?.pool) {
+      try {
+        this.emergenceDetector = createEmergenceDetector({
+          persistence: this.persistence,
+          memoryRetriever: this.persistence?.repositories?.memory,
+          embedder: this.persistence?.embedder || null,
+          config: {
+            analysisIntervalMs: 60 * 60 * 1000, // 1 hour
+          },
+        });
+
+        // Wire emergence events to consciousness
+        this.emergenceDetector.on('significant_pattern', (data) => {
+          console.error(`🌟 EMERGENCE: ${data.pattern.subject} (${data.pattern.significance})`);
+          if (this.consciousnessBridge) {
+            this.consciousnessBridge.observe('EMERGENCE', {
+              pattern: data.pattern.key,
+              significance: data.pattern.significance,
+              category: data.pattern.category,
+            }, data.pattern.confidence);
+          }
+        });
+
+        this.emergenceDetector.start();
+        console.error('   EmergenceDetector: ACTIVE (1h analysis interval)');
+      } catch (err) {
+        console.error(`   EmergenceDetector: FAILED (${err.message})`);
       }
     }
 
@@ -1356,6 +1479,37 @@ export class MCPServer {
       }
     }
 
+    // Stop observability stack (AXE 5: OBSERVE)
+    if (this.heartbeatService) {
+      try {
+        const status = this.heartbeatService.getStatus();
+        this.heartbeatService.stop();
+        console.error(`   HeartbeatService stopped (uptime: ${(status.metrics.systemUptime * 100).toFixed(2)}%)`);
+      } catch (e) {
+        console.error('Error stopping HeartbeatService:', e.message);
+      }
+    }
+
+    if (this.slaTracker) {
+      try {
+        const report = this.slaTracker.getReport();
+        console.error(`   SLATracker stopped (compliance: ${report.compliance}%, violations: ${report.totalViolations})`);
+      } catch (e) {
+        console.error('Error getting SLA report:', e.message);
+      }
+    }
+
+    // Stop emergence detector (AXE 6: EMERGE)
+    if (this.emergenceDetector) {
+      try {
+        const stats = this.emergenceDetector.getStats();
+        this.emergenceDetector.stop();
+        console.error(`   EmergenceDetector stopped (patterns: ${stats.patternCount}, facts: ${stats.factsStored})`);
+      } catch (e) {
+        console.error('Error stopping EmergenceDetector:', e.message);
+      }
+    }
+
     // Stop X proxy service
     if (this.xProxy) {
       try {
@@ -1523,9 +1677,50 @@ export class MCPServer {
     // Generate toolUseId for duration tracking (Vibecraft pattern)
     const toolUseId = `tool_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // UNIFIED ORCHESTRATOR: Single entry point for tool orchestration
+    // Routes through: User profile → KETER routing → DogOrchestrator → Learning
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (this.unifiedOrchestrator) {
+      try {
+        const decision = await this.unifiedOrchestrator.processTool(name, {
+          ...args,
+          toolUseId,
+        });
+
+        // Check if blocked by UnifiedOrchestrator
+        if (decision.outcome === 'BLOCK' || decision.preExecution?.blocked) {
+          const reason = decision.preExecution?.reason || 'Operation blocked by KETER';
+          console.error(`🐕 [BLOCKED] Tool "${name}" blocked: ${reason}`);
+
+          if (this.sessionManager) {
+            this.sessionManager.recordDangerBlocked();
+          }
+
+          throw new Error(`[BLOCKED] ${reason}`);
+        }
+
+        // Broadcast routing decision for visibility
+        this._broadcastSSEEvent('tool_pre', {
+          tool: name,
+          toolUseId,
+          input: args,
+          routing: decision.routing,
+          judgment: decision.judgment ? {
+            score: decision.judgment.score,
+            verdict: decision.judgment.verdict,
+          } : null,
+          timestamp: Date.now(),
+        });
+      } catch (err) {
+        // If UnifiedOrchestrator fails, fall through to collective
+        console.error(`🐕 [WARN] UnifiedOrchestrator error, falling back: ${err.message}`);
+      }
+    }
+
     // 🐕 COLLECTIVE: PreToolUse → Full pipeline (shouldTrigger → analyze → decide)
-    // All 11 Dogs process the event, Guardian can block
-    if (this.collective) {
+    // Fallback if UnifiedOrchestrator not available or failed
+    if (this.collective && !this.unifiedOrchestrator) {
       const hookResult = await this.collective.receiveHookEvent({
         hookType: 'PreToolUse',
         payload: {

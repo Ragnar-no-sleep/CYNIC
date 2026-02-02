@@ -12,9 +12,11 @@
 'use strict';
 
 import {
-  CYNICJudge, createCollectivePack, LearningService, LearningManager,
+  CYNICJudge, LearningService, LearningManager,
   createEScoreCalculator, JudgmentGraphIntegration, createEngineIntegration,
   createAutomationExecutor, getEventBus,
+  // Collective Singleton - "One pack, one truth"
+  getCollectivePack, awakenCynic,
   // Claude Flow Integration (Phase 21)
   createSONA, createTieredRouter, createAgentBooster,
   createTokenOptimizer, createHyperbolicSpace, createComplexityClassifier,
@@ -580,7 +582,11 @@ export class ServiceInitializer {
   }
 
   async _createCollective(services) {
-    const pack = createCollectivePack({
+    // ═══════════════════════════════════════════════════════════════════════════
+    // USE SINGLETON - "One pack, one truth"
+    // This ensures ServiceInitializer uses the same pack as MCP server and hooks
+    // ═══════════════════════════════════════════════════════════════════════════
+    const pack = getCollectivePack({
       judge: services.judge,
       profileLevel: 3,
       persistence: services.persistence,
@@ -588,8 +594,8 @@ export class ServiceInitializer {
       onDogDecision: this.config.onDogDecision,
     });
 
-    // Awaken CYNIC for this session
-    const awakening = await pack.awakenCynic({
+    // Awaken CYNIC for this session (uses singleton helper)
+    const awakening = await awakenCynic({
       sessionId: `mcp_${Date.now()}`,
       userId: 'mcp_server',
       project: 'cynic-mcp',

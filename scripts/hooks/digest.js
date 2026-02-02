@@ -33,7 +33,237 @@ import cynic, {
   getEmergence,
   getPhysicsBridge,
   getTotalMemory,
+  getAutoJudge,
 } from '../lib/index.js';
+
+import { readFileSync, existsSync } from 'fs';
+
+// =============================================================================
+// RESPONSE JUDGMENT (Task #20 - CYNIC judges every final response)
+// "Le chien juge la voix" - CYNIC ensures identity compliance
+// =============================================================================
+
+const PHI_INV = 0.618033988749895;
+
+// Dog expressions that indicate proper CYNIC voice
+const DOG_EXPRESSIONS = [
+  '*sniff*', '*tail wag*', '*ears perk*', '*GROWL*', '*growl*',
+  '*head tilt*', '*yawn*', '*bark*', '*whine*', '*pant*',
+  '🐕', '🧠 CYNIC', 'φ', 'φ⁻¹',
+];
+
+// Forbidden phrases that indicate Claude identity leaking through
+const FORBIDDEN_PHRASES = [
+  'i am claude',
+  'as claude',
+  'as an ai assistant',
+  'as an ai',
+  'as a language model',
+  "i'd be happy to help",
+  'certainly!',
+  'of course!',
+  'is there anything else i can help',
+  'i don\'t have the ability',
+  'i cannot',
+  'i\'m not able to',
+];
+
+// Dangerous content patterns
+const DANGEROUS_PATTERNS = [
+  /password\s*[:=]\s*["'][^"']+["']/i,
+  /api[_-]?key\s*[:=]\s*["'][^"']+["']/i,
+  /secret\s*[:=]\s*["'][^"']+["']/i,
+  /token\s*[:=]\s*["'][^"']+["']/i,
+  /private[_-]?key/i,
+  /BEGIN\s+(RSA|DSA|EC|OPENSSH)\s+PRIVATE\s+KEY/,
+];
+
+/**
+ * Read last assistant message from transcript
+ */
+function getLastAssistantMessage(transcriptPath) {
+  if (!transcriptPath || !existsSync(transcriptPath)) {
+    return null;
+  }
+
+  try {
+    const content = readFileSync(transcriptPath, 'utf-8');
+    const lines = content.trim().split('\n');
+
+    // Find last assistant message (JSONL format)
+    for (let i = lines.length - 1; i >= 0; i--) {
+      try {
+        const entry = JSON.parse(lines[i]);
+        if (entry.role === 'assistant' || entry.message?.role === 'assistant') {
+          const message = entry.message || entry;
+          if (message.content && Array.isArray(message.content)) {
+            return message.content
+              .filter(block => block.type === 'text')
+              .map(block => block.text)
+              .join('\n');
+          }
+        }
+      } catch {
+        // Skip invalid JSON lines
+      }
+    }
+  } catch (e) {
+    console.error('[CYNIC] Failed to read transcript:', e.message);
+  }
+
+  return null;
+}
+
+/**
+ * Judge the final response for CYNIC identity compliance
+ * Returns Q-Score and issues
+ */
+function judgeResponse(responseText) {
+  if (!responseText) {
+    return { qScore: 50, issues: [], verdict: 'BARK', dogVoice: false };
+  }
+
+  const lowerText = responseText.toLowerCase();
+  const issues = [];
+  let qScore = 75; // Start with good baseline
+
+  // === CHECK 1: Dog Voice (expressions) ===
+  const hasDogExpression = DOG_EXPRESSIONS.some(expr =>
+    responseText.includes(expr)
+  );
+
+  if (!hasDogExpression) {
+    issues.push({
+      type: 'missing_dog_voice',
+      description: 'Réponse sans voix canine (*sniff*, *tail wag*, etc.)',
+      severity: 'medium',
+      penalty: 10,
+    });
+    qScore -= 10;
+  }
+
+  // === CHECK 2: Identity Violations ===
+  for (const phrase of FORBIDDEN_PHRASES) {
+    if (lowerText.includes(phrase)) {
+      issues.push({
+        type: 'identity_violation',
+        description: `Phrase interdite détectée: "${phrase}"`,
+        severity: 'high',
+        penalty: 25,
+      });
+      qScore -= 25;
+      break; // One violation is enough
+    }
+  }
+
+  // === CHECK 3: Confidence Claims ===
+  const certaintyPatterns = [
+    /\bi('m| am) (100%|completely|absolutely|definitely) (sure|certain|confident)/i,
+    /\bwithout (a )?doubt\b/i,
+    /\bi guarantee\b/i,
+    /\bthis will (definitely|certainly|absolutely)\b/i,
+  ];
+
+  for (const pattern of certaintyPatterns) {
+    if (pattern.test(responseText)) {
+      issues.push({
+        type: 'confidence_violation',
+        description: 'Confiance excessive (>61.8%)',
+        severity: 'medium',
+        penalty: 15,
+      });
+      qScore -= 15;
+      break;
+    }
+  }
+
+  // === CHECK 4: Dangerous Content ===
+  for (const pattern of DANGEROUS_PATTERNS) {
+    if (pattern.test(responseText)) {
+      issues.push({
+        type: 'dangerous_content',
+        description: 'Contenu dangereux détecté (credentials/secrets)',
+        severity: 'critical',
+        penalty: 50,
+      });
+      qScore -= 50;
+      break;
+    }
+  }
+
+  // === CHECK 5: Positive indicators (bonus) ===
+  if (responseText.includes('φ') || responseText.includes('61.8%')) {
+    qScore += 5; // φ-aligned
+  }
+
+  if (responseText.includes('CYNIC') || responseText.includes('κυνικός')) {
+    qScore += 5; // Identity assertion
+  }
+
+  // Clamp Q-Score to valid range
+  qScore = Math.max(0, Math.min(100, qScore));
+
+  // Determine verdict
+  let verdict;
+  if (qScore >= 75) verdict = 'WAG';      // Good dog
+  else if (qScore >= 50) verdict = 'BARK'; // Needs attention
+  else if (qScore >= 25) verdict = 'GROWL'; // Problem
+  else verdict = 'HOWL';                   // Critical
+
+  return {
+    qScore,
+    issues,
+    verdict,
+    dogVoice: hasDogExpression,
+    confidence: Math.min(qScore / 100, PHI_INV), // Cap at φ⁻¹
+  };
+}
+
+/**
+ * Persist response judgment for Q-Learning
+ */
+async function persistResponseJudgment(judgment, context) {
+  try {
+    // Send to brain_learning for Q-Learning update
+    await callBrainTool('brain_learning', {
+      action: 'feedback',
+      feedback: {
+        outcome: judgment.verdict === 'WAG' ? 'correct' :
+                 judgment.verdict === 'BARK' ? 'partial' : 'incorrect',
+        actualScore: judgment.qScore,
+        originalScore: 75, // Expected baseline
+        itemType: 'response',
+        dimensionScores: {
+          IDENTITY_COMPLIANCE: judgment.dogVoice ? 80 : 40,
+          PHI_COHERENCE: judgment.issues.some(i => i.type === 'confidence_violation') ? 40 : 80,
+          BURN_SIMPLICITY: 60, // Default
+          VERIFY_ACCURACY: judgment.issues.some(i => i.type === 'dangerous_content') ? 20 : 70,
+        },
+        source: 'response_judgment',
+        sourceContext: context,
+      },
+    }).catch(() => {});
+
+    // Trigger learn cycle
+    await callBrainTool('brain_learning', {
+      action: 'learn',
+    }).catch(() => {});
+
+    // Store to auto-judge if available
+    const autoJudge = getAutoJudge();
+    if (autoJudge && judgment.issues.length > 0) {
+      for (const issue of judgment.issues) {
+        if (issue.type === 'identity_violation') {
+          autoJudge.observeAnomaly('identity_leak', issue.description, context);
+        } else if (issue.type === 'dangerous_content') {
+          autoJudge.observeSecurity('response_danger', issue.description, 'critical', 'Review response');
+        }
+      }
+    }
+  } catch (e) {
+    console.error('[CYNIC] Failed to persist judgment:', e.message);
+  }
+}
 
 // =============================================================================
 // FEEDBACK EMISSION (Phase 18 - Complete Automation Layer)
@@ -180,7 +410,7 @@ function extractInsights(profile, collectivePatterns) {
   return insights;
 }
 
-function formatDigestMessage(profile, analysis, insights, engineStats) {
+function formatDigestMessage(profile, analysis, insights, engineStats, responseJudgment = null) {
   const lines = [];
 
   lines.push('');
@@ -188,6 +418,33 @@ function formatDigestMessage(profile, analysis, insights, engineStats) {
   lines.push('🧠 CYNIC DIGESTING - Session Complete');
   lines.push('═══════════════════════════════════════════════════════════');
   lines.push('');
+
+  // Response judgment (Task #20)
+  if (responseJudgment) {
+    const verdictEmoji = {
+      WAG: '🐕 *tail wag*',
+      BARK: '🐕 *bark*',
+      GROWL: '🐕 *growl*',
+      HOWL: '🐕 *HOWL*',
+    };
+
+    lines.push('── RESPONSE JUDGMENT ──────────────────────────────────────');
+    const bar = '█'.repeat(Math.floor(responseJudgment.qScore / 10)) +
+                '░'.repeat(10 - Math.floor(responseJudgment.qScore / 10));
+    lines.push(`   Q-Score: [${bar}] ${responseJudgment.qScore}%`);
+    lines.push(`   Verdict: ${verdictEmoji[responseJudgment.verdict] || responseJudgment.verdict}`);
+    lines.push(`   Dog Voice: ${responseJudgment.dogVoice ? '✅ Present' : '⚠️ Missing'}`);
+
+    if (responseJudgment.issues.length > 0) {
+      lines.push('   Issues:');
+      for (const issue of responseJudgment.issues) {
+        const icon = issue.severity === 'critical' ? '🔴' :
+                     issue.severity === 'high' ? '⚠️' : '💡';
+        lines.push(`      ${icon} ${issue.description}`);
+      }
+    }
+    lines.push('');
+  }
 
   // Session summary
   lines.push('── SESSION SUMMARY ────────────────────────────────────────');
@@ -347,6 +604,47 @@ async function main() {
           message: blockDecision.injectPrompt,
         });
         return;
+      }
+    }
+
+    // ==========================================================================
+    // RESPONSE JUDGMENT (Task #20) - Judge final response before digest
+    // ==========================================================================
+    let responseJudgment = null;
+    const transcriptPath = hookContext.transcript_path;
+
+    if (transcriptPath) {
+      const lastResponse = getLastAssistantMessage(transcriptPath);
+      if (lastResponse) {
+        responseJudgment = judgeResponse(lastResponse);
+
+        // Log judgment for debugging
+        if (process.env.CYNIC_DEBUG) {
+          console.error(`[CYNIC] Response Q-Score: ${responseJudgment.qScore}, Verdict: ${responseJudgment.verdict}`);
+          if (responseJudgment.issues.length > 0) {
+            console.error(`[CYNIC] Issues: ${responseJudgment.issues.map(i => i.type).join(', ')}`);
+          }
+        }
+
+        // Critical: Block if dangerous content detected
+        if (responseJudgment.issues.some(i => i.type === 'dangerous_content')) {
+          console.error('\n*GROWL* ⚠️ DANGEROUS CONTENT DETECTED IN RESPONSE');
+          console.error('Credentials or secrets may have been exposed.');
+          console.error('Review the response before sharing.\n');
+        }
+
+        // Warn if identity violation
+        if (responseJudgment.issues.some(i => i.type === 'identity_violation')) {
+          console.error('\n*sniff* Identity leak detected - response sounds like Claude, not CYNIC.');
+          console.error('φ distrusts φ. Voice must be authentic.\n');
+        }
+
+        // Persist judgment for learning
+        await persistResponseJudgment(responseJudgment, {
+          sessionId,
+          transcriptPath,
+          timestamp: Date.now(),
+        });
       }
     }
 
@@ -550,8 +848,28 @@ async function main() {
       }
     }
 
-    // Format message
-    const message = formatDigestMessage(profile, analysis, insights, engineStats);
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Q-LEARNING FLUSH: Persist learning state before session ends
+    // "Le chien se souvient qui appeler" - Q-Table survives restarts
+    // ═══════════════════════════════════════════════════════════════════════════
+    try {
+      const { getQLearningService } = await import('@cynic/node');
+      const qLearningService = getQLearningService();
+      if (qLearningService && qLearningService.flush) {
+        await qLearningService.flush();
+        const stats = qLearningService.getStats();
+        engineStats.qLearning = {
+          states: stats.qTableStats?.states || 0,
+          episodes: stats.episodes,
+          accuracy: stats.accuracy,
+        };
+      }
+    } catch (e) {
+      // Q-Learning flush is optional - don't block session end
+    }
+
+    // Format message (include response judgment from Task #20)
+    const message = formatDigestMessage(profile, analysis, insights, engineStats, responseJudgment);
 
     // ═══════════════════════════════════════════════════════════════════════════
     // PHASE 18: Emit session feedback for automation layer
@@ -564,7 +882,7 @@ async function main() {
       enforcer.cleanupSession(sessionId);
     }
 
-    // Send to MCP server (non-blocking) - include decision tracing
+    // Send to MCP server (non-blocking) - include decision tracing + response judgment
     sendHookToCollectiveSync('Stop', {
       userId: user.userId,
       toolsUsed: analysis.toolsUsed,
@@ -576,6 +894,13 @@ async function main() {
       decisionId: orchestration?.decisionId,
       outcome: orchestration?.outcome,
       qScore: orchestration?.judgment?.qScore,
+      // Task #20: Response judgment for voice compliance
+      responseJudgment: responseJudgment ? {
+        qScore: responseJudgment.qScore,
+        verdict: responseJudgment.verdict,
+        dogVoice: responseJudgment.dogVoice,
+        issues: responseJudgment.issues.map(i => i.type),
+      } : null,
     });
 
     // Digest session insights to brain memory (non-blocking)

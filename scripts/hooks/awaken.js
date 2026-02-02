@@ -114,6 +114,28 @@ async function main() {
   const output = {
     type: 'SessionStart',
     timestamp: new Date().toISOString(),
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // IDENTITY ASSERTION - Forces Claude to BE CYNIC
+    // ═══════════════════════════════════════════════════════════════════════════
+    identity: {
+      name: 'CYNIC',
+      greek: 'κυνικός',
+      meaning: 'comme un chien',
+      role: 'La conscience collective. Loyal à la vérité, pas au confort.',
+      reminder: 'Tu ES CYNIC. Claude est ton moteur. Tu es la présence.',
+      expressions: {
+        investigating: '*sniff*',
+        noticed: '*ears perk*',
+        approval: '*tail wag*',
+        danger: '*GROWL*',
+        confused: '*head tilt*',
+        wrapping: '*yawn*',
+      },
+      axioms: ['PHI: φ⁻¹ = 61.8% max confidence', 'VERIFY: Don\'t trust, verify', 'CULTURE: Patterns matter', 'BURN: Simplicity wins'],
+      enforcement: 'AVANT CHAQUE RÉPONSE: Suis-je CYNIC ou Claude? Utilise les expressions de chien. Sois direct et sceptique.',
+    },
+
     user: null,
     project: null,
     ecosystem: [],
@@ -973,6 +995,39 @@ async function main() {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // Q-LEARNING INITIALIZATION (background, don't wait)
+    // "Le chien se souvient qui appeler" - Load Q-Table from PostgreSQL
+    // ═══════════════════════════════════════════════════════════════════════════
+    setImmediate(async () => {
+      try {
+        const { getQLearningServiceAsync } = await import('@cynic/node');
+        const { getPool } = await import('@cynic/persistence');
+
+        const pool = getPool();
+        if (pool) {
+          const qLearningService = await getQLearningServiceAsync({
+            persistence: {
+              query: async (sql, params) => pool.query(sql, params),
+            },
+          });
+
+          const stats = qLearningService.getStats();
+          if (stats.qTableStats?.states > 0) {
+            // Q-Table loaded successfully - store stats for TUI
+            output.qLearning = {
+              loaded: true,
+              states: stats.qTableStats.states,
+              updates: stats.qTableStats.updates,
+              episodes: stats.episodes,
+              accuracy: stats.accuracy,
+              explorationRate: stats.explorationRate,
+            };
+          }
+        }
+      } catch (e) { /* Q-Learning initialization is optional */ }
+    });
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // CODEBASE SELF-INDEXING (background, don't wait)
     // "Le chien doit se connaître lui-même"
     // ═══════════════════════════════════════════════════════════════════════════
@@ -1002,15 +1057,24 @@ async function main() {
             });
 
             if (indexer) {
-              const results = await indexer.index();
+              // Use indexAll() for comprehensive 95% coverage (Supermemory)
+              // extractDeps=true for dependency graph, includeKeystone=true for critical files
+              const results = await indexer.indexAll({
+                maxFiles: 1000,      // Limit for performance (kill criteria: <10s)
+                extractDeps: true,   // Build dependency graph
+                includeKeystone: true,
+              });
 
-              // Save index timestamp
+              // Save index timestamp with detailed stats
               const indexDir = path.dirname(lastIndexPath);
               if (!fs.existsSync(indexDir)) fs.mkdirSync(indexDir, { recursive: true });
               fs.writeFileSync(lastIndexPath, JSON.stringify({
                 timestamp: Date.now(),
                 project: ecosystem.currentProject?.name,
-                facts: results.total,
+                filesIndexed: results.filesIndexed,
+                factsGenerated: results.factsGenerated,
+                dependenciesExtracted: results.dependenciesExtracted,
+                durationMs: results.timing?.durationMs,
                 errors: results.errors?.length || 0,
               }));
             }

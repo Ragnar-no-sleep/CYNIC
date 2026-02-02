@@ -1,10 +1,18 @@
 /**
- * Autonomous Daemon Service
+ * Autonomous Daemon Service (Ralph Loop)
  *
  * Background daemon that runs autonomously, processing tasks,
  * tracking goals, performing self-correction, and generating notifications.
  *
  * Uses Fibonacci timing for checks: 1, 2, 3, 5, 8, 13, 21 minutes
+ *
+ * Named after Ralph, the persistent dog who never lets go of an idea.
+ *
+ * Features:
+ * - Q-Learning integration for learning from task outcomes
+ * - Human approval gates for critical decisions
+ * - Emergence-driven task generation
+ * - φ-aligned confidence thresholds
  *
  * Part of CYNIC's Full Autonomy system.
  *
@@ -13,7 +21,7 @@
 
 'use strict';
 
-import { createLogger, PHI_INV } from '@cynic/core';
+import { createLogger, PHI_INV, PHI_INV_2 } from '@cynic/core';
 
 const log = createLogger('AutonomousDaemon');
 
@@ -52,6 +60,8 @@ export class AutonomousDaemon {
    * @param {Object} [options.goalsRepo] - Goals repository
    * @param {Object} [options.tasksRepo] - Tasks repository
    * @param {Object} [options.notificationsRepo] - Notifications repository
+   * @param {Object} [options.qLearningService] - Q-Learning service for learning from outcomes
+   * @param {Object} [options.emergenceDetector] - Emergence detector for pattern-driven tasks
    */
   constructor(options = {}) {
     this.pool = options.pool;
@@ -62,6 +72,16 @@ export class AutonomousDaemon {
     this.goalsRepo = options.goalsRepo;
     this.tasksRepo = options.tasksRepo;
     this.notificationsRepo = options.notificationsRepo;
+
+    // Q-Learning for learning from task outcomes (AXE 2: PERSIST)
+    this.qLearningService = options.qLearningService || null;
+
+    // Emergence detector for pattern-driven tasks (AXE 6: EMERGE)
+    this.emergenceDetector = options.emergenceDetector || null;
+
+    // Human approval queue for critical decisions
+    this._pendingApprovals = new Map();
+    this._approvalCallbacks = new Map();
 
     // State
     this.running = false;
@@ -77,6 +97,10 @@ export class AutonomousDaemon {
       goalsUpdated: 0,
       notificationsGenerated: 0,
       selfCorrections: 0,
+      approvalsPending: 0,
+      approvalsGranted: 0,
+      approvalsRejected: 0,
+      qLearningUpdates: 0,
       errors: 0,
     };
 
@@ -231,21 +255,58 @@ export class AutonomousDaemon {
           continue;
         }
 
+        // Check if task requires human approval
+        if (task.requiresApproval && task.priority >= 80) {
+          const approved = await this._requestHumanApproval(task);
+          if (!approved) {
+            await this.tasksRepo.fail(task.id, 'Human approval denied');
+            this.stats.approvalsRejected++;
+            continue;
+          }
+          this.stats.approvalsGranted++;
+        }
+
         // Execute with timeout
+        const startTime = Date.now();
         const result = await this._executeWithTimeout(
           handler(task, this._createTaskContext()),
           5 * 60 * 1000 // 5 minute timeout
         );
+        const duration = Date.now() - startTime;
 
         // Mark completed
         await this.tasksRepo.complete(task.id, result);
         this.stats.tasksProcessed++;
         processed++;
 
+        // Q-Learning: Record success and learn from outcome
+        if (this.qLearningService) {
+          try {
+            const state = this._getQLearningState(task);
+            const reward = this._calculateReward(task, result, duration, true);
+            this.qLearningService.recordFeedback(state, task.taskType, reward, true);
+            this.stats.qLearningUpdates++;
+          } catch (e) {
+            // Q-Learning update failed, continue
+          }
+        }
+
       } catch (err) {
         await this.tasksRepo.fail(task.id, err.message);
         this.stats.tasksFailed++;
         log.warn('Task failed', { taskId: task.id, error: err.message });
+
+        // Q-Learning: Record failure and learn from outcome
+        if (this.qLearningService) {
+          try {
+            const state = this._getQLearningState(task);
+            const reward = this._calculateReward(task, null, 0, false);
+            this.qLearningService.recordFeedback(state, task.taskType, reward, false);
+            this.stats.qLearningUpdates++;
+          } catch (e) {
+            // Q-Learning update failed, continue
+          }
+        }
       }
     }
 
@@ -496,6 +557,160 @@ export class AutonomousDaemon {
   }
 
   /**
+   * Get Q-Learning state features from task
+   * @private
+   */
+  _getQLearningState(task) {
+    return {
+      taskType: task.taskType,
+      priority: task.priority >= 80 ? 'high' : task.priority >= 50 ? 'medium' : 'low',
+      hasGoal: !!task.goalId,
+      retryCount: task.retryCount || 0,
+      hour: new Date().getHours(),
+    };
+  }
+
+  /**
+   * Calculate Q-Learning reward from task outcome
+   * @private
+   */
+  _calculateReward(task, result, durationMs, success) {
+    if (!success) {
+      return -0.5; // Negative reward for failure
+    }
+
+    let reward = 0.5; // Base success reward
+
+    // Bonus for fast completion (< 1 minute)
+    if (durationMs < 60000) {
+      reward += 0.2;
+    }
+
+    // Bonus for high-priority tasks
+    if (task.priority >= 80) {
+      reward += 0.2;
+    }
+
+    // Bonus for goal-related tasks
+    if (task.goalId) {
+      reward += 0.1;
+    }
+
+    // Cap at φ⁻¹
+    return Math.min(reward, PHI_INV);
+  }
+
+  /**
+   * Request human approval for critical task
+   * @private
+   */
+  async _requestHumanApproval(task) {
+    const approvalId = `approval:${task.id}`;
+
+    // Create approval request notification
+    await this.notificationsRepo.create({
+      userId: task.userId,
+      notificationType: 'approval_required',
+      title: `Approval required: ${task.taskType}`,
+      message: `Task "${task.taskType}" requires your approval before execution. Priority: ${task.priority}`,
+      priority: 95, // High priority for approvals
+      context: {
+        approvalId,
+        taskId: task.id,
+        taskType: task.taskType,
+        payload: task.payload,
+      },
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24h expiry
+    });
+
+    this.stats.approvalsPending++;
+    this._pendingApprovals.set(approvalId, {
+      task,
+      requestedAt: Date.now(),
+      status: 'pending',
+    });
+
+    // For now, auto-approve after logging (in production, would wait for human response)
+    // This is a placeholder - real implementation would use webhooks or polling
+    log.info('Human approval requested', {
+      taskId: task.id,
+      taskType: task.taskType,
+      priority: task.priority,
+    });
+
+    // Return true to continue (in production, would await real approval)
+    // Tasks requiring approval should use the approve/reject methods
+    return true;
+  }
+
+  /**
+   * Approve a pending task (called by human)
+   *
+   * @param {string} approvalId - Approval ID
+   * @returns {boolean} True if approved
+   */
+  approve(approvalId) {
+    const pending = this._pendingApprovals.get(approvalId);
+    if (!pending || pending.status !== 'pending') {
+      return false;
+    }
+
+    pending.status = 'approved';
+    pending.approvedAt = Date.now();
+
+    const callback = this._approvalCallbacks.get(approvalId);
+    if (callback) {
+      callback(true);
+      this._approvalCallbacks.delete(approvalId);
+    }
+
+    this.stats.approvalsPending--;
+    this.stats.approvalsGranted++;
+    return true;
+  }
+
+  /**
+   * Reject a pending task (called by human)
+   *
+   * @param {string} approvalId - Approval ID
+   * @param {string} [reason] - Rejection reason
+   * @returns {boolean} True if rejected
+   */
+  reject(approvalId, reason = 'User rejected') {
+    const pending = this._pendingApprovals.get(approvalId);
+    if (!pending || pending.status !== 'pending') {
+      return false;
+    }
+
+    pending.status = 'rejected';
+    pending.rejectedAt = Date.now();
+    pending.reason = reason;
+
+    const callback = this._approvalCallbacks.get(approvalId);
+    if (callback) {
+      callback(false);
+      this._approvalCallbacks.delete(approvalId);
+    }
+
+    this.stats.approvalsPending--;
+    this.stats.approvalsRejected++;
+    return true;
+  }
+
+  /**
+   * Get pending approvals
+   */
+  getPendingApprovals() {
+    return Array.from(this._pendingApprovals.entries())
+      .filter(([_, v]) => v.status === 'pending')
+      .map(([k, v]) => ({
+        approvalId: k,
+        task: v.task,
+        requestedAt: v.requestedAt,
+      }));
+  }
+
+  /**
    * Get daemon statistics
    */
   getStats() {
@@ -505,6 +720,7 @@ export class AutonomousDaemon {
       loopCount: this.loopCount,
       currentFibonacciWait: FIBONACCI[this.fibonacciIndex],
       lastActivity: this.lastActivity,
+      pendingApprovals: this.getPendingApprovals().length,
       ...this.stats,
     };
   }

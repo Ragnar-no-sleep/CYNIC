@@ -119,3 +119,15 @@ export {
   createSecurityAuditTrail,
   getSecurityAuditTrail,
 } from './security-audit.js';
+
+// Q-Learning Service - extracted Q-learning from QLearningRouter
+export {
+  QLearningService,
+  QTable as QLearningQTable,  // Renamed to avoid conflict with q-learning-router.js QTable
+  StateFeatures as QLearningStateFeatures,
+  LEARNING_CONFIG,
+  createQLearningService,
+  getQLearningService,
+  getQLearningServiceAsync,
+  _resetQLearningServiceForTesting,
+} from './learning-service.js';

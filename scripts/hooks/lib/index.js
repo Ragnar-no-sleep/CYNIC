@@ -120,7 +120,7 @@ export function getArchitecturalDecisionsRepository() {
 }
 
 // CodebaseIndexer (Self-Knowledge: Codebase awareness)
-let _codebaseIndexer = null;
+const _codebaseIndexer = null;
 
 export function getCodebaseIndexer(options = {}) {
   // Always create fresh to allow different options
@@ -134,7 +134,7 @@ export function getCodebaseIndexer(options = {}) {
 }
 
 // BurnAnalyzer (Vision → Compréhension → Burn)
-let _burnAnalyzer = null;
+const _burnAnalyzer = null;
 
 export function getBurnAnalyzer(options = {}) {
   // Always create fresh to allow different options

@@ -1,0 +1,16 @@
+{
+  "name": "@cynic/benchmarks-core",
+  "version": "0.1.0",
+  "description": "CYNIC core system benchmarks",
+  "type": "module",
+  "main": "benchmark.js",
+  "scripts": {
+    "benchmark": "node benchmark.js",
+    "benchmark:quick": "BENCHMARK_ITERATIONS=10 node benchmark.js"
+  },
+  "dependencies": {
+    "@cynic/core": "workspace:*",
+    "@cynic/node": "workspace:*",
+    "@cynic/persistence": "workspace:*"
+  }
+}

@@ -51,8 +51,8 @@ import {
   AgentEvent,
   EventPriority,
   CollectivePack,
-  createCollectivePack,
 } from './agents/index.js';
+import { getCollectivePack, getSharedMemory } from './collective-singleton.js';
 
 /**
  * Node status
@@ -324,8 +324,9 @@ export class CYNICNode {
       nodeId: this.operator.id,
     });
 
-    // The collective pack (11 dogs)
-    this._collectivePack = createCollectivePack({
+    // The collective pack (11 dogs) - USE SINGLETON
+    // "One pack, one truth" - ensures all components share same Dogs
+    this._collectivePack = getCollectivePack({
       eventBus: this._eventBus,
       sharedMemory: this._sharedMemory,
       nodeId: this.operator.id,

@@ -29,6 +29,10 @@ import { PHI_INV, PHI_INV_2 } from '@cynic/core';
 import { SEFIROT_TEMPLATE } from '../agents/collective/sefirot.js';
 import { CONSULTATION_MATRIX, getConsultants, shouldConsult } from '@cynic/core/orchestration';
 
+// Optional integrations (lazy loaded)
+let LearningService = null;
+let CostOptimizer = null;
+
 // =============================================================================
 // CONSTANTS
 // =============================================================================
@@ -139,9 +143,17 @@ export class KabbalisticRouter {
    * @param {Object} options.collectivePack - CollectivePack instance with all dogs
    * @param {Object} [options.persistence] - Persistence manager
    * @param {Object} [options.relationshipGraph] - RelationshipGraph for learned weights
+   * @param {Object} [options.learningService] - QLearningService for Q-learning feedback
+   * @param {Object} [options.costOptimizer] - CostOptimizer for tier selection
    */
   constructor(options = {}) {
-    const { collectivePack, persistence = null, relationshipGraph = null } = options;
+    const {
+      collectivePack,
+      persistence = null,
+      relationshipGraph = null,
+      learningService = null,
+      costOptimizer = null,
+    } = options;
 
     if (!collectivePack) {
       throw new Error('collectivePack is required');
@@ -150,6 +162,11 @@ export class KabbalisticRouter {
     this.pack = collectivePack;
     this.persistence = persistence;
     this.relationshipGraph = relationshipGraph;
+
+    // Optional integrations
+    this.learningService = learningService;
+    this.costOptimizer = costOptimizer;
+    this._currentEpisodeId = null;
 
     // Track consultation history for circuit breaker
     this.consultationHistory = new Map();
@@ -161,6 +178,8 @@ export class KabbalisticRouter {
       escalationsTriggered: 0,
       consensusReached: 0,
       blocksIssued: 0,
+      localResolutions: 0,
+      costSaved: 0,
     };
   }
 
@@ -184,11 +203,59 @@ export class KabbalisticRouter {
 
     this.stats.routesProcessed++;
 
-    // 1. Determine entry point and path
+    // 0. Cost optimization check (if enabled)
+    let costOptimization = null;
+    if (this.costOptimizer) {
+      costOptimization = this.costOptimizer.optimize({
+        content: payload.input || payload.content || '',
+        type: taskType,
+        context: { complexity: payload.complexity, risk: payload.risk },
+      });
+
+      // LOCAL tier = skip full routing
+      if (!costOptimization.shouldRoute) {
+        this.stats.localResolutions++;
+        this.stats.costSaved += costOptimization.cost;
+
+        return {
+          success: true,
+          taskType,
+          path: [],
+          entrySefirah: null,
+          decisions: [],
+          consultations: [],
+          escalations: [],
+          blocked: false,
+          blockedBy: null,
+          blockMessage: null,
+          synthesis: {
+            hasConsensus: true,
+            consensusResponse: 'allow',
+            confidence: PHI_INV,
+            reason: 'Local resolution (no LLM needed)',
+          },
+          tier: costOptimization.tier,
+          costOptimization,
+          durationMs: Date.now() - startTime,
+          error: null,
+        };
+      }
+    }
+
+    // 1. Start learning episode (if enabled)
+    if (this.learningService) {
+      this._currentEpisodeId = this.learningService.startEpisode({
+        taskType,
+        tool: payload.tool,
+        inputLength: (payload.input || '').length,
+      });
+    }
+
+    // 2. Determine entry point and path
     const path = this.getPath(taskType);
     const entrySefirah = path[0];
 
-    // 2. Create context for path traversal
+    // 3. Create context for path traversal
     const context = {
       taskType,
       payload,
@@ -204,23 +271,42 @@ export class KabbalisticRouter {
       blockMessage: null,
       depth: 0,
       totalConsultations: 0,
+      costOptimization,
     };
 
-    // 3. Execute Lightning Flash traversal
+    // 4. Execute Lightning Flash traversal
     try {
       await this.traversePath(context);
     } catch (error) {
       context.error = error.message;
     }
 
-    // 4. Synthesize at Keter (CYNIC)
+    // 5. Synthesize at Keter (CYNIC)
     const synthesis = await this.synthesize(context);
 
-    // 5. Record stats
+    const durationMs = Date.now() - startTime;
+
+    // 6. Record stats
     if (context.consultations.length > 0) this.stats.consultationsTriggered++;
     if (context.escalations.length > 0) this.stats.escalationsTriggered++;
     if (synthesis.hasConsensus) this.stats.consensusReached++;
     if (context.blocked) this.stats.blocksIssued++;
+
+    // 7. End learning episode (if enabled)
+    if (this.learningService && this._currentEpisodeId) {
+      const reward = this._calculateReward(synthesis, context, durationMs);
+      this.learningService.endEpisode(this._currentEpisodeId, reward);
+      this._currentEpisodeId = null;
+    }
+
+    // 8. Record cost outcome (if enabled)
+    if (this.costOptimizer && costOptimization) {
+      this.costOptimizer.recordOutcome(
+        costOptimization.tier,
+        !context.error,
+        durationMs
+      );
+    }
 
     return {
       success: !context.error,
@@ -239,11 +325,44 @@ export class KabbalisticRouter {
       blockMessage: context.blockMessage,
       // Keter synthesis
       synthesis,
+      // Cost tier (if optimized)
+      tier: costOptimization?.tier,
+      costOptimization,
       // Timing
-      durationMs: Date.now() - startTime,
+      durationMs,
       // Error if any
       error: context.error,
     };
+  }
+
+  /**
+   * Calculate reward for learning service
+   * @private
+   */
+  _calculateReward(synthesis, context, durationMs) {
+    let reward = 0;
+
+    // Base reward for successful completion
+    if (synthesis.hasConsensus) reward += 0.5;
+
+    // Bonus for high confidence
+    if (synthesis.confidence >= THRESHOLDS.CERTAINTY) reward += 0.2;
+
+    // Bonus for efficiency (fewer consultations)
+    if (context.consultations.length === 0) reward += 0.2;
+    else if (context.consultations.length <= 2) reward += 0.1;
+
+    // Penalty for excessive latency
+    if (durationMs > 5000) reward -= 0.1;
+    if (durationMs > 10000) reward -= 0.2;
+
+    // Penalty for errors
+    if (context.error) reward -= 0.5;
+
+    // Penalty for unnecessary escalations
+    if (context.escalations.length > 2) reward -= 0.1;
+
+    return Math.max(-1, Math.min(1, reward));
   }
 
   // ===========================================================================
@@ -356,6 +475,18 @@ export class KabbalisticRouter {
       const action = result?.action || 'continue';
       const message = result?.message || '';
 
+      const durationMs = Date.now() - startTime;
+
+      // Record action to learning service
+      if (this.learningService && this._currentEpisodeId) {
+        this.learningService.recordAction(this._currentEpisodeId, {
+          agent: agentName,
+          response,
+          confidence,
+          latency: durationMs,
+        });
+      }
+
       return {
         agent: agentName,
         sefirah: SEFIROT_TEMPLATE.mappings[agentName]?.sefira || 'Unknown',
@@ -363,9 +494,22 @@ export class KabbalisticRouter {
         confidence,
         action,
         message,
-        durationMs: Date.now() - startTime,
+        durationMs,
       };
     } catch (error) {
+      const durationMs = Date.now() - startTime;
+
+      // Record error to learning service
+      if (this.learningService && this._currentEpisodeId) {
+        this.learningService.recordAction(this._currentEpisodeId, {
+          agent: agentName,
+          response: 'error',
+          confidence: 0,
+          latency: durationMs,
+          error: error.message,
+        });
+      }
+
       return {
         agent: agentName,
         sefirah: SEFIROT_TEMPLATE.mappings[agentName]?.sefira || 'Unknown',
@@ -374,7 +518,7 @@ export class KabbalisticRouter {
         action: 'continue',
         message: `Error: ${error.message}`,
         error: error.message,
-        durationMs: Date.now() - startTime,
+        durationMs,
       };
     }
   }
@@ -716,7 +860,19 @@ export class KabbalisticRouter {
    * @returns {Object} Stats
    */
   getStats() {
-    return { ...this.stats };
+    const stats = { ...this.stats };
+
+    // Add learning stats if available
+    if (this.learningService) {
+      stats.learning = this.learningService.getStats();
+    }
+
+    // Add cost stats if available
+    if (this.costOptimizer) {
+      stats.cost = this.costOptimizer.getStats();
+    }
+
+    return stats;
   }
 
   /**
@@ -724,6 +880,48 @@ export class KabbalisticRouter {
    */
   resetCooldowns() {
     this.consultationHistory.clear();
+  }
+
+  /**
+   * Set learning service at runtime
+   *
+   * @param {Object} learningService - LearningService instance
+   */
+  setLearningService(learningService) {
+    this.learningService = learningService;
+  }
+
+  /**
+   * Set cost optimizer at runtime
+   *
+   * @param {Object} costOptimizer - CostOptimizer instance
+   */
+  setCostOptimizer(costOptimizer) {
+    this.costOptimizer = costOptimizer;
+  }
+
+  /**
+   * Get recommended agent weights from learning service
+   *
+   * @returns {Object|null} Recommended weights or null
+   */
+  getLearnedWeights() {
+    if (!this.learningService) return null;
+    return this.learningService.getRecommendedWeights();
+  }
+
+  /**
+   * Apply learned weights to relationship graph
+   */
+  applyLearnedWeights() {
+    const weights = this.getLearnedWeights();
+    if (!weights || !this.relationshipGraph) return false;
+
+    for (const [agent, weight] of Object.entries(weights)) {
+      this.relationshipGraph.setWeight?.('cynic', agent, weight);
+    }
+
+    return true;
   }
 }
 

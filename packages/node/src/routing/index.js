@@ -87,6 +87,28 @@ export {
   getStrategyManager,
 } from './strategy-manager.js';
 
+// Cost Optimizer - extracted from TieredRouter
+export {
+  CostOptimizer,
+  ComplexityClassifier as CostComplexityClassifier,
+  ComplexityTier as CostTier,
+  TIER_COSTS,
+  TIER_LATENCIES,
+  COMPLEXITY_THRESHOLDS as COST_THRESHOLDS,
+  createCostOptimizer,
+  getCostOptimizer,
+} from './cost-optimizer.js';
+
+// LLM Router - Connects tiers to LLM providers (Task #21)
+export {
+  LLMRouter,
+  TIER_MODEL_MAP,
+  TIER_PROVIDER_CONFIG,
+  createLLMRouter,
+  getLLMRouter,
+  _resetLLMRouterForTesting,
+} from './llm-router.js';
+
 // Re-export for convenience
 import { ComplexityClassifier, createComplexityClassifier, ComplexityTier, COMPLEXITY_THRESHOLDS } from './complexity-classifier.js';
 import { TieredRouter, createTieredRouter, HANDLER_COSTS, HANDLER_LATENCIES } from './tiered-router.js';
@@ -97,6 +119,8 @@ import { IntelligentRouter, createIntelligentRouter, getIntelligentRouter, Routi
 import { DogPerformanceTracker, DogMetrics, createDogPerformanceTracker, getDogPerformanceTracker } from './dog-performance.js';
 import { DogPipeline, StreamContext, PipelineStage, PipelineTemplates, createDogPipeline, getDogPipeline } from './dog-pipeline.js';
 import { StrategyManager, StrategySuggestion, STUCK_THRESHOLDS, StuckIndicator, StrategyType, createStrategyManager, getStrategyManager } from './strategy-manager.js';
+import { CostOptimizer, ComplexityClassifier as CostComplexityClassifier, ComplexityTier as CostTier, TIER_COSTS, TIER_LATENCIES, COMPLEXITY_THRESHOLDS as COST_THRESHOLDS, createCostOptimizer, getCostOptimizer } from './cost-optimizer.js';
+import { LLMRouter, TIER_MODEL_MAP, TIER_PROVIDER_CONFIG, createLLMRouter, getLLMRouter, _resetLLMRouterForTesting } from './llm-router.js';
 
 export default {
   // Complexity routing
@@ -149,4 +173,20 @@ export default {
   StrategyType,
   createStrategyManager,
   getStrategyManager,
+  // Cost Optimizer
+  CostOptimizer,
+  CostComplexityClassifier,
+  CostTier,
+  TIER_COSTS,
+  TIER_LATENCIES,
+  COST_THRESHOLDS,
+  createCostOptimizer,
+  getCostOptimizer,
+  // LLM Router (Task #21)
+  LLMRouter,
+  TIER_MODEL_MAP,
+  TIER_PROVIDER_CONFIG,
+  createLLMRouter,
+  getLLMRouter,
+  _resetLLMRouterForTesting,
 };

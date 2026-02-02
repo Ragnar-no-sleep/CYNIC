@@ -177,7 +177,7 @@ export class PersistenceManager {
         this._xData = new XDataRepository(this.postgres);
 
         // Phase 18: Initialize embedder for vector search
-        // Auto-detects OpenAI (if OPENAI_API_KEY set) or falls back to MockEmbedder
+        // Auto-detects Ollama (local, free) first, falls back to Mock
         const embedder = getEmbedder();
         this._memoryRetriever = createMemoryRetriever({ pool: this.postgres, embedder });
         log.info('Memory retriever initialized', { embedderType: embedder.type });

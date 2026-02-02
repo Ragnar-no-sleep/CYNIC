@@ -636,7 +636,7 @@ Actions: status (view sync status), mark (mark items for sync), sync (execute sy
               trends: localXStore.getPendingSync('trend'),
             };
 
-            let synced = { tweets: 0, users: 0, trends: 0 };
+            const synced = { tweets: 0, users: 0, trends: 0 };
 
             // Sync users first
             for (const user of pending.users) {

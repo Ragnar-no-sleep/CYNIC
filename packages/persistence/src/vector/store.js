@@ -19,8 +19,8 @@ import { createEmbedder, EmbedderType } from '../services/embedder.js';
  */
 export const VECTOR_STORE_CONFIG = {
   // Embedding settings
-  embedder: 'mock', // 'mock' | 'openai' | 'ollama'
-  dimensions: 384, // Default for mock/small models
+  embedder: 'auto', // 'auto' | 'ollama' | 'openai' | 'mock' - auto-detects Ollama first
+  dimensions: 768, // Default for nomic-embed-text (Ollama)
 
   // Search settings
   defaultK: 10,
@@ -88,11 +88,20 @@ export class VectorStore {
   _createEmbedder(options) {
     const type = options.embedder || this.config.embedder;
 
+    // 'auto' triggers AutoDetectEmbedder (tries Ollama first)
+    if (type === 'auto') {
+      return createEmbedder({
+        dimensions: options.dimensions || this.config.dimensions,
+        model: options.model,
+        baseUrl: options.baseUrl || options.host,
+      });
+    }
+
     return createEmbedder({
       type: type === 'mock' ? EmbedderType.MOCK :
             type === 'openai' ? EmbedderType.OPENAI :
             type === 'ollama' ? EmbedderType.OLLAMA :
-            EmbedderType.MOCK,
+            undefined, // Let createEmbedder auto-detect
       dimensions: options.dimensions || this.config.dimensions,
       apiKey: options.apiKey,
       model: options.model,

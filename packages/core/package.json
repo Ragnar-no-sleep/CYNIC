@@ -16,7 +16,8 @@
     "./boot": "./src/boot/index.js",
     "./boot/providers": "./src/boot/providers/index.js",
     "./bus": "./src/bus/index.js",
-    "./orchestration": "./src/orchestration/index.js"
+    "./orchestration": "./src/orchestration/index.js",
+    "./llm": "./src/llm/index.js"
   },
   "scripts": {
     "test": "node --test test/*.test.js"

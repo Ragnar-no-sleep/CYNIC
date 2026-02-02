@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-02-02T01:10:07.903Z",
+  "timestamp": "2026-02-02T09:25:16.069Z",
   "version": "1.0.0",
   "categories": {
     "core": {
@@ -484,6 +484,10 @@
               "count": 1
             },
             {
+              "package": "gasdf-relayer",
+              "count": 1
+            },
+            {
               "package": "holdex",
               "count": 1
             },
@@ -512,7 +516,7 @@
               "count": 1
             }
           ],
-          "message": "110 test files in 12 packages"
+          "message": "111 test files in 13 packages"
         },
         {
           "id": "benchmark-files",

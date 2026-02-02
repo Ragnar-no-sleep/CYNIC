@@ -106,15 +106,24 @@ export class FactsRepository extends BaseRepository {
 
   /**
    * Create a fact
+   * @param {Object} fact - Fact data
+   * @param {number[]} [fact.embedding] - Optional vector embedding
+   * @param {string} [fact.embeddingModel] - Model used for embedding
    */
   async create(fact) {
     const factId = generateFactId();
 
+    // Handle embedding - store as JSONB array
+    const embedding = fact.embedding ? JSON.stringify(fact.embedding) : null;
+    const embeddingModel = fact.embeddingModel || null;
+    const embeddingDim = fact.embedding?.length || null;
+
     const { rows } = await this.db.query(`
       INSERT INTO facts (
         fact_id, user_id, session_id, fact_type, subject, content,
-        context, source_tool, source_file, confidence, relevance, tags
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        context, source_tool, source_file, confidence, relevance, tags,
+        embedding, embedding_model, embedding_dim
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, $15)
       RETURNING *
     `, [
       factId,
@@ -129,6 +138,9 @@ export class FactsRepository extends BaseRepository {
       Math.min(fact.confidence || 0.5, PHI_INV), // Cap at φ⁻¹
       fact.relevance || 0.5,
       fact.tags || [],
+      embedding,
+      embeddingModel,
+      embeddingDim,
     ]);
 
     return this._mapRow(rows[0]);
@@ -235,6 +247,113 @@ export class FactsRepository extends BaseRepository {
 
     const { rows } = await this.db.query(sql, params);
     return rows.map(r => this._mapRow(r));
+  }
+
+  /**
+   * Semantic search combining FTS + vector similarity
+   * Uses φ-weighted scoring: 0.382 FTS + 0.618 vector
+   *
+   * @param {string} query - Search query
+   * @param {Object} options - Search options
+   * @param {number[]} options.embedding - Query embedding vector
+   * @param {number} options.limit - Max results
+   * @returns {Promise<Array>} Facts with combined scores
+   */
+  async semanticSearch(query, options = {}) {
+    const {
+      embedding,
+      userId,
+      factType,
+      limit = 10,
+      minConfidence = 0,
+    } = options;
+
+    // If no embedding, fall back to FTS-only
+    if (!embedding || embedding.length === 0) {
+      return this.search(query, options);
+    }
+
+    // φ-weighted hybrid search
+    // 1. Get FTS results
+    // 2. Compute vector similarity in JS (PostgreSQL JSONB doesn't have native vector ops)
+    // 3. Combine with φ weights
+
+    const ftsWeight = 0.382;  // φ⁻²
+    const vectorWeight = 0.618;  // φ⁻¹
+
+    // Query facts with embeddings
+    let sql = `
+      SELECT *,
+        ts_rank(search_vector, websearch_to_tsquery('english', $1)) as fts_score
+      FROM facts
+      WHERE (
+        search_vector @@ websearch_to_tsquery('english', $1)
+        OR embedding IS NOT NULL
+      )
+      AND confidence >= $2
+    `;
+    const params = [query, minConfidence];
+    let paramIndex = 3;
+
+    if (userId) {
+      sql += ` AND user_id = $${paramIndex++}`;
+      params.push(userId);
+    }
+
+    if (factType) {
+      sql += ` AND fact_type = $${paramIndex++}`;
+      params.push(factType);
+    }
+
+    sql += ` ORDER BY fts_score DESC NULLS LAST, confidence DESC LIMIT $${paramIndex}`;
+    params.push(limit * 3); // Over-fetch for re-ranking
+
+    const { rows } = await this.db.query(sql, params);
+
+    // Compute vector similarity and combine scores
+    const results = rows.map(row => {
+      const fact = this._mapRow(row);
+      fact.ftsScore = parseFloat(row.fts_score) || 0;
+
+      // Compute cosine similarity if fact has embedding
+      if (row.embedding && Array.isArray(row.embedding)) {
+        fact.vectorScore = this._cosineSimilarity(embedding, row.embedding);
+      } else {
+        fact.vectorScore = 0;
+      }
+
+      // Combined φ-weighted score
+      fact.combinedScore = (ftsWeight * fact.ftsScore) + (vectorWeight * fact.vectorScore);
+      return fact;
+    });
+
+    // Sort by combined score and limit
+    return results
+      .sort((a, b) => b.combinedScore - a.combinedScore)
+      .slice(0, limit);
+  }
+
+  /**
+   * Cosine similarity between two vectors
+   * @private
+   */
+  _cosineSimilarity(a, b) {
+    if (!a || !b || a.length !== b.length) return 0;
+
+    let dotProduct = 0;
+    let normA = 0;
+    let normB = 0;
+
+    for (let i = 0; i < a.length; i++) {
+      dotProduct += a[i] * b[i];
+      normA += a[i] * a[i];
+      normB += b[i] * b[i];
+    }
+
+    const magnitude = Math.sqrt(normA) * Math.sqrt(normB);
+    if (magnitude === 0) return 0;
+
+    return dotProduct / magnitude;
   }
 
   /**
@@ -567,6 +686,9 @@ export class FactsRepository extends BaseRepository {
       accessCount: row.access_count,
       lastAccessed: row.last_accessed,
       tags: row.tags,
+      embedding: row.embedding, // JSONB array
+      embeddingModel: row.embedding_model,
+      embeddingDim: row.embedding_dim,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       rank: row.rank ? parseFloat(row.rank) : undefined,

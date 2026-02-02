@@ -14,9 +14,10 @@
 import { ConversationMemoriesRepository, MemoryType } from '../postgres/repositories/conversation-memories.js';
 import { ArchitecturalDecisionsRepository, DecisionType, DecisionStatus } from '../postgres/repositories/architectural-decisions.js';
 import { LessonsLearnedRepository, LessonCategory, LessonSeverity } from '../postgres/repositories/lessons-learned.js';
+import { FactsRepository, FactType } from '../postgres/repositories/facts.js';
 
 // Re-export types for convenience
-export { MemoryType, DecisionType, DecisionStatus, LessonCategory, LessonSeverity };
+export { MemoryType, DecisionType, DecisionStatus, LessonCategory, LessonSeverity, FactType };
 
 /**
  * φ constants for search weighting
@@ -51,6 +52,7 @@ export class MemoryRetriever {
     this.memories = new ConversationMemoriesRepository(this.pool);
     this.decisions = new ArchitecturalDecisionsRepository(this.pool);
     this.lessons = new LessonsLearnedRepository(this.pool);
+    this.facts = new FactsRepository(this.pool);
 
     // φ constants
     this.PHI_FTS = PHI_INV_2;
@@ -68,14 +70,14 @@ export class MemoryRetriever {
    * @param {string} userId - User ID
    * @param {string} query - Search query
    * @param {Object} [options] - Search options
-   * @param {string[]} [options.sources] - Sources to search: 'memories', 'decisions', 'lessons'
+   * @param {string[]} [options.sources] - Sources to search: 'memories', 'decisions', 'lessons', 'facts'
    * @param {number} [options.limit=10] - Results per source
    * @param {boolean} [options.useVector=true] - Whether to use vector search
    * @returns {Promise<Object>} Results from all sources
    */
   async search(userId, query, options = {}) {
     const {
-      sources = ['memories', 'decisions', 'lessons'],
+      sources = ['memories', 'decisions', 'lessons', 'facts'],
       limit = 10,
       useVector = true,
     } = options;
@@ -94,6 +96,7 @@ export class MemoryRetriever {
       query,
       timestamp: Date.now(),
       sources: {},
+      hasEmbedding: !!embedding,
     };
 
     // Search each source in parallel
@@ -127,12 +130,28 @@ export class MemoryRetriever {
       );
     }
 
+    if (sources.includes('facts')) {
+      searches.push(
+        this.facts.semanticSearch(query, {
+          embedding,
+          userId,
+          limit,
+        }).then(r => { results.sources.facts = r; })
+      );
+    }
+
     await Promise.all(searches);
 
     // Record access to retrieved memories
     const memoryIds = (results.sources.memories || []).map(m => m.id);
     if (memoryIds.length > 0) {
       await this.memories.recordAccess(memoryIds);
+    }
+
+    // Record access to retrieved facts
+    const factIds = (results.sources.facts || []).map(f => f.factId);
+    for (const factId of factIds) {
+      await this.facts.recordAccess(factId).catch(() => {});
     }
 
     return results;
@@ -301,6 +320,76 @@ export class MemoryRetriever {
       embedding,
       sourceJudgmentId: lesson.sourceJudgmentId,
       sourceSessionId: lesson.sourceSessionId,
+    });
+  }
+
+  /**
+   * Store a fact with automatic embedding generation
+   *
+   * @param {string} userId - User ID
+   * @param {Object} fact - Fact data
+   * @param {string} fact.factType - Type of fact (code_pattern, api_discovery, etc.)
+   * @param {string} fact.subject - Short subject/title
+   * @param {string} fact.content - Full content
+   * @param {Object} [fact.context] - Additional context
+   * @param {string} [fact.sourceTool] - Tool that generated the fact
+   * @param {string} [fact.sourceFile] - Related file path
+   * @param {string[]} [fact.tags] - Tags for categorization
+   * @returns {Promise<Object>} Created fact
+   */
+  async rememberFact(userId, fact) {
+    // Generate embedding if available
+    let embedding = null;
+    let embeddingModel = null;
+    if (this.embedder) {
+      try {
+        const text = `${fact.subject} ${fact.content}`;
+        embedding = await this.embedder.embed(text);
+        embeddingModel = this.embedder.model || this.embedder.type || 'unknown';
+      } catch (err) {
+        console.warn('[MemoryRetriever] Embedding failed:', err.message);
+      }
+    }
+
+    return this.facts.create({
+      userId,
+      sessionId: fact.sessionId,
+      factType: fact.factType || FactType.TOOL_RESULT,
+      subject: fact.subject,
+      content: fact.content,
+      context: fact.context || {},
+      sourceTool: fact.sourceTool,
+      sourceFile: fact.sourceFile,
+      confidence: fact.confidence || 0.5,
+      relevance: fact.relevance || 0.5,
+      tags: fact.tags || [],
+      embedding,
+      embeddingModel,
+    });
+  }
+
+  /**
+   * Search facts semantically
+   *
+   * @param {string} userId - User ID
+   * @param {string} query - Search query
+   * @param {Object} [options] - Search options
+   * @returns {Promise<Array>} Matching facts
+   */
+  async searchFacts(userId, query, options = {}) {
+    let embedding = null;
+    if (this.embedder) {
+      try {
+        embedding = await this.embedder.embed(query);
+      } catch {
+        // Fall back to FTS
+      }
+    }
+
+    return this.facts.semanticSearch(query, {
+      ...options,
+      embedding,
+      userId,
     });
   }
 
@@ -611,23 +700,27 @@ export class MemoryRetriever {
    * @returns {Promise<Object>} Statistics
    */
   async getStats(userId = null) {
-    const [memoryStats, decisionStats, lessonStats] = await Promise.all([
+    const [memoryStats, decisionStats, lessonStats, factStats] = await Promise.all([
       this.memories.getStats(userId),
       this.decisions.getStats(userId),
       this.lessons.getStats(userId),
+      this.facts.getStats(userId),
     ]);
 
     return {
       memories: memoryStats,
       decisions: decisionStats,
       lessons: lessonStats,
+      facts: factStats,
       totals: {
         memories: memoryStats.total,
         decisions: decisionStats.total,
         lessons: lessonStats.total,
-        combined: memoryStats.total + decisionStats.total + lessonStats.total,
+        facts: factStats.total,
+        combined: memoryStats.total + decisionStats.total + lessonStats.total + factStats.total,
       },
       hasEmbedder: !!this.embedder,
+      embedderType: this.embedder?.type || 'none',
       phiConstants: {
         ftsWeight: this.PHI_FTS,
         vectorWeight: this.PHI_VECTOR,

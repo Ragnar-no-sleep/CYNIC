@@ -126,8 +126,11 @@ class AutoOrchestrator {
    */
   async _doInitialize() {
     try {
-      // Import CollectivePack
-      const { createCollectivePack } = await import('@cynic/node/agents/collective');
+      // ═══════════════════════════════════════════════════════════════════════════
+      // USE SINGLETON - "One pack, one truth"
+      // This ensures hooks and MCP server share the same Dogs and Memory
+      // ═══════════════════════════════════════════════════════════════════════════
+      const { getCollectivePack } = await import('@cynic/node');
 
       // Try to get persistence for storage
       let persistence = null;
@@ -138,8 +141,8 @@ class AutoOrchestrator {
         // Persistence optional
       }
 
-      // Create CollectivePack with persistence
-      this._collectivePack = createCollectivePack({
+      // Get CollectivePack SINGLETON (same instance as MCP server!)
+      this._collectivePack = getCollectivePack({
         persistence,
         onDogDecision: (decision) => this._handleDogDecision(decision),
       });

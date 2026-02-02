@@ -46,6 +46,9 @@ import { getSessionState, getOrchestrationClient, initOrchestrationClient } from
 // S1: Rules-based skill detection (loaded from skill-rules.json)
 import { detectSkillTriggersFromRules, getRulesSettings } from './lib/index.js';
 
+// Task #21: LLM Router for tier-based LLM selection
+import { getLLMRouter, getCostOptimizer, ComplexityTier } from '@cynic/node';
+
 // =============================================================================
 // LOAD OPTIONAL MODULES
 // =============================================================================
@@ -354,6 +357,31 @@ async function main() {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // LLM TIER DECISION (Task #21) - Determine which LLM tier to use
+    // LOCAL = No LLM (rule-based), LIGHT = Ollama, FULL = Claude/Large models
+    // "Le plus petit chien qui peut faire le travail"
+    // ═══════════════════════════════════════════════════════════════════════════
+    let tierDecision = null;
+    try {
+      const costOptimizer = getCostOptimizer();
+      tierDecision = costOptimizer.optimize({
+        content: prompt,
+        type: 'user_prompt',
+        context: {
+          risk: escalationLevel === 'high' || recentWarnings.length > 0 ? 'high' : 'normal',
+        },
+      });
+      logger.debug('Tier decision', {
+        tier: tierDecision.tier,
+        reason: tierDecision.reason,
+        shouldRoute: tierDecision.shouldRoute,
+      });
+    } catch (e) {
+      // Tier decision failed - default to LIGHT
+      tierDecision = { tier: ComplexityTier.LIGHT, shouldRoute: true, reason: 'default' };
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // ORCHESTRATION: Consult KETER for routing decision
     // Uses OrchestrationClient for high-risk prompts (Phase 22)
     // "Le cerveau central décide avec le contexte de session"
@@ -379,6 +407,9 @@ async function main() {
           hasHighRiskIntent,
           escalationLevel,
           recentWarnings: recentWarnings.map(w => w.message),
+          // Task #21: Include tier decision
+          llmTier: tierDecision?.tier,
+          shouldUseLLM: tierDecision?.shouldRoute,
         });
 
         // Convert decision to orchestration format
@@ -396,6 +427,9 @@ async function main() {
         orchestration = await orchestrate('user_prompt', {
           content: prompt,
           source: 'perceive_hook',
+          // Task #21: Include tier decision
+          llmTier: tierDecision?.tier,
+          shouldUseLLM: tierDecision?.shouldRoute,
         }, {
           user: user.userId,
           project: detectProject(),
@@ -725,6 +759,13 @@ async function main() {
         agent: orchestration.routing?.suggestedAgent,
         intervention: orchestration.intervention?.level,
         risk: orchestration.intervention?.actionRisk,
+      } : null,
+      // Task #21: Include LLM tier decision
+      llmTier: tierDecision ? {
+        tier: tierDecision.tier,
+        shouldRoute: tierDecision.shouldRoute,
+        cost: tierDecision.cost,
+        reason: tierDecision.reason,
       } : null,
       timestamp: Date.now(),
     });
