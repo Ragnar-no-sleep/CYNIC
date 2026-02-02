@@ -56,6 +56,11 @@ import {
   detectErrorType,  // From pattern-detector.js
   getReasoningBank,  // P1.2: Trajectory learning
   getFactExtractor,  // M2: Auto fact extraction to PostgreSQL
+  getTelemetryCollector,  // Usage stats, frictions, benchmarking
+  recordMetric,
+  recordTiming,
+  recordFriction,
+  getAutoOrchestratorSync,  // Auto-orchestration: Dogs consultation
 } from './lib/index.js';
 
 // =============================================================================
@@ -949,6 +954,42 @@ async function main() {
     const profile = loadUserProfile(user.userId);
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // TELEMETRY: Record tool usage for benchmarking and fine-tuning
+    // "φ mesure tout, φ apprend de tout"
+    // ═══════════════════════════════════════════════════════════════════════════
+    const telemetry = getTelemetryCollector();
+    if (telemetry) {
+      // Record tool usage
+      telemetry.recordToolUse({
+        tool: toolName,
+        success: !isError,
+        error: isError ? (typeof toolOutput === 'string' ? toolOutput.slice(0, 200) : toolOutput?.error) : null,
+      });
+
+      // Record frictions for errors
+      if (isError) {
+        const errorText = typeof toolOutput === 'string' ? toolOutput : toolOutput?.error || '';
+        const errorType = detectErrorType(errorText);
+        const severity = errorType === 'connection_refused' ? 'high' :
+                        errorType === 'permission_denied' ? 'high' :
+                        errorType === 'syntax_error' ? 'medium' :
+                        'low';
+        recordFriction(`tool_error_${toolName}`, severity, {
+          category: 'tool',
+          tool: toolName,
+          errorType,
+          error: errorText.slice(0, 200),
+        });
+      }
+
+      // Increment counters
+      recordMetric('tool_calls_total', 1, { tool: toolName, category: 'tool' });
+      if (isError) {
+        recordMetric('tool_errors_total', 1, { tool: toolName, category: 'tool' });
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // ORCHESTRATION: Full orchestration through UnifiedOrchestrator (Phase 21)
     // Includes: Decision tracing, pattern recording, learning feedback
     // "Le chien observe et rapporte au cerveau collectif"
@@ -975,6 +1016,30 @@ async function main() {
       }
     }).catch(() => {
       // Silently ignore - observation is best-effort
+    });
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // AUTO-ORCHESTRATOR: Automatic Dog consultation via CollectivePack
+    // "Le collectif analyse" - All 11 Dogs see every tool result
+    // ═══════════════════════════════════════════════════════════════════════════
+    const autoOrchestrator = getAutoOrchestratorSync();
+    autoOrchestrator.postAnalyze({
+      tool: toolName,
+      input: toolInput,
+      output: toolOutput,
+      duration: 0,  // Not tracked in PostToolUse
+      success: !isError,
+      userId: detectUser()?.id,
+      sessionId: process.env.CYNIC_SESSION_ID,
+    }).then(result => {
+      // Log patterns/anomalies detected by Dogs
+      if (result?.anomalies?.length > 0) {
+        for (const anomaly of result.anomalies) {
+          console.error(`[${anomaly.agent}] ${anomaly.type}: ${anomaly.message}`);
+        }
+      }
+    }).catch(() => {
+      // Best-effort - don't fail the hook
     });
 
     // Detect patterns

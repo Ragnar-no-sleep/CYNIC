@@ -34,7 +34,12 @@ import cynic, {
 } from '../lib/index.js';
 
 // Phase 22: Session state and orchestration client
-import { getSessionState, getOrchestrationClient, initOrchestrationClient } from './lib/index.js';
+import {
+  getSessionState,
+  getOrchestrationClient,
+  initOrchestrationClient,
+  getAutoOrchestratorSync,  // Auto-orchestration: Dogs consultation + NeuronalConsensus
+} from './lib/index.js';
 
 // Load optional modules
 const watchdog = getWatchdog();
@@ -252,6 +257,53 @@ async function main() {
       }
     } catch (e) {
       // Orchestration failed - continue with local logic
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // AUTO-ORCHESTRATOR: Consult Dogs + NeuronalConsensus for high-risk tools
+    // "Le collectif décide" - All 11 Dogs vote before dangerous operations
+    // ═══════════════════════════════════════════════════════════════════════════
+    try {
+      const autoOrchestrator = getAutoOrchestratorSync();
+      if (autoOrchestrator.isInitialized()) {
+        const preCheckResult = await autoOrchestrator.preCheck({
+          tool: toolName,
+          input: toolInput,
+          userId: user?.id,
+          sessionId: process.env.CYNIC_SESSION_ID,
+        });
+
+        // Store Dogs consultation result
+        output.dogsConsultation = {
+          blocked: preCheckResult.blocked,
+          blockedBy: preCheckResult.blockedBy,
+          confidence: preCheckResult.confidence,
+          isHighRisk: preCheckResult.isHighRisk,
+          fromCache: preCheckResult.fromCache,
+        };
+
+        // If Dogs blocked, override allow
+        if (preCheckResult.blocked) {
+          output.continue = false;
+          output.blocked = true;
+          output.blockReason = preCheckResult.message || preCheckResult.reason || 'Blocked by CYNIC collective';
+
+          if (sessionState.isInitialized()) {
+            sessionState.recordWarning({
+              tool: toolName,
+              message: output.blockReason,
+              severity: 'high',
+              blocked: true,
+              blockedBy: preCheckResult.blockedBy,
+            });
+          }
+
+          safeOutput(output);
+          return;
+        }
+      }
+    } catch (e) {
+      // Auto-orchestration failed - continue with local logic
     }
 
     // Circuit Breaker Check

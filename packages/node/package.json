@@ -23,7 +23,11 @@
     "./orchestration/skill-registry.js": "./src/orchestration/skill-registry.js",
     "./orchestration/decision-tracer.js": "./src/orchestration/decision-tracer.js",
     "./orchestration/circuit-breaker.js": "./src/orchestration/circuit-breaker.js",
-    "./orchestration/routing-config.js": "./src/orchestration/routing-config.js"
+    "./orchestration/routing-config.js": "./src/orchestration/routing-config.js",
+    "./agents": "./src/agents/index.js",
+    "./agents/collective": "./src/agents/collective/index.js",
+    "./agents/neuronal-consensus": "./src/agents/neuronal-consensus.js",
+    "./agents/swarm-consensus": "./src/agents/swarm-consensus.js"
   },
   "scripts": {
     "test": "node --test test/*.test.js",

@@ -24,6 +24,14 @@ export { FeedbackCollector, getFeedbackCollector, ANTI_PATTERNS } from './feedba
 // Suggestion engine (Phase 22)
 export { SuggestionEngine, getSuggestionEngine } from './suggestion-engine.js';
 
+// Auto-Orchestrator (Automatic Dog consultation)
+export {
+  AutoOrchestrator,
+  getAutoOrchestrator,
+  getAutoOrchestratorSync,
+  CONFIG as AUTO_ORCHESTRATOR_CONFIG,
+} from './auto-orchestrator.js';
+
 // Rules loader (S1: Skill auto-activation via rules.json)
 export {
   loadRulesFile,
@@ -89,4 +97,84 @@ export function getFactsRepository() {
     // FactsRepository not available - return null
   }
   return null;
+}
+
+// ArchitecturalDecisionsRepository (Self-Knowledge: Decision awareness)
+let _archDecisionsRepository = null;
+
+export function getArchitecturalDecisionsRepository() {
+  if (_archDecisionsRepository) return _archDecisionsRepository;
+
+  try {
+    const { ArchitecturalDecisionsRepository } = require('@cynic/persistence/postgres/repositories/architectural-decisions');
+    const { getPool } = require('@cynic/persistence');
+    const pool = getPool();
+    if (pool) {
+      _archDecisionsRepository = new ArchitecturalDecisionsRepository(pool);
+      return _archDecisionsRepository;
+    }
+  } catch (e) {
+    // ArchitecturalDecisionsRepository not available - return null
+  }
+  return null;
+}
+
+// CodebaseIndexer (Self-Knowledge: Codebase awareness)
+let _codebaseIndexer = null;
+
+export function getCodebaseIndexer(options = {}) {
+  // Always create fresh to allow different options
+  try {
+    const { createCodebaseIndexer } = require('@cynic/persistence/services');
+    return createCodebaseIndexer(options);
+  } catch (e) {
+    // CodebaseIndexer not available - return null
+  }
+  return null;
+}
+
+// BurnAnalyzer (Vision → Compréhension → Burn)
+let _burnAnalyzer = null;
+
+export function getBurnAnalyzer(options = {}) {
+  // Always create fresh to allow different options
+  try {
+    const { createBurnAnalyzer } = require('@cynic/persistence/services/burn-analyzer');
+    return createBurnAnalyzer(options);
+  } catch (e) {
+    // BurnAnalyzer not available - return null
+  }
+  return null;
+}
+
+// TelemetryCollector (Stats, frictions, benchmarking)
+let _telemetry = null;
+
+export function getTelemetryCollector() {
+  if (_telemetry) return _telemetry;
+
+  try {
+    const { getTelemetry } = require('@cynic/persistence/services');
+    _telemetry = getTelemetry();
+    return _telemetry;
+  } catch (e) {
+    // Telemetry not available - return null
+  }
+  return null;
+}
+
+// Shorthand telemetry helpers
+export function recordMetric(name, value, labels = {}) {
+  const t = getTelemetryCollector();
+  if (t) t.increment(name, value, labels);
+}
+
+export function recordTiming(name, durationMs, labels = {}) {
+  const t = getTelemetryCollector();
+  if (t) t.timing(name, durationMs, labels);
+}
+
+export function recordFriction(name, severity, details = {}) {
+  const t = getTelemetryCollector();
+  if (t) t.friction(name, severity, details);
 }
