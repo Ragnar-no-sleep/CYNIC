@@ -1,40 +1,8 @@
 # @cynic/protocol
 
-> 4-Layer decentralized collective consciousness protocol.
+> CYNIC Protocol - 4-Layer Decentralized Collective Consciousness
 
-**Last Updated**: 2026-01-21
-
----
-
-## Overview
-
-The CYNIC protocol defines how nodes communicate, reach consensus, and share knowledge.
-
-```
-"φ distrusts φ" - Decentralized truth seeking
-```
-
----
-
-## The 4 Layers
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  LAYER 4: φ-BFT CONSENSUS                                   │
-│  Votes weighted by E-Score × BURN, 61.8% threshold          │
-├─────────────────────────────────────────────────────────────┤
-│  LAYER 3: GOSSIP PROPAGATION                                │
-│  Fanout = 13 (Fib(7)), O(log₁₃ n) scalability               │
-├─────────────────────────────────────────────────────────────┤
-│  LAYER 2: MERKLE KNOWLEDGE TREE                             │
-│  Patterns partitioned by axiom, selective sync              │
-├─────────────────────────────────────────────────────────────┤
-│  LAYER 1: PROOF OF JUDGMENT (PoJ)                           │
-│  SHA-256 chain, Ed25519 signatures                          │
-└─────────────────────────────────────────────────────────────┘
-```
-
----
+**Category**: protocol | **Version**: 0.1.0 | **Quality**: 🟠 needs tests
 
 ## Installation
 
@@ -42,66 +10,99 @@ The CYNIC protocol defines how nodes communicate, reach consensus, and share kno
 npm install @cynic/protocol
 ```
 
+## Quick Start
+
+```javascript
+import { createGenesisBlock } from '@cynic/protocol';
+
+const instance = createGenesisBlock();
+```
+
+## API Reference
+
+### Classes
+
+| Class | Description |
+|-------|-------------|
+| `MerkleTree` | MerkleTree implementation |
+| `KnowledgeTree` | KnowledgeTree implementation |
+| `MessageType` | MessageType implementation |
+| `PeerManager` | PeerManager implementation |
+| `ConsensusType` | ConsensusType implementation |
+| `LockoutManager` | LockoutManager implementation |
+| `ProposalStatus` | ProposalStatus implementation |
+| `BlockStatus` | BlockStatus implementation |
+| `ConsensusEngine` | ConsensusEngine implementation |
+| `SlotManager` | SlotManager implementation |
+| `FinalityTracker` | FinalityTracker implementation |
+| `KScoreType` | KScoreType implementation |
+| `KScoreTier` | KScoreTier implementation |
+
+### Factory Functions
+
+| Function | Description |
+|----------|-------------|
+| `createGenesisBlock()` | Create GenesisBlock instance |
+| `createJudgmentBlock()` | Create JudgmentBlock instance |
+| `createKnowledgeBlock()` | Create KnowledgeBlock instance |
+| `createGovernanceBlock()` | Create GovernanceBlock instance |
+| `createJudgment()` | Create Judgment instance |
+| `createLearning()` | Create Learning instance |
+| `createMessage()` | Create Message instance |
+| `createBlockMessage()` | Create BlockMessage instance |
+| `createSyncRequest()` | Create SyncRequest instance |
+| `createSyncResponse()` | Create SyncResponse instance |
+| `createHeartbeat()` | Create Heartbeat instance |
+| `createPeerAnnounce()` | Create PeerAnnounce instance |
+| `createConsensusVote()` | Create ConsensusVote instance |
+| `createConsensusVoteAggregate()` | Create ConsensusVoteAggregate instance |
+| `createConsensusFinality()` | Create ConsensusFinality instance |
+| `createConsensusSlotStatus()` | Create ConsensusSlotStatus instance |
+| `createPeerInfo()` | Create PeerInfo instance |
+| `createVote()` | Create Vote instance |
+| `createProposal()` | Create Proposal instance |
+| `createAddDimensionProposal()` | Create AddDimensionProposal instance |
+| `createParameterChangeProposal()` | Create ParameterChangeProposal instance |
+| `createEpochSchedule()` | Create EpochSchedule instance |
+| `createBlockProposal()` | Create BlockProposal instance |
+| `createVoteMessage()` | Create VoteMessage instance |
+| `createVoteAggregate()` | Create VoteAggregate instance |
+| `createFinalityNotification()` | Create FinalityNotification instance |
+| `createSlotStatus()` | Create SlotStatus instance |
+| `createValidatorJoin()` | Create ValidatorJoin instance |
+| `createKScoreRequest()` | Create KScoreRequest instance |
+| `createKScoreResult()` | Create KScoreResult instance |
+
+### Singletons
+
+| Function | Description |
+|----------|-------------|
+| `getCurrentSlot()` | Get CurrentSlot singleton |
+| `getEpochForSlot()` | Get EpochForSlot singleton |
+| `getSlotIndexInEpoch()` | Get SlotIndexInEpoch singleton |
+| `getSlotTimestamp()` | Get SlotTimestamp singleton |
+| `getKScoreTier()` | Get KScoreTier singleton |
+| `getKScoreConfidence()` | Get KScoreConfidence singleton |
+
+### Constants
+
+`SLOTS_PER_EPOCH`, `EPOCH_DURATION_MS`
+
+### Functions
+
+`calculateSlot`, `slotToTimestamp`, `hashBlock`, `validateBlockStructure`, `validateBlockChain`, `scoreToVerdict`, `validateJudgment`, `calculateResidual`, `isAnomalous`, `mergeJudgments` + 46 more
+
+## Dependencies
+
+**CYNIC**: @cynic/core
+
+## Stats
+
+- **Source files**: 26
+- **Test files**: 8
+- **Test ratio**: 31%
+- **Exports**: 107 named
+
 ---
 
-## Modules
-
-| Module | Description |
-|--------|-------------|
-| `poj` | Proof of Judgment chain, blocks, judgments |
-| `merkle` | Merkle trees, patterns, knowledge |
-| `gossip` | Message propagation, peer management |
-| `consensus` | Voting, proposals, finality |
-| `crypto` | SHA-256, Ed25519, signatures |
-| `kscore` | K-Score protocol for token quality |
-
----
-
-## Usage
-
-### Layer 1: Proof of Judgment
-
-```javascript
-import { createJudgment, PoJChain, generateKeypair } from '@cynic/protocol';
-
-const keypair = generateKeypair();
-const judgment = createJudgment({
-  target: 'code:abc123',
-  dimensions: { clarity: 0.8, security: 0.7 },
-  confidence: 0.618,
-});
-```
-
-### Layer 2: Merkle Tree
-
-```javascript
-import { KnowledgeTree, createPattern } from '@cynic/protocol';
-
-const tree = new KnowledgeTree();
-const pattern = createPattern('AUTH', ['jwt', 'oauth'], 0.85);
-await tree.add(pattern);
-```
-
-### Layer 3: Gossip
-
-```javascript
-import { GossipProtocol, MessageType } from '@cynic/protocol';
-
-const gossip = new GossipProtocol({ fanout: 13 });
-gossip.broadcast(MessageType.BLOCK, blockData);
-```
-
-### Layer 4: Consensus
-
-```javascript
-import { ConsensusEngine, createVote } from '@cynic/protocol';
-
-const engine = new ConsensusEngine({ threshold: 0.618 });
-const vote = createVote(proposalId, true, keypair);
-```
-
----
-
-## License
-
-MIT
+*Auto-generated by CYNIC meta-cognition. "φ distrusts φ" - κυνικός*

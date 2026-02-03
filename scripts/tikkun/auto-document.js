@@ -55,21 +55,23 @@ function extractExports(indexPath) {
   const content = fs.readFileSync(indexPath, 'utf-8');
   const exports = { named: [], default: null, reExports: [] };
 
+  // Helper to filter valid export names (no comments, valid identifiers)
+  const isValidExport = (n) => n && !n.startsWith('//') && /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(n);
+
   // Named exports: export { Foo, Bar } from './module.js'
   const namedExportRe = /export\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]/g;
   let match;
   while ((match = namedExportRe.exec(content)) !== null) {
     const names = match[1].split(',').map(n => n.trim().split(/\s+as\s+/)[0].trim());
-    exports.named.push(...names.filter(n => n));
-    exports.reExports.push({ from: match[2], names });
+    exports.named.push(...names.filter(isValidExport));
+    exports.reExports.push({ from: match[2], names: names.filter(isValidExport) });
   }
 
   // Direct named exports: export { Foo, Bar }
   const directExportRe = /export\s*\{([^}]+)\}(?!\s*from)/g;
   while ((match = directExportRe.exec(content)) !== null) {
     const names = match[1].split(',').map(n => n.trim().split(/\s+as\s+/)[0].trim());
-    // Filter out comments and empty strings
-    exports.named.push(...names.filter(n => n && !n.startsWith('//')));
+    exports.named.push(...names.filter(isValidExport));
   }
 
   // Export function/class/const

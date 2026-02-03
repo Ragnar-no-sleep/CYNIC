@@ -61,7 +61,7 @@ const instance = createOllamaValidator();
 
 ### Functions
 
-`checkAirLLMAvailability`, `_resetLLMRouterForTesting`, `ComplexityClassifier`, `tokenize`, `removeStopwords`, `jaccardSimilarity`, `textSimilarity`, `clusterBySimilarity`, `calculateSemanticAgreement`, `PHI_INV_2`
+`checkAirLLMAvailability`, `_resetLLMRouterForTesting`, `tokenize`, `removeStopwords`, `jaccardSimilarity`, `textSimilarity`, `clusterBySimilarity`, `calculateSemanticAgreement`, `PHI_INV_2`
 
 ## Dependencies
 
@@ -72,7 +72,7 @@ const instance = createOllamaValidator();
 - **Source files**: 9
 - **Test files**: 4
 - **Test ratio**: 44%
-- **Exports**: 33 named
+- **Exports**: 32 named
 
 ---
 

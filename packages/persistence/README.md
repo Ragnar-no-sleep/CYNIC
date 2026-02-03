@@ -1,32 +1,8 @@
 # @cynic/persistence
 
-> Hybrid persistence layer: PostgreSQL + Redis + Merkle DAG + PoJ Chain.
+> Persistence layer for CYNIC - PostgreSQL + Redis + Merkle DAG + PoJ Chain + Graph Overlay
 
-**Last Updated**: 2026-01-21
-
----
-
-## Overview
-
-CYNIC's memory architecture combines traditional databases with decentralized storage:
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  LAYER 4: PoJ Chain (Proof of Judgment)                     │
-│  Immutable judgment chain with Solana anchoring             │
-├─────────────────────────────────────────────────────────────┤
-│  LAYER 3: Graph Overlay                                     │
-│  Relationship graph between entities                        │
-├─────────────────────────────────────────────────────────────┤
-│  LAYER 2: Merkle DAG                                        │
-│  Content-addressed storage with CIDs                        │
-├─────────────────────────────────────────────────────────────┤
-│  LAYER 1: PostgreSQL + Redis                                │
-│  Hot cache + structured data                                │
-└─────────────────────────────────────────────────────────────┘
-```
-
----
+**Category**: persistence | **Version**: 0.1.0 | **Quality**: 🟠 needs tests
 
 ## Installation
 
@@ -34,73 +10,121 @@ CYNIC's memory architecture combines traditional databases with decentralized st
 npm install @cynic/persistence
 ```
 
----
-
-## Modules
-
-| Module | Description |
-|--------|-------------|
-| `postgres` | PostgreSQL client, repositories |
-| `redis` | Redis client, session store |
-| `dag` | Merkle DAG, CIDs, HAMT index |
-| `poj` | PoJ chain storage |
-| `graph` | Relationship graph overlay |
-
----
-
-## Usage
-
-### PostgreSQL
+## Quick Start
 
 ```javascript
-import { PostgresClient, JudgmentRepository } from '@cynic/persistence';
+import { createMockFactory } from '@cynic/persistence';
 
-const client = new PostgresClient(process.env.CYNIC_DATABASE_URL);
-const repo = new JudgmentRepository(client);
-
-await repo.save(judgment);
+const instance = createMockFactory();
 ```
 
-### Merkle DAG
+## API Reference
 
-```javascript
-import { MerkleDAG, createJudgmentNode } from '@cynic/persistence';
+### Classes
 
-const dag = new MerkleDAG('./data/dag');
-const node = createJudgmentNode(judgment);
-const cid = await dag.put(node);
-```
+| Class | Description |
+|-------|-------------|
+| `PostgresClient` | PostgresClient implementation |
+| `RedisClient` | RedisClient implementation |
+| `RepositoryFactory` | RepositoryFactory implementation |
+| `FallbackRepositoryFactory` | FallbackRepositoryFactory implementation |
+| `BackendType` | BackendType implementation |
+| `BaseRepository` | BaseRepository implementation |
+| `SessionStore` | SessionStore implementation |
+| `BatchQueue` | BatchQueue implementation |
+| `CODECS` | CODECS implementation |
+| `DAGNode` | DAGNode implementation |
+| `DAGLink` | DAGLink implementation |
+| `NodeType` | NodeType implementation |
+| `BlockStore` | BlockStore implementation |
+| `HAMTIndex` | HAMTIndex implementation |
+| `HAMTEntry` | HAMTEntry implementation |
+| `HAMTBucket` | HAMTBucket implementation |
+| `MerkleDAG` | MerkleDAG implementation |
+| `PoJBlockHeader` | PoJBlockHeader implementation |
+| `PoJBlock` | PoJBlock implementation |
+| `Attestation` | Attestation implementation |
+| `JudgmentRef` | JudgmentRef implementation |
+| `PoJChain` | PoJChain implementation |
+| `GraphNodeType` | GraphNodeType implementation |
+| `GraphEdgeType` | GraphEdgeType implementation |
+| `NodeSchemas` | NodeSchemas implementation |
+| `EdgeSpecs` | EdgeSpecs implementation |
+| `GraphNode` | GraphNode implementation |
+| `GraphEdge` | GraphEdge implementation |
+| `GraphStore` | GraphStore implementation |
+| `GraphTraversal` | GraphTraversal implementation |
+| `TraversalResult` | TraversalResult implementation |
+| `GraphOverlay` | GraphOverlay implementation |
+| `GraphQuery` | GraphQuery implementation |
+| `HNSWIndex` | HNSWIndex implementation |
+| `HNSWNode` | HNSWNode implementation |
+| `VectorStore` | VectorStore implementation |
+| `SemanticPatternMatcher` | SemanticPatternMatcher implementation |
+| `SemanticPattern` | SemanticPattern implementation |
+| `PatternCluster` | PatternCluster implementation |
+| `LocalXStore` | LocalXStore implementation |
+| `LocalPrivacyStore` | LocalPrivacyStore implementation |
+| `SyncStatus` | SyncStatus implementation |
+| `VERSION` | VERSION implementation |
 
-### Graph Overlay
+### Factory Functions
 
-```javascript
-import { GraphOverlay, createTokenNode } from '@cynic/persistence';
-
-const graph = new GraphOverlay(dag);
-const token = createTokenNode('So11...', { name: 'SOL' });
-await graph.addNode(token);
-```
-
----
-
-## Migration
-
-```bash
-# Run migrations
-npm run migrate --workspace=@cynic/persistence
-```
-
----
-
-## Environment Variables
-
-| Variable | Description |
+| Function | Description |
 |----------|-------------|
-| `CYNIC_DATABASE_URL` | PostgreSQL connection string |
-| `CYNIC_REDIS_URL` | Redis connection string (optional) |
+| `createMockFactory()` | Create MockFactory instance |
+| `createFallbackFactory()` | Create FallbackFactory instance |
+| `createTableBatchQueue()` | Create TableBatchQueue instance |
+| `createCID()` | Create CID instance |
+| `createRawCID()` | Create RawCID instance |
+| `createJudgmentNode()` | Create JudgmentNode instance |
+| `createBlockNode()` | Create BlockNode instance |
+| `createEntityNode()` | Create EntityNode instance |
+| `createEdgeNode()` | Create EdgeNode instance |
+| `createPatternNode()` | Create PatternNode instance |
+| `createIndexNode()` | Create IndexNode instance |
+| `createRootNode()` | Create RootNode instance |
+| `createGenesisBlock()` | Create GenesisBlock instance |
+| `createBlock()` | Create Block instance |
+| `createTokenNode()` | Create TokenNode instance |
+| `createWalletNode()` | Create WalletNode instance |
+| `createProjectNode()` | Create ProjectNode instance |
+| `createRepoNode()` | Create RepoNode instance |
+| `createUserNode()` | Create UserNode instance |
+| `createContractNode()` | Create ContractNode instance |
+| `createCynicNode()` | Create CynicNode instance |
+| `createHNSWIndex()` | Create HNSWIndex instance |
+| `createVectorStore()` | Create VectorStore instance |
+| `createSemanticPatternMatcher()` | Create SemanticPatternMatcher instance |
+
+### Singletons
+
+| Function | Description |
+|----------|-------------|
+| `getPool()` | Get Pool singleton |
+| `getRedis()` | Get Redis singleton |
+| `getVectorStore()` | Get VectorStore singleton |
+| `getSemanticPatternMatcher()` | Get SemanticPatternMatcher singleton |
+
+### Constants
+
+`DEFAULT_BATCH_CONFIG`, `CODECS`, `HASH_FUNCTIONS`, `HAMT_CONFIG`, `POJ_CONSTANTS`, `GRAPH_PHI`, `HNSW_CONFIG`, `VECTOR_STORE_CONFIG`, `SEMANTIC_PATTERN_CONFIG`, `VERSION`
+
+### Functions
+
+`migrate`, `parseCID`, `isValidCID`, `shardCID`, `compareCIDs`, `computeMerkleRoot`
+
+## Dependencies
+
+**External**: cbor-x, dotenv, ioredis, pg
+
+## Stats
+
+- **Source files**: 80
+- **Test files**: 21
+- **Test ratio**: 26%
+- **Exports**: 85 named
 
 ---
 
-## License
-
-MIT
+*Auto-generated by CYNIC meta-cognition. "φ distrusts φ" - κυνικός*
