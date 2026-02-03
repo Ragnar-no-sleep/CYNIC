@@ -163,7 +163,7 @@ export class LearningProofQueries {
       const result = await this.pool.query(`
         SELECT
           exploration_rate,
-          (stats->>'totalEpisodes')::int as total_episodes,
+          (stats->>'episodes')::int as total_episodes,
           updated_at
         FROM qlearning_state
         ORDER BY updated_at DESC

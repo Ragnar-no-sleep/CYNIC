@@ -47,7 +47,7 @@ export class PrometheusExporter {
         SELECT
           service_id,
           exploration_rate,
-          (stats->>'totalEpisodes')::int as total_episodes,
+          (stats->>'episodes')::int as total_episodes,
           (stats->>'totalReward')::float as total_reward
         FROM qlearning_state
       `);

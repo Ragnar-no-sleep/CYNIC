@@ -32,7 +32,7 @@ export class QLearningQueries {
         service_id,
         jsonb_array_length(q_table->'entries') as entry_count,
         exploration_rate,
-        (stats->>'totalEpisodes')::int as total_episodes,
+        (stats->>'episodes')::int as total_episodes,
         (stats->>'totalReward')::float as total_reward,
         version,
         updated_at
