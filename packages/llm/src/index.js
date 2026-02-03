@@ -51,5 +51,16 @@ export {
   TIER_LATENCIES,
 } from './router.js';
 
+// Semantic Similarity
+export {
+  tokenize,
+  removeStopwords,
+  jaccardSimilarity,
+  textSimilarity,
+  clusterBySimilarity,
+  calculateSemanticAgreement,
+  SimilarityThresholds,
+} from './similarity.js';
+
 // Convenience re-exports from @cynic/core
 export { PHI_INV, PHI_INV_2 } from '@cynic/core';
