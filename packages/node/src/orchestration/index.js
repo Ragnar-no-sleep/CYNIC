@@ -164,3 +164,10 @@ export {
   createValidatorsFromEnv,
   getRouterWithValidators,
 } from './llm-adapter.js';
+
+// LLM Orchestrator - Da'at Bridge (Task #93)
+export {
+  LLMOrchestrator,
+  ExecutionTier,
+  createLLMOrchestrator,
+} from './llm-orchestrator.js';
