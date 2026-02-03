@@ -1,0 +1,38 @@
+#!/bin/bash
+# CYNIC Pre-Commit Hook
+# "Le code se connaît lui-même" - κυνικός
+#
+# Auto-generates README.md for packages with staged changes.
+# Documentation stays alive, synchronized with code.
+#
+# Install with: cp scripts/hooks/git/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+
+set -e
+
+ROOT="$(git rev-parse --show-toplevel)"
+
+# Find packages with staged changes
+CHANGED_PACKAGES=$(git diff --cached --name-only | grep "^packages/" | cut -d'/' -f2 | sort -u 2>/dev/null || true)
+
+if [ -z "$CHANGED_PACKAGES" ]; then
+  exit 0
+fi
+
+echo ""
+echo "🧠 CYNIC Auto-Documentation"
+echo "════════════════════════════════════════"
+echo ""
+
+for pkg in $CHANGED_PACKAGES; do
+  if [ -d "$ROOT/packages/$pkg" ] && [ -f "$ROOT/packages/$pkg/package.json" ]; then
+    echo "   📦 $pkg"
+    node "$ROOT/scripts/tikkun/auto-document.js" "$pkg" > /dev/null 2>&1 || true
+    git add "$ROOT/packages/$pkg/README.md" 2>/dev/null || true
+  fi
+done
+
+echo ""
+echo "────────────────────────────────────────"
+echo "*tail wag* Documentation vivante."
+echo ""
+exit 0
