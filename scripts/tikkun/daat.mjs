@@ -861,20 +861,35 @@ async function runAudit(options = {}) {
   }
 
   // Calculate score (excluding optional)
+  // φ ENFORCEMENT: Score is CAPPED at φ⁻¹ (61.8%)
+  // Even with 100% checks passing, we cannot claim 100% confidence
+  // "φ distrusts φ" - CYNIC never claims certainty
   const scoreable = results.summary.total - results.summary.optional;
-  results.summary.score = scoreable > 0
-    ? Math.round((results.summary.passed / scoreable) * 100)
+  const rawScore = scoreable > 0
+    ? (results.summary.passed / scoreable) * 100
     : 0;
+
+  // Cap at φ⁻¹ - maximum theoretical confidence
+  results.summary.rawScore = Math.round(rawScore);
+  results.summary.score = Math.round(Math.min(rawScore, PHI_INV * 100));
 
   // Summary
   console.log(`${C.cyan}${C.bold}═══════════════════════════════════════════════════════════════════════════${C.reset}`);
   console.log(`${C.bold}  SUMMARY${C.reset}`);
   console.log(`${C.cyan}═══════════════════════════════════════════════════════════════════════════${C.reset}`);
 
-  const scoreColor = results.summary.score >= PHI_INV * 100 ? C.green :
-                     results.summary.score >= PHI_INV_2 * 100 ? C.yellow : C.red;
+  // Score color based on how close we are to φ⁻¹ ceiling
+  const scoreColor = results.summary.rawScore >= 100 ? C.green :
+                     results.summary.rawScore >= PHI_INV * 100 ? C.green :
+                     results.summary.rawScore >= PHI_INV_2 * 100 ? C.yellow : C.red;
 
-  console.log(`\n   Score: ${scoreColor}${results.summary.score}%${C.reset} (φ⁻¹ threshold: 62%)`);
+  // Show capped score with explanation
+  if (results.summary.rawScore > PHI_INV * 100) {
+    console.log(`\n   Score: ${scoreColor}${results.summary.score}%${C.reset} (capped from ${results.summary.rawScore}% → φ⁻¹ max)`);
+    console.log(`   ${C.dim}"φ distrusts φ" - CYNIC never claims 100% confidence${C.reset}`);
+  } else {
+    console.log(`\n   Score: ${scoreColor}${results.summary.score}%${C.reset} (φ⁻¹ ceiling: 62%)`);
+  }
   console.log(`   ${C.green}Passed: ${results.summary.passed}${C.reset} | ${C.red}Failed: ${results.summary.failed}${C.reset} | ${C.dim}Optional: ${results.summary.optional}${C.reset}`);
 
   // Progress bar
@@ -891,11 +906,15 @@ async function runAudit(options = {}) {
   console.log(`   [${bar}]`);
   console.log(`   ${' '.repeat(phiMark + 4)}↑ φ⁻¹`);
 
-  // Verdict
+  // Verdict - based on RAW score (how many checks actually passed)
   console.log('');
-  if (results.summary.score >= PHI_INV * 100) {
+  if (results.summary.rawScore >= 100) {
+    // All checks pass → score capped at φ⁻¹ (this is the BEST possible outcome)
+    console.log(`   ${C.green}${C.bold}*tail wag* Da'at maximal (φ⁻¹). Tous les checks passent.${C.reset}`);
+    console.log(`   ${C.dim}Le doute reste - c'est la sagesse.${C.reset}`);
+  } else if (results.summary.rawScore >= PHI_INV * 100) {
     console.log(`   ${C.green}${C.bold}*tail wag* Da'at restauré. Le système se connaît.${C.reset}`);
-  } else if (results.summary.score >= PHI_INV_2 * 100) {
+  } else if (results.summary.rawScore >= PHI_INV_2 * 100) {
     console.log(`   ${C.yellow}${C.bold}*sniff* Da'at partiel. Certaines zones restent obscures.${C.reset}`);
   } else {
     console.log(`   ${C.red}${C.bold}*ears droop* Da'at faible. Tikkun nécessaire.${C.reset}`);

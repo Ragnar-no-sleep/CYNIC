@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-02-03T10:36:55.626Z",
+  "timestamp": "2026-02-03T20:10:56.025Z",
   "version": "1.0.0",
   "categories": {
     "core": {
@@ -46,7 +46,7 @@
           "details": {
             "name": "cynic",
             "workspaces": 1,
-            "scripts": 22
+            "scripts": 23
           },
           "message": "cynic with 1 workspaces"
         },
@@ -477,7 +477,7 @@
             },
             {
               "package": "emergence",
-              "count": 1
+              "count": 5
             },
             {
               "package": "gasdf",
@@ -493,15 +493,19 @@
             },
             {
               "package": "identity",
-              "count": 1
+              "count": 2
+            },
+            {
+              "package": "llm",
+              "count": 4
             },
             {
               "package": "mcp",
-              "count": 15
+              "count": 19
             },
             {
               "package": "node",
-              "count": 37
+              "count": 40
             },
             {
               "package": "persistence",
@@ -516,7 +520,7 @@
               "count": 1
             }
           ],
-          "message": "115 test files in 13 packages"
+          "message": "131 test files in 14 packages"
         },
         {
           "id": "benchmark-files",
@@ -563,6 +567,7 @@
     "passed": 25,
     "failed": 0,
     "optional": 1,
-    "score": 100
+    "score": 62,
+    "rawScore": 100
   }
 }
