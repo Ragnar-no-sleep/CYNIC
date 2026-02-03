@@ -55,6 +55,8 @@ import {
 import { getCollectivePack, getSharedMemory } from './collective-singleton.js';
 // L3 Learning Loop - Dog heuristics feedback
 import { createDogLearningService } from './dogs/index.js';
+// Multi-LLM Router (Task #90) - consensus across models
+import { getRouterWithValidators } from './orchestration/llm-adapter.js';
 
 /**
  * Node status
@@ -315,6 +317,24 @@ export class CYNICNode {
       sharedMemory: this._sharedMemory,
       mode: options.orchestratorMode || DogMode.PARALLEL,
     });
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Multi-LLM Router (Task #90) - "Consensus across models"
+    // φ⁻¹ quorum for validation, uses local LLMs for verification
+    // ═══════════════════════════════════════════════════════════════════════
+    this._llmRouter = null;
+    if (options.llmRouter?.enabled !== false) {
+      try {
+        this._llmRouter = getRouterWithValidators({
+          quorum: options.llmRouter?.quorum ?? PHI_INV, // φ⁻¹ = 61.8% for consensus
+          timeout: options.llmRouter?.timeout ?? 30000,
+          maxRetries: options.llmRouter?.maxRetries ?? 2,
+        });
+        this._log.info('LLMRouter initialized', { quorum: PHI_INV, validators: this._llmRouter?.validators?.length || 0 });
+      } catch (e) {
+        this._log.warn('LLMRouter unavailable', { error: e.message });
+      }
+    }
 
     // ═══════════════════════════════════════════════════════════════════════
     // Collective Consciousness - The 11 Dogs (Gap #1 Fix)
@@ -1665,6 +1685,35 @@ export class CYNICNode {
       burned: peerInfo.burned || 0,
       uptime: peerInfo.uptime || 1.0,
     });
+  }
+
+  /**
+   * Get LLM Router for multi-model validation (Task #90)
+   * @returns {LLMRouter|null} Router or null if unavailable
+   */
+  get llmRouter() {
+    return this._llmRouter;
+  }
+
+  /**
+   * Validate a response using multi-LLM consensus (Task #90)
+   * @param {string} prompt - Original prompt
+   * @param {string} response - Response to validate
+   * @param {Object} [options] - Validation options
+   * @returns {Promise<Object>} Validation result with consensus
+   */
+  async validateWithConsensus(prompt, response, options = {}) {
+    if (!this._llmRouter) {
+      return { valid: true, source: 'no_router', confidence: 0.5 };
+    }
+
+    try {
+      const result = await this._llmRouter.validateResponse(prompt, response, options);
+      return result;
+    } catch (e) {
+      this._log.warn('Multi-LLM validation failed', { error: e.message });
+      return { valid: true, source: 'validation_error', confidence: 0.5, error: e.message };
+    }
   }
 }
 
