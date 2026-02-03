@@ -160,14 +160,12 @@ export class LearningProofQueries {
    */
   async _getExplorationDecay() {
     try {
+      // Query actual episode count from qlearning_episodes (more accurate than stats)
       const result = await this.pool.query(`
         SELECT
-          exploration_rate,
-          (stats->>'episodes')::int as total_episodes,
-          updated_at
-        FROM qlearning_state
-        ORDER BY updated_at DESC
-        LIMIT 1
+          (SELECT min(exploration_rate) FROM qlearning_state) as exploration_rate,
+          (SELECT count(*) FROM qlearning_episodes) as total_episodes,
+          (SELECT max(updated_at) FROM qlearning_state) as updated_at
       `);
 
       const row = result.rows[0] || {};
