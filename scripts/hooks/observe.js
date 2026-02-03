@@ -100,18 +100,35 @@ const harmonicFeedback = getHarmonicFeedback();
 const implicitFeedback = getImplicitFeedback();
 
 // ═══════════════════════════════════════════════════════════════════════════
-// FIL 2 (Task #84): Wire harmonic feedback → learning service via brain_learning
+// FIL 2 (Task #84): Wire harmonic feedback → learning service
+// Two paths: brain_learning (patterns) + Q-Learning (episodes)
 // ═══════════════════════════════════════════════════════════════════════════
 if (harmonicFeedback && harmonicFeedback.setLearningCallback) {
   harmonicFeedback.setLearningCallback(async (feedback) => {
-    // Call brain_learning tool to process feedback
-    await callBrainTool('brain_learning', {
+    // Path 1: Call brain_learning tool to process feedback (increments pattern frequency)
+    callBrainTool('brain_learning', {
       action: 'feedback',
       outcome: feedback.outcome,
       context: feedback.sourceContext,
     }).catch(() => {
       // Silently fail - MCP server might not be available
     });
+
+    // Path 2: Record directly to Q-Learning for episode tracking
+    const qlearning = getQLearningServiceWithPersistence();
+    if (qlearning) {
+      try {
+        qlearning.recordAction(feedback.sourceContext?.type || 'harmonic_feedback', {
+          success: feedback.outcome === 'correct',
+          source: 'harmonic',
+          confidence: feedback.sourceContext?.confidence || 0.5,
+          sentiment: feedback.sourceContext?.sentiment,
+          sefirah: feedback.sourceContext?.sefirah,
+        });
+      } catch (e) {
+        // Q-Learning recording is best-effort
+      }
+    }
   });
 }
 
