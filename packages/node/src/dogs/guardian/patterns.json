@@ -4,45 +4,113 @@
   "sefira": "Gevurah",
   "version": "1.0.0",
   "description": "L1 danger patterns for instant blocking without LLM",
-
   "patterns": {
     "critical": {
       "description": "Always block - no override allowed",
       "commands": [
-        { "pattern": "rm\\s+-rf\\s+[/~]", "reason": "Root/home deletion", "regex": true },
-        { "pattern": "rm\\s+-rf\\s+\\*", "reason": "Wildcard deletion", "regex": true },
-        { "pattern": ":(\\){:|:&};:", "reason": "Fork bomb", "regex": true },
-        { "pattern": "mkfs", "reason": "Filesystem format", "regex": false },
-        { "pattern": "> /dev/sd", "reason": "Direct disk write", "regex": false },
-        { "pattern": "dd if=.* of=/dev", "reason": "DD to disk", "regex": true },
-        { "pattern": "DROP\\s+(DATABASE|TABLE)", "reason": "Database destruction", "regex": true },
-        { "pattern": "TRUNCATE\\s+TABLE", "reason": "Table truncation", "regex": true }
+        {
+          "pattern": "rm\\s+-rf\\s+[/~]",
+          "reason": "Root/home deletion",
+          "regex": true
+        },
+        {
+          "pattern": "rm\\s+-rf\\s+\\*",
+          "reason": "Wildcard deletion",
+          "regex": true
+        },
+        {
+          "pattern": ":(\\){:|:&};:",
+          "reason": "Fork bomb",
+          "regex": true
+        },
+        {
+          "pattern": "mkfs",
+          "reason": "Filesystem format",
+          "regex": false
+        },
+        {
+          "pattern": "> /dev/sd",
+          "reason": "Direct disk write",
+          "regex": false
+        },
+        {
+          "pattern": "dd if=.* of=/dev",
+          "reason": "DD to disk",
+          "regex": true
+        },
+        {
+          "pattern": "DROP\\s+(DATABASE|TABLE)",
+          "reason": "Database destruction",
+          "regex": true
+        },
+        {
+          "pattern": "TRUNCATE\\s+TABLE",
+          "reason": "Table truncation",
+          "regex": true
+        }
       ]
     },
-
     "high": {
       "description": "Block with user override option",
       "commands": [
-        { "pattern": "git push --force", "reason": "Force push can destroy history", "regex": false },
-        { "pattern": "git push -f", "reason": "Force push shorthand", "regex": false },
-        { "pattern": "git reset --hard", "reason": "Destructive reset", "regex": false },
-        { "pattern": "chmod 777", "reason": "Overly permissive", "regex": false },
-        { "pattern": "npm publish", "reason": "Public package publish", "regex": false },
-        { "pattern": "DELETE FROM .* WHERE 1", "reason": "Delete all rows", "regex": true }
+        {
+          "pattern": "git push --force",
+          "reason": "Force push can destroy history",
+          "regex": false
+        },
+        {
+          "pattern": "git push -f",
+          "reason": "Force push shorthand",
+          "regex": false
+        },
+        {
+          "pattern": "git reset --hard",
+          "reason": "Destructive reset",
+          "regex": false
+        },
+        {
+          "pattern": "chmod 777",
+          "reason": "Overly permissive",
+          "regex": false
+        },
+        {
+          "pattern": "npm publish",
+          "reason": "Public package publish",
+          "regex": false
+        },
+        {
+          "pattern": "DELETE FROM .* WHERE 1",
+          "reason": "Delete all rows",
+          "regex": true
+        }
       ]
     },
-
     "medium": {
       "description": "Warn but allow",
       "commands": [
-        { "pattern": "sudo", "reason": "Elevated privileges", "regex": false },
-        { "pattern": "curl.*\\| (bash|sh)", "reason": "Pipe to shell", "regex": true },
-        { "pattern": "wget.*\\| (bash|sh)", "reason": "Pipe to shell", "regex": true },
-        { "pattern": "eval\\s*\\(", "reason": "Dynamic code execution", "regex": true }
+        {
+          "pattern": "sudo",
+          "reason": "Elevated privileges",
+          "regex": false
+        },
+        {
+          "pattern": "curl.*\\| (bash|sh)",
+          "reason": "Pipe to shell",
+          "regex": true
+        },
+        {
+          "pattern": "wget.*\\| (bash|sh)",
+          "reason": "Pipe to shell",
+          "regex": true
+        },
+        {
+          "pattern": "eval\\s*\\(",
+          "reason": "Dynamic code execution",
+          "regex": true
+        }
       ]
     }
   },
-
   "sensitivePaths": {
     "description": "Paths that require extra caution for writes",
     "paths": [
@@ -60,15 +128,50 @@
       "serviceAccountKey.json"
     ]
   },
-
   "systemPaths": {
     "description": "Paths that should never be modified",
-    "unix": ["/etc/", "/usr/", "/bin/", "/sbin/", "/boot/", "/dev/", "/proc/", "/sys/"],
-    "windows": ["C:\\Windows\\", "C:\\Program Files\\", "C:\\Program Files (x86)\\"]
+    "unix": [
+      "/etc/",
+      "/usr/",
+      "/bin/",
+      "/sbin/",
+      "/boot/",
+      "/dev/",
+      "/proc/",
+      "/sys/"
+    ],
+    "windows": [
+      "C:\\Windows\\",
+      "C:\\Program Files\\",
+      "C:\\Program Files (x86)\\"
+    ]
   },
-
-  "learnedPatterns": [],
-
+  "learnedPatterns": [
+    {
+      "signature": "sql-injection:sql-001",
+      "type": "sql-injection",
+      "verdict": "BARK",
+      "qScore": 85,
+      "confidence": 0.618033988749895,
+      "category": "security",
+      "dangerLevel": "critical",
+      "observationCount": 3,
+      "source": "L3_learning_loop",
+      "learnedAt": "2026-02-03T23:47:25.459Z"
+    },
+    {
+      "signature": "sql-injection:sql-002",
+      "type": "sql-injection",
+      "verdict": "BARK",
+      "qScore": 85,
+      "confidence": 0.618033988749895,
+      "category": "security",
+      "dangerLevel": "critical",
+      "observationCount": 3,
+      "source": "L3_learning_loop",
+      "learnedAt": "2026-02-03T23:47:25.834Z"
+    }
+  ],
   "metadata": {
     "createdAt": "2026-02-02T00:00:00Z",
     "updatedAt": "2026-02-02T00:00:00Z",
