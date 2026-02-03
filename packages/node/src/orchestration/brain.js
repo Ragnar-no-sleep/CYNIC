@@ -120,6 +120,7 @@ export class Brain extends EventEmitter {
    * @param {Object} [options.engineOrchestrator] - Philosophical engines
    * @param {Object} [options.memoryStore] - Pattern/memory storage
    * @param {Object} [options.learningService] - Learning feedback
+   * @param {Object} [options.llmRouter] - Multi-LLM router for consensus (Task #91)
    */
   constructor(options = {}) {
     super();
@@ -129,6 +130,8 @@ export class Brain extends EventEmitter {
     this.engineOrchestrator = options.engineOrchestrator || null;
     this.memoryStore = options.memoryStore || null;
     this.learningService = options.learningService || null;
+    // Task #91: Multi-LLM consensus router
+    this.llmRouter = options.llmRouter || null;
 
     // State
     this._state = new BrainState();
@@ -148,6 +151,7 @@ export class Brain extends EventEmitter {
       hasDogs: !!this.dogOrchestrator,
       hasEngines: !!this.engineOrchestrator,
       hasMemory: !!this.memoryStore,
+      hasLLMRouter: !!this.llmRouter, // Task #91
     });
   }
 
@@ -293,7 +297,7 @@ export class Brain extends EventEmitter {
   }
 
   /**
-   * Request judgment from dogs
+   * Request judgment from dogs + optional multi-LLM consensus (Task #91)
    * @private
    */
   async _requestJudgment(input) {
@@ -306,9 +310,10 @@ export class Brain extends EventEmitter {
         context: input.context || {},
       };
 
+      // 1. Get local dog judgment
       const result = await this.dogOrchestrator.judge(item);
 
-      return {
+      const judgment = {
         score: result.score,
         verdict: result.verdict,
         consensus: result.consensus,
@@ -316,7 +321,51 @@ export class Brain extends EventEmitter {
         votes: result.votes,
         blocked: result.blocked,
         dimensions: result.dimensions,
+        // Task #91: Mark as local-only initially
+        source: 'dogs',
       };
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // Task #91: Multi-LLM Consensus Validation
+      // If validators are available, seek cross-LLM consensus
+      // ═══════════════════════════════════════════════════════════════════════
+      if (this.llmRouter?.validators?.length > 0) {
+        try {
+          const consensusResult = await this.llmRouter.consensus(
+            `Judge this: ${input.content}\n\nLocal verdict: ${result.verdict} (score: ${result.score})`,
+            { timeout: 5000 }
+          );
+
+          if (consensusResult) {
+            // Merge multi-LLM consensus with dog judgment
+            judgment.multiLLM = {
+              hasConsensus: consensusResult.hasConsensus || false,
+              consensusRatio: consensusResult.consensusRatio || 0,
+              validators: consensusResult.validators?.length || 0,
+              responses: consensusResult.responses?.length || 0,
+            };
+
+            // If LLM consensus disagrees significantly, flag for review
+            if (consensusResult.hasConsensus && consensusResult.verdict !== result.verdict) {
+              judgment.multiLLM.disagreement = true;
+              judgment.multiLLM.llmVerdict = consensusResult.verdict;
+              log.info('Multi-LLM disagreement', {
+                dogVerdict: result.verdict,
+                llmVerdict: consensusResult.verdict,
+              });
+            }
+
+            // Update source to reflect multi-LLM validation
+            judgment.source = 'dogs+llm';
+          }
+        } catch (llmErr) {
+          // LLM consensus failed - continue with dog judgment only
+          log.debug('Multi-LLM consensus unavailable', { error: llmErr.message });
+          judgment.multiLLM = { error: llmErr.message, validators: 0 };
+        }
+      }
+
+      return judgment;
     } catch (err) {
       log.warn('Dog judgment failed', { error: err.message });
       return null;
