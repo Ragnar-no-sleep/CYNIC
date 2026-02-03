@@ -73,10 +73,23 @@
 
 | Document | Description |
 |----------|-------------|
-| [VISION.md](./VISION.md) | Philosophical foundation, Sefirot model |
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | Technical architecture deep-dive |
-| [SINGULARITY-ROADMAP.md](./SINGULARITY-ROADMAP.md) | Long-term vision |
+| [philosophy/cynic-ontology.md](./philosophy/cynic-ontology.md) | 4 Axiomes, 25 dimensions, fractales |
+| [philosophy/human-llm-symbiosis.md](./philosophy/human-llm-symbiosis.md) | CYNIC comme membrane |
 | [../PLAN.md](../PLAN.md) | Current implementation plan |
+
+---
+
+## 🔮 Vision (Aspirational)
+
+> **Warning:** These documents describe what CYNIC ASPIRES to become, not what EXISTS.
+
+| Document | Description |
+|----------|-------------|
+| [vision/README.md](./vision/README.md) | Index des documents vision |
+| [vision/CORE-VISION.md](./vision/CORE-VISION.md) | Falsification Pipeline (non implémenté) |
+| [vision/SINGULARITY-ROADMAP.md](./vision/SINGULARITY-ROADMAP.md) | Long-term vision |
+| [vision/tokenomics.md](./vision/tokenomics.md) | $BURN economy (pas de token actuellement) |
 
 ---
 
@@ -86,7 +99,7 @@
 |----------|-------------|
 | [../ROADMAP.md](../ROADMAP.md) | Development roadmap and priorities |
 | [../PLAN.md](../PLAN.md) | Memory architecture implementation |
-| [SINGULARITY-ROADMAP.md](./SINGULARITY-ROADMAP.md) | Long-term goals |
+| [vision/SINGULARITY-ROADMAP.md](./vision/SINGULARITY-ROADMAP.md) | Long-term goals (vision) |
 
 ---
 
