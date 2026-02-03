@@ -742,6 +742,51 @@ async function main() {
             heuristics: Object.keys(heuristics).length,
             stats,
           };
+
+          // ═══════════════════════════════════════════════════════════════════════
+          // SYMBIOSIS: Make memory restoration VISIBLE to human
+          // "Le chien montre ce qu'il sait" - The dog shows what it knows
+          // ═══════════════════════════════════════════════════════════════════════
+          const armCount = Object.keys(thompsonArms).length;
+          const heuristicCount = Object.keys(heuristics).length;
+          const totalPatterns = recentPatterns.length;
+
+          if (totalPatterns > 0) {
+            output.memoryRestored = {
+              message: `*ears perk* Je me souviens de ${totalPatterns} patterns de nos sessions précédentes.`,
+              details: [],
+              count: totalPatterns,
+            };
+
+            if (armCount > 0) {
+              output.memoryRestored.details.push(
+                `${armCount} apprentissages actifs (Thompson Sampling)`
+              );
+            }
+
+            if (heuristicCount > 0) {
+              output.memoryRestored.details.push(
+                `${heuristicCount} heuristiques promues (validated patterns)`
+              );
+            }
+
+            if (stats?.totalPatterns) {
+              output.memoryRestored.details.push(
+                `${stats.totalPatterns} patterns total en mémoire`
+              );
+            }
+
+            // Add top patterns for visibility
+            if (recentPatterns.length > 0) {
+              output.memoryRestored.topPatterns = recentPatterns
+                .slice(0, 3)
+                .map(p => ({
+                  name: p.name,
+                  type: p.type,
+                  confidence: Math.round((p.confidence || 0.5) * 100),
+                }));
+            }
+          }
         }
       }
     } catch (e) {
