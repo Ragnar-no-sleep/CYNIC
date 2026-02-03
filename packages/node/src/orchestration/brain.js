@@ -121,6 +121,7 @@ export class Brain extends EventEmitter {
    * @param {Object} [options.memoryStore] - Pattern/memory storage
    * @param {Object} [options.learningService] - Learning feedback
    * @param {Object} [options.llmRouter] - Multi-LLM router for consensus (Task #91)
+   * @param {Object} [options.llmOrchestrator] - LLM execution orchestrator (Task #95)
    */
   constructor(options = {}) {
     super();
@@ -132,6 +133,8 @@ export class Brain extends EventEmitter {
     this.learningService = options.learningService || null;
     // Task #91: Multi-LLM consensus router
     this.llmRouter = options.llmRouter || null;
+    // Task #95: Da'at Bridge - LLM execution orchestrator
+    this.llmOrchestrator = options.llmOrchestrator || null;
 
     // State
     this._state = new BrainState();
@@ -145,6 +148,7 @@ export class Brain extends EventEmitter {
       synthesisRequested: 0,
       patternsDetected: 0,
       avgThinkingTime: 0,
+      executionsRequested: 0, // Task #95
     };
 
     log.debug('Brain initialized', {
@@ -152,6 +156,7 @@ export class Brain extends EventEmitter {
       hasEngines: !!this.engineOrchestrator,
       hasMemory: !!this.memoryStore,
       hasLLMRouter: !!this.llmRouter, // Task #91
+      hasLLMOrchestrator: !!this.llmOrchestrator, // Task #95
     });
   }
 
@@ -271,6 +276,118 @@ export class Brain extends EventEmitter {
       requestSynthesis: false,
       checkPatterns: true,
     });
+  }
+
+  /**
+   * Execute with full Da'at flow (Task #95)
+   *
+   * Complete flow: Human → Brain.think() → LLM → Brain.judge() → Human
+   *
+   * @param {Object} input - What to process
+   * @param {string} input.content - User's request
+   * @param {string} [input.type] - Content type
+   * @param {Object} [options] - Execution options
+   * @param {boolean} [options.requestSynthesis=false] - Include philosophical synthesis
+   * @param {Object} [options.context] - Additional context for LLM
+   * @returns {Promise<Object>} Complete execution result
+   */
+  async execute(input, options = {}) {
+    const startTime = Date.now();
+    this.stats.executionsRequested++;
+
+    // 1. Think first (local judgment + patterns + optional synthesis)
+    const thought = await this.think(input, {
+      requestJudgment: true,
+      requestSynthesis: options.requestSynthesis || false,
+      checkPatterns: true,
+    });
+
+    // 2. Check if thought blocks execution
+    if (thought.decision?.action === 'reject' || thought.judgment?.blocked) {
+      log.info('Execution blocked by thought', { reason: thought.decision?.reason });
+      return {
+        thought,
+        response: null,
+        judgment: null,
+        blocked: true,
+        reason: thought.decision?.reason || 'Blocked by judgment',
+        duration: Date.now() - startTime,
+      };
+    }
+
+    // 3. If no LLM orchestrator, return thought only
+    if (!this.llmOrchestrator) {
+      log.debug('No LLM orchestrator, returning thought only');
+      return {
+        thought,
+        response: null,
+        judgment: null,
+        blocked: false,
+        duration: Date.now() - startTime,
+      };
+    }
+
+    // 4. Execute via LLM orchestrator
+    let response;
+    try {
+      response = await this.llmOrchestrator.execute(
+        thought,
+        input.content,
+        options.context || {}
+      );
+    } catch (err) {
+      log.error('LLM execution failed', { error: err.message });
+      return {
+        thought,
+        response: null,
+        judgment: null,
+        error: err.message,
+        duration: Date.now() - startTime,
+      };
+    }
+
+    // 5. If LLM was blocked or errored, return result
+    if (response.blocked || response.error || !response.content) {
+      return {
+        thought,
+        response,
+        judgment: null,
+        blocked: response.blocked || false,
+        error: response.error,
+        duration: Date.now() - startTime,
+      };
+    }
+
+    // 6. Judge the LLM response
+    let responseJudgment;
+    try {
+      responseJudgment = await this.judge({
+        content: response.content,
+        type: 'llm_response',
+        context: {
+          originalThought: thought.id,
+          tier: response.tier,
+          model: response.model,
+        },
+      });
+    } catch (err) {
+      log.warn('Response judgment failed', { error: err.message });
+      responseJudgment = null;
+    }
+
+    // 7. Return complete result
+    const result = {
+      thought,
+      response,
+      judgment: responseJudgment,
+      blocked: false,
+      duration: Date.now() - startTime,
+    };
+
+    // Emit execution event
+    this.emit('execution', result);
+
+    return result;
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
