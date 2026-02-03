@@ -278,11 +278,36 @@ export function recordFriction(name, severity, details = {}) {
 
 // QLearningService with PostgreSQL persistence (Task #84: Wire Q-Learning to hooks)
 let _qlearningService = null;
+let _dotenvLoaded = false;
 
 export function getQLearningServiceWithPersistence() {
   if (_qlearningService) return _qlearningService;
 
   try {
+    // Load .env if not already loaded (hooks context doesn't have env vars)
+    if (!_dotenvLoaded && !process.env.CYNIC_DATABASE_URL) {
+      try {
+        const path = require('path');
+        const fs = require('fs');
+        // Try multiple possible paths to find .env
+        const possiblePaths = [
+          path.resolve(process.cwd(), '.env'),
+          path.resolve(__dirname, '../../.env'),  // scripts/hooks/lib -> scripts/hooks -> .env (if at CYNIC root)
+          path.resolve(__dirname, '../../../.env'), // scripts/hooks/lib -> scripts/hooks -> scripts -> CYNIC/.env
+          'C:/Users/zeyxm/Desktop/asdfasdfa/CYNIC/.env', // Absolute fallback
+        ];
+        for (const dotenvPath of possiblePaths) {
+          if (fs.existsSync(dotenvPath)) {
+            require('dotenv').config({ path: dotenvPath });
+            _dotenvLoaded = true;
+            break;
+          }
+        }
+      } catch (e) {
+        // dotenv not available or .env not found - continue without
+      }
+    }
+
     const { getQLearningService } = require('@cynic/node');
     const { getPool } = require('@cynic/persistence');
     const pool = getPool();
