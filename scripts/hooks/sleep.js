@@ -33,7 +33,11 @@ import cynic, {
 } from '../lib/index.js';
 
 // Phase 22: Session state management
-import { getSessionState } from './lib/index.js';
+import { getSessionState, getTemporalPerception } from './lib/index.js';
+
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 
 // Load collective dogs for activity summary
 import { createRequire } from 'module';
@@ -368,6 +372,45 @@ async function main() {
       }
     } catch (e) {
       output.learning = { triggered: false, error: e.message };
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // TEMPORAL PERCEPTION: Save session end time for inter-session gap
+    // "Le chien se souvient quand il s'est endormi"
+    // ═══════════════════════════════════════════════════════════════════════════
+    try {
+      const temporalPerception = getTemporalPerception();
+      const temporalState = temporalPerception.getTemporalState();
+
+      // Save session end time to persistent file
+      const cynicDir = path.join(os.homedir(), '.cynic');
+      const temporalFile = path.join(cynicDir, 'last-session.json');
+
+      // Ensure directory exists
+      if (!fs.existsSync(cynicDir)) {
+        fs.mkdirSync(cynicDir, { recursive: true });
+      }
+
+      // Save temporal data for next session
+      const temporalData = {
+        sessionEndTime: endTime,
+        sessionId: output.session.id,
+        userId: user.userId,
+        duration: output.session.duration,
+        promptCount: temporalState.promptCount,
+        averageIntervalMs: temporalState.averageIntervalMs,
+        trend: temporalState.trend,
+        worldTime: {
+          hour: temporalState.worldTime?.hour,
+          dayOfWeek: temporalState.worldTime?.dayOfWeek,
+          circadianPhase: temporalState.worldTime?.circadianPhase,
+        },
+      };
+
+      fs.writeFileSync(temporalFile, JSON.stringify(temporalData, null, 2));
+      output.temporal = { saved: true, endTime };
+    } catch (e) {
+      output.temporal = { saved: false, error: e.message };
     }
 
     // ═══════════════════════════════════════════════════════════════════════════

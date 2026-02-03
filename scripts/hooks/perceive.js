@@ -43,6 +43,12 @@ import cynic, {
 // Phase 22: Session state and orchestration client
 import { getSessionState, getOrchestrationClient, initOrchestrationClient } from './lib/index.js';
 
+// Temporal Perception: CYNIC's sense of time
+import { getTemporalPerception, TemporalTrend, TemporalState } from './lib/index.js';
+
+// Error Perception: CYNIC's sense of tool failures
+import { getErrorPerception, ErrorSeverity, ErrorPattern } from './lib/index.js';
+
 // S1: Rules-based skill detection (loaded from skill-rules.json)
 import { detectSkillTriggersFromRules, getRulesSettings } from './lib/index.js';
 
@@ -390,6 +396,47 @@ async function main() {
     const escalationLevel = sessionState.isInitialized() ? sessionState.getEscalationLevel() : 'normal';
     const recentWarnings = sessionState.isInitialized() ? sessionState.getActiveWarnings() : [];
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // TEMPORAL PERCEPTION: CYNIC's sense of time
+    // "Le chien sent le temps passer"
+    // ═══════════════════════════════════════════════════════════════════════════
+    const temporalPerception = getTemporalPerception();
+
+    // Restore from session state if not initialized
+    if (sessionState.isInitialized()) {
+      const snapshot = sessionState.getSnapshot();
+      if (snapshot.startTime) {
+        temporalPerception.restoreFromSession(snapshot);
+      }
+    }
+
+    // Record this prompt timestamp and get temporal event
+    const temporalEvent = temporalPerception.recordPrompt();
+    const temporalState = temporalPerception.getTemporalState();
+
+    logger.debug('Temporal state', {
+      interval: temporalEvent.interval,
+      state: temporalEvent.state,
+      trend: temporalState.trend,
+      tempo: temporalState.tempo?.toFixed(2),
+      signals: temporalState.signals,
+    });
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // ERROR PERCEPTION: CYNIC's sense of tool failures
+    // "Le chien renifle les erreurs"
+    // ═══════════════════════════════════════════════════════════════════════════
+    const errorPerception = getErrorPerception();
+    errorPerception.setSessionState(sessionState);
+    const errorState = errorPerception.getErrorState();
+
+    logger.debug('Error state', {
+      errorRate: errorState.humanReadable?.errorRate,
+      severity: errorState.severity,
+      pattern: errorState.pattern,
+      consecutive: errorState.consecutiveErrors,
+    });
+
     // Record this prompt in session state
     if (sessionState.isInitialized()) {
       const intentsPreview = detectIntent(prompt);
@@ -547,6 +594,111 @@ async function main() {
     // ═══════════════════════════════════════════════════════════════════════════
     if (brainInjection) {
       injections.push(brainInjection);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // TEMPORAL SIGNALS INJECTION: Communicate time perception to user
+    // "Le chien sent le temps et en parle"
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (temporalState.signals) {
+      const { signals } = temporalState;
+      const worldTime = temporalState.worldTime;
+
+      // Late night work warning (priority - health concern)
+      if (signals.lateNightWork && signals.lateNightConfidence > 0.4) {
+        const time = worldTime?.humanReadable?.time || '?';
+        const phase = worldTime?.humanReadable?.phase || 'nuit';
+        injections.push(`${c(ANSI.brightYellow, '── 🌙 ' + phase.toUpperCase() + ' ─────────────────────────────────────────────')}
+   ${c(ANSI.brightYellow, '*yawn*')} Il est ${time}. Session en ${phase}.
+   ${c(ANSI.dim, 'L\'énergie circadienne est basse. Repos bientôt?')}`);
+      }
+
+      // High-confidence frustration signal
+      else if (signals.possibleFrustration && signals.frustrationConfidence > 0.4) {
+        const tempo = temporalState.tempo?.toFixed(1) || '?';
+        let frustrationMsg = `${c(ANSI.brightYellow, '── ⚡ TEMPO ───────────────────────────────────────────────')}
+   ${c(ANSI.brightYellow, '*sniff*')} Rythme rapide détecté (${tempo} prompts/min)
+   Trend: ${temporalState.trend === TemporalTrend.ACCELERATING ? c(ANSI.brightRed, 'accélération') : temporalState.trend}`;
+
+        // Add circadian context if mismatched
+        if (signals.circadianMismatch) {
+          frustrationMsg += `\n   ${c(ANSI.dim, '⚠️ Activité intense pendant phase basse énergie.')}`;
+        }
+        frustrationMsg += `\n   ${c(ANSI.dim, 'Si bloqué, je peux aider à décomposer le problème.')}`;
+        injections.push(frustrationMsg);
+      }
+
+      // High-confidence fatigue signal
+      else if (signals.possibleFatigue && signals.fatigueConfidence > 0.4) {
+        const duration = temporalState.humanReadable?.sessionDuration || '?';
+        const time = worldTime?.humanReadable?.time || '';
+        injections.push(`${c(ANSI.yellow, '── 😴 FATIGUE ────────────────────────────────────────────')}
+   ${c(ANSI.yellow, '*yawn*')} Session longue (${duration}) + ralentissement.${time ? ` Il est ${time}.` : ''}
+   ${c(ANSI.dim, 'Peut-être une pause serait bénéfique?')}`);
+      }
+
+      // Flow state - positive reinforcement (less frequent)
+      else if (signals.possibleFlow && signals.flowConfidence > 0.5 && temporalState.promptCount % 8 === 0) {
+        injections.push(`${c(ANSI.brightGreen, '── ✨ FLOW ────────────────────────────────────────────────')}
+   ${c(ANSI.brightGreen, '*tail wag*')} Rythme régulier, bon flow.`);
+      }
+
+      // Stuck signal
+      else if (signals.possibleStuck && signals.stuckConfidence > 0.4) {
+        const timeSince = temporalState.humanReadable?.timeSinceLastPrompt || '?';
+        injections.push(`${c(ANSI.cyan, '── ⏳ PAUSE ───────────────────────────────────────────────')}
+   ${c(ANSI.cyan, '*ears perk*')} Long silence (${timeSince}).
+   ${c(ANSI.dim, 'Bloqué? Je peux aider à explorer le problème.')}`);
+      }
+
+      // Weekend work note (low priority, occasional)
+      else if (signals.weekendWork && temporalState.promptCount === 3) {
+        const day = worldTime?.humanReadable?.date || 'weekend';
+        injections.push(`${c(ANSI.dim, '── 📅 WEEKEND ────────────────────────────────────────────')}
+   ${c(ANSI.dim, '*head tilt*')} ${day}. Travail le weekend?
+   ${c(ANSI.dim, 'N\'oublie pas de prendre du repos.')}`);
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // ERROR SIGNALS INJECTION: Communicate error perception to user
+    // "Le chien sent les erreurs et en parle"
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (errorState.signals) {
+      const { signals: errSignals } = errorState;
+
+      // Critical: consecutive errors (circuit breaker territory)
+      if (errSignals.consecutiveErrors && errorState.consecutiveErrors >= 5) {
+        injections.push(`${c(ANSI.brightRed, '── 🔴 CIRCUIT BREAKER ────────────────────────────────────')}
+   ${c(ANSI.brightRed, '*GROWL*')} ${errorState.consecutiveErrors} erreurs consécutives!
+   Pattern: ${errorState.pattern}
+   ${c(ANSI.brightYellow, 'Peut-être une approche différente?')}`);
+      }
+
+      // High error rate warning
+      else if (errSignals.highErrorRate && errorState.errorRate >= 0.38) {
+        const rateStr = errorState.humanReadable?.errorRate || '?';
+        const commonError = errorState.mostCommonError || 'inconnu';
+        injections.push(`${c(ANSI.brightYellow, '── ⚠️ ERREURS ────────────────────────────────────────────')}
+   ${c(ANSI.brightYellow, '*sniff*')} Taux d'erreur élevé: ${rateStr}
+   Erreur fréquente: ${c(ANSI.cyan, commonError)}
+   ${c(ANSI.dim, 'Vérifions l\'approche?')}`);
+      }
+
+      // Repeated same error
+      else if (errSignals.repeatedError) {
+        const commonError = errorState.mostCommonError || 'inconnu';
+        injections.push(`${c(ANSI.yellow, '── 🔄 PATTERN ────────────────────────────────────────────')}
+   ${c(ANSI.yellow, '*ears perk*')} Même erreur répétée: ${c(ANSI.cyan, commonError)}
+   ${c(ANSI.dim, 'Bloqué sur quelque chose de spécifique?')}`);
+      }
+
+      // Escalating errors
+      else if (errSignals.escalatingErrors) {
+        injections.push(`${c(ANSI.yellow, '── 📈 ESCALADE ───────────────────────────────────────────')}
+   ${c(ANSI.yellow, '*sniff*')} Les erreurs augmentent.
+   ${c(ANSI.dim, 'Peut-être revenir en arrière et réessayer?')}`);
+      }
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -867,6 +1019,29 @@ async function main() {
         cost: tierDecision.cost,
         reason: tierDecision.reason,
       } : null,
+      // Temporal perception data
+      temporal: {
+        intervalMs: temporalEvent.interval,
+        state: temporalEvent.state,
+        trend: temporalState.trend,
+        tempo: temporalState.tempo,
+        sessionDurationMs: temporalState.sessionDurationMs,
+        promptCount: temporalState.promptCount,
+        signals: temporalState.signals,
+        worldTime: temporalState.worldTime ? {
+          hour: temporalState.worldTime.hour,
+          circadianPhase: temporalState.worldTime.circadianPhase,
+          dayType: temporalState.worldTime.dayType,
+        } : null,
+      },
+      // Error perception data
+      errors: {
+        errorRate: errorState.errorRate,
+        consecutiveErrors: errorState.consecutiveErrors,
+        pattern: errorState.pattern,
+        severity: errorState.severity,
+        signals: errorState.signals,
+      },
       timestamp: Date.now(),
     });
 

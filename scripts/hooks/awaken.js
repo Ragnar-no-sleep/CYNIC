@@ -144,6 +144,8 @@ import {
   getTelemetryCollector,
   recordMetric,
   getSessionRepository,
+  // Temporal Perception
+  getTemporalPerception,
 } from './lib/index.js';
 
 // =============================================================================
@@ -300,6 +302,71 @@ async function main() {
     const sessionState = getSessionState();
     await sessionState.init(sessionId, { userId: user.userId });
     initOrchestrationClient(orchestrateFull);
+
+    // Initialize temporal perception with session start time
+    const temporalPerception = getTemporalPerception();
+    temporalPerception.init(bootSequence.startTime);
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // INTER-SESSION GAP: Load last session data for welcome-back context
+    // "Le chien se souvient de la dernière fois"
+    // ═══════════════════════════════════════════════════════════════════════════
+    let lastSessionData = null;
+    try {
+      const temporalFile = path.join(os.homedir(), '.cynic', 'last-session.json');
+      if (fs.existsSync(temporalFile)) {
+        lastSessionData = JSON.parse(fs.readFileSync(temporalFile, 'utf8'));
+
+        // Set last session end time for gap calculation
+        if (lastSessionData.sessionEndTime) {
+          temporalPerception.setLastSessionEndTime(lastSessionData.sessionEndTime);
+        }
+      }
+    } catch (e) {
+      // No last session data - first time or file corrupted
+    }
+
+    // Get inter-session gap info
+    const interSessionGap = temporalPerception.classifyInterSessionGap();
+    const timeSinceLastSession = temporalPerception.getTimeSinceLastSession();
+
+    // Add to output for TUI display
+    if (lastSessionData && timeSinceLastSession !== null) {
+      output.previousSession = {
+        endTime: lastSessionData.sessionEndTime,
+        duration: lastSessionData.duration,
+        gapMs: timeSinceLastSession,
+        gapCategory: interSessionGap,
+        gapHumanReadable: formatGap(timeSinceLastSession),
+        lastActivity: {
+          promptCount: lastSessionData.promptCount,
+          trend: lastSessionData.trend,
+        },
+      };
+    }
+
+    /**
+     * Format inter-session gap for human display
+     * @param {number} ms - Gap in milliseconds
+     * @returns {string} Human-readable gap
+     */
+    function formatGap(ms) {
+      if (ms === null) return null;
+      const hours = ms / (1000 * 60 * 60);
+      const days = hours / 24;
+
+      if (hours < 1) {
+        return `${Math.round(ms / 60000)} minutes`;
+      } else if (hours < 24) {
+        return `${hours.toFixed(1)} heures`;
+      } else if (days < 7) {
+        return `${days.toFixed(1)} jours`;
+      } else if (days < 30) {
+        return `${Math.round(days / 7)} semaines`;
+      } else {
+        return `${Math.round(days / 30)} mois`;
+      }
+    }
 
     // ═══════════════════════════════════════════════════════════════════════════
     // TELEMETRY INITIALIZATION

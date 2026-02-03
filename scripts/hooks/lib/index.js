@@ -15,6 +15,26 @@ export * from './pattern-detector.js';
 // Session state management (Phase 22)
 export { SessionStateManager, getSessionState } from './session-state.js';
 
+// Temporal Perception (Time awareness for psychology)
+export {
+  TemporalPerception,
+  getTemporalPerception,
+  resetTemporalPerception,
+  TEMPORAL_THRESHOLDS,
+  TemporalState,
+  TemporalTrend,
+} from './temporal-perception.js';
+
+// Error Perception (Tool failure awareness for psychology)
+export {
+  ErrorPerception,
+  getErrorPerception,
+  resetErrorPerception,
+  ERROR_THRESHOLDS,
+  ErrorSeverity,
+  ErrorPattern,
+} from './error-perception.js';
+
 // Orchestration client (Phase 22)
 export { OrchestrationClient, getOrchestrationClient, initOrchestrationClient } from './orchestration-client.js';
 
