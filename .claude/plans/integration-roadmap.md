@@ -158,37 +158,37 @@ OVERALL                 72.5%    🟡 WAG (φ⁻¹ = 61.8% threshold)
 ### 3.1 Vue d'Ensemble
 
 ```
-PHASE 1: SIMPLIFY (Current)
-├── AXE 1: WIRE ✅ COMPLETED
+PHASE 1: SIMPLIFY ✅ COMPLETE (2026-02-03)
+├── AXE 1: WIRE ✅
 │   └── CollectivePack Singleton wired to all components
 │
-├── AXE 2: PERSIST (Next)
-│   ├── Q-Table → PostgreSQL
+├── AXE 2: PERSIST ✅
+│   ├── Q-Table → PostgreSQL (migration 026)
 │   ├── SharedMemory patterns → PostgreSQL
-│   └── EWC++ Fisher scores → PostgreSQL
+│   └── QLearningService with persistence
 │
-├── AXE 3: SUPERMEMORY
-│   ├── Activate indexAll()
-│   ├── Real embeddings (Ollama)
-│   └── Wire to Total Memory
+├── AXE 3: SUPERMEMORY ✅ (6.3s indexing - 9.4x speedup)
+│   ├── Batch DB inserts (32x faster)
+│   ├── withFileTypes file collection (16x faster)
+│   └── Kill criteria: <10s ✅
 │
-└── AXE 4: CLEAN
-    ├── Burn zombie repositories
-    └── Remove deprecated routers
+├── AXE 4: CLEAN ✅
+│   ├── Burned deprecated llm-router.js (-571 lines)
+│   └── Consolidated LLMRouter to @cynic/llm
+│
+├── AXE 5: OBSERVE ✅
+│   ├── HeartbeatService (30s interval, φ-aligned)
+│   ├── SLATracker (99.9% target)
+│   ├── ConsciousnessBridge (health → awareness)
+│   └── brain_health now shows uptime + SLA
+│
+└── AXE 6: EMERGE ✅
+    ├── EmergenceDetector (cross-session patterns)
+    ├── QLearningService (φ-aligned rewards)
+    └── brain_emergence, brain_self_correction tools
 
 PHASE 2: SCALE (Future)
-├── AXE 5: OBSERVE (Uptime Awareness)
-│   ├── Continuous heartbeat service
-│   ├── SLA tracking (99.9% target)
-│   ├── Distributed tracing
-│   └── Kill criteria enforcement
-│
-├── AXE 6: EMERGE (Self-Improvement)
-│   ├── Auto-tuning Q-learning
-│   ├── Meta-learning
-│   └── Autonomous improvement
-│
-└── AXE 7: DECENTRALIZE (Future)
+└── AXE 7: DECENTRALIZE
     ├── Multi-node consensus
     ├── Solana anchoring
     └── E-Score verification
