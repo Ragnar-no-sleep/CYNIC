@@ -49,6 +49,14 @@ import { detectSkillTriggersFromRules, getRulesSettings } from './lib/index.js';
 // Task #21: LLM Router for tier-based LLM selection
 import { getLLMRouter, getCostOptimizer, ComplexityTier } from '@cynic/node';
 
+// Brain Integration: Unified consciousness layer
+import {
+  thinkAbout,
+  judgeContent,
+  formatThoughtInjection,
+  isBrainAvailable,
+} from './lib/brain-bridge.js';
+
 // =============================================================================
 // LOAD OPTIONAL MODULES
 // =============================================================================
@@ -149,6 +157,41 @@ function detectIntent(prompt) {
   }
 
   return intents;
+}
+
+/**
+ * Detect prompt type for Brain routing
+ * Maps intent patterns to Brain-compatible types
+ */
+function detectPromptType(prompt) {
+  const promptLower = prompt.toLowerCase();
+
+  // Decision-making prompts
+  if (/\b(should|decide|choose|which|better|recommend|option)\b/.test(promptLower)) {
+    return 'decision';
+  }
+
+  // Architecture/design prompts
+  if (/\b(architecture|design|structure|refactor|pattern|organize)\b/.test(promptLower)) {
+    return 'architecture';
+  }
+
+  // Code-related prompts
+  if (/\b(code|function|class|bug|error|fix|implement|write)\b/.test(promptLower)) {
+    return 'code';
+  }
+
+  // Security-related prompts
+  if (/\b(security|vulnerability|safe|dangerous|attack|exploit)\b/.test(promptLower)) {
+    return 'security';
+  }
+
+  // Knowledge/learning prompts
+  if (/\b(explain|what|why|how|understand|learn|teach)\b/.test(promptLower)) {
+    return 'knowledge';
+  }
+
+  return 'general';
 }
 
 // =============================================================================
@@ -357,6 +400,55 @@ async function main() {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // BRAIN CONSCIOUSNESS: Unified thinking before Claude processes
+    // "Le cerveau pense AVANT que Claude ne réponde"
+    // ═══════════════════════════════════════════════════════════════════════════
+    let brainThought = null;
+    let brainInjection = null;
+
+    if (isBrainAvailable()) {
+      try {
+        // Detect type from prompt for better routing
+        const promptType = detectPromptType(prompt);
+
+        // Brain thinks about the prompt
+        brainThought = await thinkAbout(prompt, {
+          type: promptType,
+          context: {
+            user: user.userId,
+            project: detectProject(),
+            escalationLevel,
+            hasWarnings: recentWarnings.length > 0,
+          },
+          requestJudgment: true,
+          requestSynthesis: promptType === 'decision' || promptType === 'architecture',
+        });
+
+        logger.debug('Brain thought', {
+          id: brainThought.id,
+          verdict: brainThought.verdict,
+          confidence: brainThought.confidence,
+          decision: brainThought.decision?.action,
+        });
+
+        // Format for injection
+        brainInjection = formatThoughtInjection(brainThought);
+
+        // If Brain says BLOCK, we could block here (but perceive is non-blocking)
+        // Instead, we inject a strong warning
+        if (brainThought.decision?.action === 'block') {
+          brainInjection = `${c(ANSI.brightRed, '── 🧠 BRAIN BLOCK ─────────────────────────────────────────')}
+   ${c(ANSI.brightRed, '*GROWL*')} ${brainThought.decision.reason}
+   Confidence: ${Math.round((brainThought.confidence || 0) * 100)}%
+   ${c(ANSI.brightYellow, 'CYNIC strongly advises against this action.')}`;
+        }
+      } catch (e) {
+        logger.debug('Brain thinking failed', { error: e.message });
+        // Continue without brain - graceful degradation
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // LLM TIER DECISION (Task #21) - Determine which LLM tier to use
     // LOCAL = No LLM (rule-based), LIGHT = Ollama, FULL = Claude/Large models
     // "Le plus petit chien qui peut faire le travail"
@@ -448,6 +540,14 @@ async function main() {
 
     // Generate context based on intents
     const injections = [];
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // BRAIN INJECTION: Add Brain's thought to context (first priority)
+    // "Le cerveau parle en premier"
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (brainInjection) {
+      injections.push(brainInjection);
+    }
 
     // ═══════════════════════════════════════════════════════════════════════════
     // SKILL AUTO-ACTIVATION (Phase 3)

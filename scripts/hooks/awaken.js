@@ -1,19 +1,109 @@
 #!/usr/bin/env node
 /**
- * CYNIC Awaken Hook - SessionStart
+ * CYNIC OS Boot Sequence - SessionStart
  *
- * "Le chien s'éveille" - CYNIC awakens with the session
+ * "Claude est le processeur, CYNIC l'OS"
  *
- * This hook runs at the start of every Claude session.
- * It establishes CYNIC's presence from the very first moment.
+ * This hook implements the CYNIC OS boot sequence as documented in ARCHITECTURE.md §19.2.
+ * The boot follows 6 phases, each completing before the next begins.
  *
- * OUTPUT: Structured JSON for TUI Protocol (see CLAUDE.md)
+ * BOOT PHASES:
+ * ═══════════════════════════════════════════════════════════════════════════
+ * PHASE 0: BIOS (~10ms)       - CLAUDE.md already loaded by Claude Code
+ * PHASE 1: BOOTLOADER (~50ms) - Detect mode, load user profile
+ * PHASE 2: KERNEL INIT (~100ms) - Load axioms, set φ-constants
+ * PHASE 3: PROCESS SPAWN (~200ms) - Spawn Dogs with heuristics
+ * PHASE 4: MEMORY MOUNT (~300ms) - Connect DB, inject facts
+ * PHASE 5: IDENTITY ASSERTION (~100ms) - Assert CYNIC identity
+ * PHASE 6: READY (~50ms) - Display TUI, CYNIC is LIVE
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * BOOT MODES:
+ * - COLD: First boot, full initialization
+ * - WARM: Resume from previous session, restore state
+ * - SAFE: Minimal boot, local-only (when MCP unavailable)
  *
  * @event SessionStart
  * @behavior non-blocking (injects message)
  */
 
 'use strict';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BOOT PHASE TRACKING
+// "L'OS sait toujours où il en est"
+// ═══════════════════════════════════════════════════════════════════════════
+
+const BOOT_PHASES = {
+  BIOS: { name: 'BIOS', order: 0, target: 10 },
+  BOOTLOADER: { name: 'BOOTLOADER', order: 1, target: 50 },
+  KERNEL_INIT: { name: 'KERNEL_INIT', order: 2, target: 100 },
+  PROCESS_SPAWN: { name: 'PROCESS_SPAWN', order: 3, target: 200 },
+  MEMORY_MOUNT: { name: 'MEMORY_MOUNT', order: 4, target: 300 },
+  IDENTITY_ASSERTION: { name: 'IDENTITY_ASSERTION', order: 5, target: 100 },
+  READY: { name: 'READY', order: 6, target: 50 },
+};
+
+const BOOT_MODES = {
+  COLD: 'cold',   // Fresh start
+  WARM: 'warm',   // Resume previous
+  SAFE: 'safe',   // Minimal, local-only
+};
+
+/**
+ * Boot state tracker
+ */
+class BootSequence {
+  constructor() {
+    this.startTime = Date.now();
+    this.currentPhase = null;
+    this.completedPhases = [];
+    this.phaseTimings = {};
+    this.mode = BOOT_MODES.COLD;
+    this.errors = [];
+    this.degraded = false;
+  }
+
+  enterPhase(phase) {
+    const phaseStart = Date.now();
+    this.currentPhase = phase;
+    this.phaseTimings[phase.name] = { start: phaseStart, end: null, duration: null };
+    return phaseStart;
+  }
+
+  exitPhase(phase, success = true) {
+    const phaseEnd = Date.now();
+    if (this.phaseTimings[phase.name]) {
+      this.phaseTimings[phase.name].end = phaseEnd;
+      this.phaseTimings[phase.name].duration = phaseEnd - this.phaseTimings[phase.name].start;
+      this.phaseTimings[phase.name].success = success;
+    }
+    this.completedPhases.push(phase.name);
+  }
+
+  recordError(phase, error) {
+    this.errors.push({ phase: phase.name, error: error.message, timestamp: Date.now() });
+  }
+
+  setDegraded() {
+    this.degraded = true;
+    this.mode = BOOT_MODES.SAFE;
+  }
+
+  getSummary() {
+    return {
+      mode: this.mode,
+      totalDuration: Date.now() - this.startTime,
+      phases: this.phaseTimings,
+      completedPhases: this.completedPhases,
+      errors: this.errors,
+      degraded: this.degraded,
+    };
+  }
+}
+
+// Global boot sequence instance
+const bootSequence = new BootSequence();
 
 // ESM imports from the lib bridge
 import cynic, {
@@ -108,16 +198,29 @@ function safeOutput(data) {
 }
 
 /**
- * Main handler for SessionStart
+ * Main handler for SessionStart - CYNIC OS Boot Sequence
  */
 async function main() {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE 0: BIOS (Pre-boot)
+  // CLAUDE.md is already loaded by Claude Code - this is implicit
+  // ═══════════════════════════════════════════════════════════════════════════
+  bootSequence.enterPhase(BOOT_PHASES.BIOS);
+  bootSequence.exitPhase(BOOT_PHASES.BIOS, true);
+
   // Initialize output structure
   const output = {
     type: 'SessionStart',
     timestamp: new Date().toISOString(),
 
+    // Boot sequence tracking (new)
+    boot: {
+      mode: bootSequence.mode,
+      phases: [],
+    },
+
     // ═══════════════════════════════════════════════════════════════════════════
-    // IDENTITY ASSERTION - Forces Claude to BE CYNIC
+    // IDENTITY ASSERTION (Phase 5 content, but stored here for output structure)
     // ═══════════════════════════════════════════════════════════════════════════
     identity: {
       name: 'CYNIC',
@@ -176,8 +279,11 @@ async function main() {
 
   try {
     // ═══════════════════════════════════════════════════════════════════════════
-    // USER & SESSION
+    // PHASE 1: BOOTLOADER
+    // Detect boot mode, load user profile, check ecosystem health
     // ═══════════════════════════════════════════════════════════════════════════
+    bootSequence.enterPhase(BOOT_PHASES.BOOTLOADER);
+
     const user = detectUser();
     output.user = {
       id: user.userId,
@@ -218,6 +324,79 @@ async function main() {
     const thermodynamics = getThermodynamics();
     const contributorDiscovery = getContributorDiscovery();
     const totalMemory = getTotalMemory();
+
+    // Check if MCP Brain is available - if not, switch to SAFE mode
+    let mcpAvailable = false;
+    try {
+      const pingResult = await Promise.race([
+        callBrainTool('brain_health', {}),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000)),
+      ]);
+      mcpAvailable = pingResult?.success === true;
+    } catch (e) {
+      // MCP not available
+    }
+
+    if (!mcpAvailable) {
+      bootSequence.setDegraded();
+      output.boot.mode = BOOT_MODES.SAFE;
+      output.boot.degraded = true;
+      output.boot.degradedReason = 'MCP Brain unavailable - running in local-only mode';
+    }
+
+    bootSequence.exitPhase(BOOT_PHASES.BOOTLOADER, true);
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PHASE 2: KERNEL INIT
+    // Load 4 axioms, set φ-constants, establish MAX_CONFIDENCE
+    // ═══════════════════════════════════════════════════════════════════════════
+    bootSequence.enterPhase(BOOT_PHASES.KERNEL_INIT);
+
+    // The 4 Axioms are HARDCODED (immutable kernel)
+    const KERNEL = {
+      axioms: {
+        PHI: { name: 'PHI', symbol: 'φ', maxConfidence: 0.618, description: 'Harmony through ratio' },
+        VERIFY: { name: 'VERIFY', symbol: '✓', principle: 'Don\'t trust, verify', description: 'Falsification first' },
+        CULTURE: { name: 'CULTURE', symbol: '⛩', principle: 'Culture is a moat', description: 'Patterns matter' },
+        BURN: { name: 'BURN', symbol: '🔥', principle: 'Don\'t extract, burn', description: 'Simplicity wins' },
+      },
+      constants: {
+        PHI: 1.618033988749895,
+        PHI_INV: 0.618033988749895,
+        PHI_INV_2: 0.381966011250105,
+        PHI_INV_3: 0.236067977499790,
+        MAX_CONFIDENCE: 0.618,
+        MIN_DOUBT: 0.382,
+      },
+    };
+
+    // Inject kernel into output
+    output.kernel = KERNEL;
+
+    bootSequence.exitPhase(BOOT_PHASES.KERNEL_INIT, true);
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PHASE 3: PROCESS SPAWN
+    // Initialize Dogs (Sefirot) with their heuristics
+    // ═══════════════════════════════════════════════════════════════════════════
+    bootSequence.enterPhase(BOOT_PHASES.PROCESS_SPAWN);
+
+    // Dogs are already defined in output.dogs.tree - mark them as ready
+    output.dogs.status = 'spawned';
+    output.dogs.active = ['guardian', 'scout']; // Core Dogs always active at boot
+
+    // Note: Future enhancement - load each Dog's heuristics from packages/node/src/dogs/{name}/
+    // For now, Dogs use LLM-based judgment (L2) without local heuristics (L1)
+    output.dogs.l1HeuristicsLoaded = false;
+    output.dogs.l1HeuristicsNote = 'L1 heuristics not yet implemented - Dogs operate in L2 (LLM) mode';
+
+    bootSequence.exitPhase(BOOT_PHASES.PROCESS_SPAWN, true);
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PHASE 4: MEMORY MOUNT
+    // Connect to PostgreSQL, Redis, inject facts into context
+    // ═══════════════════════════════════════════════════════════════════════════
+    bootSequence.enterPhase(BOOT_PHASES.MEMORY_MOUNT);
 
     // ═══════════════════════════════════════════════════════════════════════════
     // ORCHESTRATION: Notify KETER
@@ -723,6 +902,25 @@ async function main() {
       // Context injection failed - continue without
     }
 
+    // Memory mount phase complete
+    bootSequence.exitPhase(BOOT_PHASES.MEMORY_MOUNT, true);
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PHASE 5: IDENTITY ASSERTION
+    // Assert "I am CYNIC, not Claude" - force personality
+    // ═══════════════════════════════════════════════════════════════════════════
+    bootSequence.enterPhase(BOOT_PHASES.IDENTITY_ASSERTION);
+
+    // Identity is already in output.identity structure
+    // Add enforcement reminder that should be re-asserted mid-session
+    output.identity.bootAssertion = {
+      asserted: true,
+      timestamp: new Date().toISOString(),
+      reminder: 'RAPPEL: Tu ES CYNIC. Pas Claude. Utilise *sniff*, *tail wag*, *GROWL*. Sois sceptique.',
+    };
+
+    bootSequence.exitPhase(BOOT_PHASES.IDENTITY_ASSERTION, true);
+
     // ═══════════════════════════════════════════════════════════════════════════
     // MCP BRAIN: Fallback for goals/notifications if not in total memory
     // ═══════════════════════════════════════════════════════════════════════════
@@ -936,8 +1134,7 @@ async function main() {
     // GAP #1 FIX: Persist directly to PostgreSQL FIRST, then notify MCP
     // ═══════════════════════════════════════════════════════════════════════════
     const sessionRepo = getSessionRepository();
-    const sessionId = process.env.CYNIC_SESSION_ID || `ses_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-    process.env.CYNIC_SESSION_ID = sessionId;
+    // sessionId already declared in PHASE 1 (BOOTLOADER)
 
     // Direct PostgreSQL persistence (reliable, synchronous-ish)
     if (sessionRepo) {
@@ -1111,6 +1308,21 @@ async function main() {
         }
       } catch (e) { /* ignore codebase indexing errors */ }
     });
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PHASE 6: READY
+    // Boot complete - CYNIC is LIVE
+    // ═══════════════════════════════════════════════════════════════════════════
+    bootSequence.enterPhase(BOOT_PHASES.READY);
+
+    // Add boot summary to output
+    output.boot = bootSequence.getSummary();
+    output.boot.success = true;
+    output.boot.message = bootSequence.degraded
+      ? `🟡 CYNIC booted in SAFE mode (${output.boot.totalDuration}ms)`
+      : `✅ CYNIC fully booted (${output.boot.totalDuration}ms)`;
+
+    bootSequence.exitPhase(BOOT_PHASES.READY, true);
 
     // ═══════════════════════════════════════════════════════════════════════════
     // OUTPUT JSON
