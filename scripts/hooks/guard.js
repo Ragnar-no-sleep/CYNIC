@@ -333,16 +333,19 @@ async function main() {
     // BRAIN CIRCUIT BREAKER: MCP-level circuit breaker for dangerous operations
     // "Les outils dormants deviennent réflexes"
     // ═══════════════════════════════════════════════════════════════════════════
-    // Check brain_circuit_breaker for high-risk tools (non-blocking, advisory)
+    // Only check brain_circuit_breaker for ACTUALLY dangerous commands
+    // NOT for every Write/Edit - that's too aggressive and causes latency
     const isDangerousCommand = command && (
       command.includes('rm ') ||
       command.includes('DROP ') ||
       command.includes('DELETE FROM') ||
-      command.includes('--force')
+      command.includes('--force') ||
+      command.includes('git push') ||
+      command.includes('npm publish')
     );
-    const isHighRiskTool = ['Bash', 'Write', 'Edit'].includes(toolName);
 
-    if (isDangerousCommand || isHighRiskTool) {
+    // Only call MCP for genuinely dangerous commands, not every file write
+    if (isDangerousCommand) {
       try {
         const brainCircuitResult = await callBrainTool('brain_circuit_breaker', {
           action: 'check',

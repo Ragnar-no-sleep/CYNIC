@@ -30,7 +30,8 @@
     "./agents/swarm-consensus": "./src/agents/swarm-consensus.js",
     "./services": "./src/services/index.js",
     "./services/orchestration-visibility.js": "./src/services/orchestration-visibility.js",
-    "./services/event-bus.js": "./src/services/event-bus.js"
+    "./services/event-bus.js": "./src/services/event-bus.js",
+    "./chaos": "./src/chaos/index.js"
   },
   "scripts": {
     "test": "node --test test/*.test.js",
