@@ -190,6 +190,107 @@ function qualityBadge(testRatio) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// FRACTAL ANALYSIS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Calculate fractal depth - dependency layers within CYNIC ecosystem
+ * Like Sefirot: each package has its place in the tree
+ */
+function calculateFractalDepth(meta, packagesDir) {
+  if (!meta) return { depth: 0, layers: [] };
+
+  const cynicDeps = meta.dependencies.filter(d => d.startsWith('@cynic/'));
+  if (cynicDeps.length === 0) return { depth: 1, layers: ['leaf'] };
+
+  // Recursively find max depth
+  let maxDepth = 1;
+  const layers = ['branch'];
+
+  for (const dep of cynicDeps) {
+    const depName = dep.replace('@cynic/', '');
+    const depPath = path.join(packagesDir, depName);
+    const depMeta = extractPackageMeta(depPath);
+    if (depMeta) {
+      const { depth } = calculateFractalDepth(depMeta, packagesDir);
+      maxDepth = Math.max(maxDepth, depth + 1);
+    }
+  }
+
+  if (maxDepth >= 3) layers[0] = 'root';
+  else if (maxDepth === 2) layers[0] = 'branch';
+
+  return { depth: maxDepth, layers };
+}
+
+/**
+ * Analyze multi-dimensional quality aspects (simplified 25D → 5 core dimensions)
+ */
+function analyzeDimensions(pkgPath, meta, files, exports) {
+  const dimensions = {};
+
+  // φ (PHI) - Uncertainty/Confidence
+  // Measured by: test coverage → higher = more verified
+  dimensions.phi = {
+    name: 'φ (Confidence)',
+    score: Math.min(files.test / Math.max(files.src, 1), 1),
+    bar: progressBar(files.test / Math.max(files.src, 1)),
+  };
+
+  // VERIFY - Trust through verification
+  // Measured by: presence of test files, type definitions
+  const hasTests = files.test > 0;
+  const hasTypes = fs.existsSync(path.join(pkgPath, 'types')) ||
+                   fs.existsSync(path.join(pkgPath, 'src', 'types'));
+  dimensions.verify = {
+    name: 'Verify',
+    score: (hasTests ? 0.5 : 0) + (hasTypes ? 0.5 : 0),
+    bar: progressBar((hasTests ? 0.5 : 0) + (hasTypes ? 0.5 : 0)),
+  };
+
+  // CULTURE - Pattern consistency
+  // Measured by: JSDoc presence, naming conventions
+  const hasJsdoc = exports.named.length > 0;
+  const followsNaming = exports.named.every(n => /^[a-z]|^[A-Z][a-z]/.test(n));
+  dimensions.culture = {
+    name: 'Culture',
+    score: (hasJsdoc ? 0.5 : 0) + (followsNaming ? 0.5 : 0),
+    bar: progressBar((hasJsdoc ? 0.5 : 0) + (followsNaming ? 0.5 : 0)),
+  };
+
+  // BURN - Simplicity
+  // Measured by: exports/files ratio (fewer exports per file = more focused)
+  const focusRatio = Math.min(exports.named.length / Math.max(files.src * 3, 1), 1);
+  dimensions.burn = {
+    name: 'Burn (Simplicity)',
+    score: 1 - focusRatio, // Inverse: fewer exports = simpler = better
+    bar: progressBar(1 - focusRatio),
+  };
+
+  // EMERGENCE - Growth potential
+  // Measured by: dependency count (more integration = more emergence)
+  const depCount = meta.dependencies.length;
+  const emergenceScore = Math.min(depCount / 10, 1);
+  dimensions.emergence = {
+    name: 'Emergence',
+    score: emergenceScore,
+    bar: progressBar(emergenceScore),
+  };
+
+  return dimensions;
+}
+
+/**
+ * Generate ASCII progress bar (φ-capped at 62%)
+ */
+function progressBar(ratio, width = 10) {
+  const cappedRatio = Math.min(ratio, 0.618); // φ⁻¹ cap
+  const filled = Math.round(cappedRatio * width);
+  const empty = width - filled;
+  return '[' + '█'.repeat(filled) + '░'.repeat(empty) + ']';
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // README GENERATOR
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -344,6 +445,34 @@ function generateReadme(pkgPath) {
   lines.push(`- **Test files**: ${files.test}`);
   lines.push(`- **Test ratio**: ${Math.round(testRatio * 100)}%`);
   lines.push(`- **Exports**: ${exports.named.length} named${exports.default ? ' + default' : ''}`);
+  lines.push('');
+
+  // Fractal Analysis
+  const packagesDir = path.dirname(pkgPath);
+  const fractal = calculateFractalDepth(meta, packagesDir);
+  if (fractal.depth > 1) {
+    lines.push('## Fractal Structure');
+    lines.push('');
+    lines.push(`- **Depth**: ${fractal.depth} (${fractal.layers[0]})`);
+    const cynicDeps = meta.dependencies.filter(d => d.startsWith('@cynic/'));
+    if (cynicDeps.length > 0) {
+      lines.push(`- **Children**: ${cynicDeps.map(d => d.replace('@cynic/', '')).join(' → ')}`);
+    }
+    lines.push('');
+  }
+
+  // Multi-dimensional Analysis
+  const dimensions = analyzeDimensions(pkgPath, meta, files, exports);
+  lines.push('## Dimensions (4 Axioms)');
+  lines.push('');
+  lines.push('```');
+  for (const [key, dim] of Object.entries(dimensions)) {
+    const pct = Math.round(Math.min(dim.score, 0.618) * 100); // φ-capped display
+    lines.push(`${dim.bar} ${pct.toString().padStart(2)}% ${dim.name}`);
+  }
+  lines.push('```');
+  lines.push('');
+  lines.push('*Max 62% (φ⁻¹) - certainty is hubris*');
   lines.push('');
 
   // Footer
