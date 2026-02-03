@@ -131,3 +131,36 @@ export {
   getQLearningServiceAsync,
   _resetQLearningServiceForTesting,
 } from './learning-service.js';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BRAIN/OS/CPU ARCHITECTURE (Phase: Foundational)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Brain - Consciousness Layer (dogs, engines, memory)
+export {
+  Brain,
+  BrainState,
+  Thought,
+  createBrain,
+  getBrain,
+  _resetBrainForTesting,
+} from './brain.js';
+
+// LLM Adapter - CPU Layer (Claude, OSS LLMs, consensus)
+export {
+  LLMAdapter,
+  LLMResponse,
+  LLMRouter,
+  ConsensusResult,
+  ClaudeCodeAdapter,
+  OSSLLMAdapter,
+  createLLMRouter,
+  getLLMRouter,
+  _resetLLMRouterForTesting,
+  // Task #59: OSS LLM validator factories
+  createOllamaValidator,
+  createLMStudioValidator,
+  createOpenAIValidator,
+  createValidatorsFromEnv,
+  getRouterWithValidators,
+} from './llm-adapter.js';

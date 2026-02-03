@@ -164,26 +164,28 @@ export class ServiceInitializer {
       services.eScoreCalculator = this.factories.eScoreCalculator(services);
     }
 
-    if (!services.learningService) {
-      services.learningService = this.factories.learningService(services);
-    }
-
-    // 2. Engine Registry (73 philosophy engines)
-    if (!services.engineRegistry) {
-      services.engineRegistry = await this.factories.engineRegistry(services);
-    }
-
-    // 3. Judge (depends on eScore, learning, engines)
-    if (!services.judge) {
-      services.judge = this.factories.judge(services);
-    }
-
-    // 3. Persistence (no dependencies, but async)
+    // 2. Persistence FIRST (async, needed by learningService for FeedbackRepository)
+    // Task #55: Connect FeedbackRepository → CYNICJudge
     if (!services.persistence) {
       services.persistence = await this.factories.persistence(services);
     }
 
-    // 4. Session manager (depends on persistence)
+    // 3. LearningService (depends on persistence for FeedbackRepository)
+    if (!services.learningService) {
+      services.learningService = this.factories.learningService(services);
+    }
+
+    // 4. Engine Registry (73 philosophy engines)
+    if (!services.engineRegistry) {
+      services.engineRegistry = await this.factories.engineRegistry(services);
+    }
+
+    // 5. Judge (depends on eScore, learning, engines)
+    if (!services.judge) {
+      services.judge = this.factories.judge(services);
+    }
+
+    // 6. Session manager (depends on persistence)
     if (!services.sessionManager) {
       services.sessionManager = this.factories.sessionManager(services);
     }
@@ -468,8 +470,11 @@ export class ServiceInitializer {
     });
   }
 
-  _createLearningService() {
+  _createLearningService(services) {
+    // Task #55: Connect FeedbackRepository → CYNICJudge
+    // LearningService uses persistence.feedback to process corrections
     return new LearningService({
+      persistence: services.persistence, // ← Wired! Feedback now feeds learning
       learningRate: 0.236,  // φ⁻³
       decayRate: 0.146,     // φ⁻⁴
       minFeedback: 5,

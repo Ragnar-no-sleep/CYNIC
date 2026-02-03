@@ -83,6 +83,9 @@ import {
 // Import Kabbalistic Router (Phase 4: L'arbre vit)
 import { KabbalisticRouter } from '../../orchestration/kabbalistic-router.js';
 
+// Import QLearningService for dog weight optimization (Task #54: Wire QLearning → Router)
+import { getQLearningService } from '../../orchestration/learning-service.js';
+
 // Import RelationshipGraph (CYNIC learns agent relationships through observation)
 import { RelationshipGraph } from './relationship-graph.js';
 
@@ -340,10 +343,19 @@ export class CollectivePack {
     // Routes decisions through Tree of Life instead of parallel independent dogs
     // ═══════════════════════════════════════════════════════════════════════════
     this.relationshipGraph = new RelationshipGraph({ useSefirotSeed: true });
+
+    // Get or create QLearningService singleton for dog weight optimization
+    // This enables learned routing through the Tree of Life (Task #54)
+    const learningService = getQLearningService({
+      persistence: this.persistence,
+      serviceId: 'kabbalistic-router',
+    });
+
     this.kabbalisticRouter = new KabbalisticRouter({
       collectivePack: this,
       persistence: this.persistence,
       relationshipGraph: this.relationshipGraph,
+      learningService, // ← Wired! Dogs now learn optimal routing weights
     });
 
     // Stats

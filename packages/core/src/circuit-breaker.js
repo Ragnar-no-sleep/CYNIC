@@ -613,4 +613,120 @@ export function getCircuitBreakerRegistry() {
   return _globalRegistry;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// LEARNING INTEGRATION (Task #60: Connect circuit breaker failures to learning)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Wire a circuit breaker to emit learning events via globalEventBus
+ *
+ * When the circuit opens (service failing), emits a negative feedback event
+ * that the learning system can use to adjust routing weights.
+ *
+ * @param {CircuitBreaker} breaker - Circuit breaker to wire
+ * @param {Object} [options]
+ * @param {Object} [options.eventBus] - Event bus (defaults to globalEventBus)
+ * @param {string} [options.serviceType='service'] - Type for feedback categorization
+ * @returns {CircuitBreaker} The wired breaker (for chaining)
+ */
+export function wireCircuitBreakerToLearning(breaker, options = {}) {
+  const { eventBus, serviceType = 'service' } = options;
+
+  // Import globalEventBus lazily to avoid circular deps
+  let bus = eventBus;
+  if (!bus) {
+    try {
+      const events = require('./events.js');
+      bus = events.globalEventBus;
+    } catch {
+      // Events module not available, skip wiring
+      return breaker;
+    }
+  }
+
+  // Wire state change to learning events
+  breaker.on('stateChange', (event) => {
+    if (event.to === CircuitState.OPEN) {
+      // Circuit opened - service is failing
+      // Emit negative feedback for learning
+      bus.emit('CIRCUIT_OPENED', {
+        id: `circuit-${event.name}-${Date.now()}`,
+        payload: {
+          service: event.name,
+          serviceType,
+          failureScore: 0, // Complete failure
+          backoffMs: event.backoffMs,
+          consecutiveOpenings: breaker._consecutiveOpenings,
+          feedback: {
+            outcome: 'failure',
+            scoreDelta: -50, // Significant negative adjustment
+            dimensionScores: {
+              reliability: 0,
+              availability: 0,
+            },
+          },
+        },
+      });
+    } else if (event.to === CircuitState.CLOSED && event.from === CircuitState.HALF_OPEN) {
+      // Circuit recovered - service is back
+      // Emit positive feedback to restore confidence
+      bus.emit('CIRCUIT_RECOVERED', {
+        id: `circuit-${event.name}-${Date.now()}`,
+        payload: {
+          service: event.name,
+          serviceType,
+          recoveryScore: 80, // Good recovery
+          feedback: {
+            outcome: 'correct',
+            scoreDelta: 20, // Positive adjustment
+            dimensionScores: {
+              reliability: 70,
+              availability: 80,
+            },
+          },
+        },
+      });
+    }
+  });
+
+  return breaker;
+}
+
+/**
+ * Create a circuit breaker with learning integration
+ *
+ * @param {Object} options - Same as CircuitBreaker options plus:
+ * @param {Object} [options.eventBus] - Event bus for learning events
+ * @param {string} [options.serviceType='service'] - Service type for categorization
+ * @returns {CircuitBreaker}
+ */
+export function createCircuitBreakerWithLearning(options = {}) {
+  const { eventBus, serviceType, ...breakerOptions } = options;
+  const breaker = new CircuitBreaker(breakerOptions);
+  return wireCircuitBreakerToLearning(breaker, { eventBus, serviceType });
+}
+
+/**
+ * Get a circuit breaker from registry with learning wired
+ *
+ * @param {string} name - Circuit breaker name
+ * @param {Object} [options] - Circuit breaker options
+ * @param {Object} [options.eventBus] - Event bus for learning
+ * @param {string} [options.serviceType] - Service type
+ * @returns {CircuitBreaker}
+ */
+export function getCircuitBreakerWithLearning(name, options = {}) {
+  const registry = getCircuitBreakerRegistry();
+  const { eventBus, serviceType, ...breakerOptions } = options;
+
+  if (!registry.has(name)) {
+    // Create and wire new breaker
+    const breaker = new CircuitBreaker({ ...breakerOptions, name });
+    wireCircuitBreakerToLearning(breaker, { eventBus, serviceType });
+    registry._breakers.set(name, breaker);
+  }
+
+  return registry.get(name);
+}
+
 export default CircuitBreaker;

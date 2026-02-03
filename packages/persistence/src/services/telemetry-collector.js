@@ -22,7 +22,54 @@ import { EventEmitter } from 'events';
 
 // φ constants for thresholds
 const PHI_INV = 0.618033988749895;
+const PHI_INV_2 = PHI_INV * PHI_INV; // 0.382
 const FIB = [1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144];
+
+/**
+ * Alert levels for threshold violations
+ * Task #62: Add telemetry thresholds and alerts
+ */
+export const AlertLevel = {
+  INFO: 'info',         // Informational
+  WARNING: 'warning',   // Approaching threshold
+  CRITICAL: 'critical', // Threshold exceeded
+};
+
+/**
+ * Default φ-derived thresholds
+ * Task #62: Add telemetry thresholds and alerts
+ */
+export const DEFAULT_THRESHOLDS = Object.freeze({
+  // Latency thresholds (ms)
+  llm_latency_p95: 5000,          // 5s p95 latency warning
+  llm_latency_p99: 10000,         // 10s p99 latency critical
+  judgment_latency_p95: 1000,     // 1s p95 for judgments
+  tool_latency_p95: 2000,         // 2s p95 for tools
+
+  // Error rate thresholds (percentage as decimal)
+  error_rate_warning: PHI_INV_2,  // 38.2% errors = warning
+  error_rate_critical: PHI_INV,   // 61.8% errors = critical
+
+  // Token thresholds (per session)
+  tokens_per_session: 100000,     // 100k tokens warning
+  tokens_per_session_critical: 500000, // 500k critical
+
+  // Friction thresholds (count per hour)
+  frictions_per_hour_warning: 10,
+  frictions_per_hour_critical: 25,
+
+  // Memory thresholds (MB)
+  memory_heap_warning: 512,       // 512MB warning
+  memory_heap_critical: 1024,     // 1GB critical
+
+  // Session thresholds
+  session_duration_warning: 3600000,  // 1 hour
+  session_duration_critical: 7200000, // 2 hours
+
+  // Judgment quality thresholds
+  judgment_qscore_min: 30,        // Alert if Q-score drops below 30
+  judgment_confidence_min: 20,    // Alert if confidence drops below 20%
+});
 
 /**
  * Metric types
@@ -102,10 +149,22 @@ export class TelemetryCollector extends EventEmitter {
     // Active timers (for timing operations)
     this.activeTimers = new Map();
 
+    // Task #62: Thresholds and alerts
+    this.thresholds = { ...DEFAULT_THRESHOLDS, ...options.thresholds };
+    this.alerts = []; // Recent alerts
+    this.alertsEnabled = options.alertsEnabled !== false;
+    this._alertCooldowns = new Map(); // Prevent alert spam
+
     // Flush timer
     this._flushTimer = null;
     if (this.flushInterval > 0) {
       this._flushTimer = setInterval(() => this.flush(), this.flushInterval);
+    }
+
+    // Task #62: Start threshold monitoring
+    this._thresholdTimer = null;
+    if (this.alertsEnabled) {
+      this._thresholdTimer = setInterval(() => this._checkThresholds(), 30000); // Every 30s
     }
   }
 
@@ -551,7 +610,252 @@ export class TelemetryCollector extends EventEmitter {
       clearInterval(this._flushTimer);
       this._flushTimer = null;
     }
+    if (this._thresholdTimer) {
+      clearInterval(this._thresholdTimer);
+      this._thresholdTimer = null;
+    }
     this.flush();
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // THRESHOLDS & ALERTS (Task #62)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Set a threshold value
+   * @param {string} name - Threshold name
+   * @param {number} value - Threshold value
+   */
+  setThreshold(name, value) {
+    this.thresholds[name] = value;
+  }
+
+  /**
+   * Get current thresholds
+   * @returns {Object} Current thresholds
+   */
+  getThresholds() {
+    return { ...this.thresholds };
+  }
+
+  /**
+   * Trigger an alert
+   * @param {string} name - Alert name
+   * @param {string} level - Alert level (info, warning, critical)
+   * @param {string} message - Alert message
+   * @param {Object} [data] - Additional data
+   * @private
+   */
+  _triggerAlert(name, level, message, data = {}) {
+    // Check cooldown (5 minutes per alert type)
+    const cooldownKey = `${name}:${level}`;
+    const lastAlert = this._alertCooldowns.get(cooldownKey) || 0;
+    const now = Date.now();
+
+    if (now - lastAlert < 300000) { // 5 minute cooldown
+      return null;
+    }
+
+    this._alertCooldowns.set(cooldownKey, now);
+
+    const alert = {
+      id: `alert_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      name,
+      level,
+      message,
+      data,
+      timestamp: now,
+      sessionId: this.sessionId,
+    };
+
+    this.alerts.push(alert);
+    if (this.alerts.length > 100) {
+      this.alerts.shift();
+    }
+
+    this.emit('alert', alert);
+
+    // Also record as friction if warning or critical
+    if (level !== AlertLevel.INFO) {
+      this.friction(`threshold_${name}`, level === AlertLevel.CRITICAL ? FrictionSeverity.HIGH : FrictionSeverity.MEDIUM, {
+        category: Category.SYSTEM,
+        alert: name,
+        ...data,
+      });
+    }
+
+    return alert;
+  }
+
+  /**
+   * Check all thresholds and trigger alerts as needed
+   * @private
+   */
+  _checkThresholds() {
+    if (!this.alertsEnabled) return;
+
+    const checks = [];
+
+    // Check latency thresholds
+    for (const [key, timing] of this.timings) {
+      if (key.includes('llm_latency')) {
+        if (timing.p95 > this.thresholds.llm_latency_p95) {
+          checks.push(this._triggerAlert('llm_latency_p95', AlertLevel.WARNING,
+            `LLM p95 latency (${Math.round(timing.p95)}ms) exceeds threshold (${this.thresholds.llm_latency_p95}ms)`,
+            { current: timing.p95, threshold: this.thresholds.llm_latency_p95 }
+          ));
+        }
+        if (timing.p99 > this.thresholds.llm_latency_p99) {
+          checks.push(this._triggerAlert('llm_latency_p99', AlertLevel.CRITICAL,
+            `LLM p99 latency (${Math.round(timing.p99)}ms) exceeds critical threshold`,
+            { current: timing.p99, threshold: this.thresholds.llm_latency_p99 }
+          ));
+        }
+      }
+      if (key.includes('judgment_latency') && timing.p95 > this.thresholds.judgment_latency_p95) {
+        checks.push(this._triggerAlert('judgment_latency', AlertLevel.WARNING,
+          `Judgment p95 latency (${Math.round(timing.p95)}ms) is high`,
+          { current: timing.p95, threshold: this.thresholds.judgment_latency_p95 }
+        ));
+      }
+      if (key.includes('tool_latency') && timing.p95 > this.thresholds.tool_latency_p95) {
+        checks.push(this._triggerAlert('tool_latency', AlertLevel.WARNING,
+          `Tool p95 latency (${Math.round(timing.p95)}ms) is high`,
+          { current: timing.p95, threshold: this.thresholds.tool_latency_p95 }
+        ));
+      }
+    }
+
+    // Check error rate
+    if (this.stats.totalEvents > 10) { // Only check after enough events
+      const errorRate = this.stats.totalErrors / this.stats.totalEvents;
+      if (errorRate > this.thresholds.error_rate_critical) {
+        checks.push(this._triggerAlert('error_rate', AlertLevel.CRITICAL,
+          `Error rate (${(errorRate * 100).toFixed(1)}%) exceeds critical threshold`,
+          { current: errorRate, threshold: this.thresholds.error_rate_critical }
+        ));
+      } else if (errorRate > this.thresholds.error_rate_warning) {
+        checks.push(this._triggerAlert('error_rate', AlertLevel.WARNING,
+          `Error rate (${(errorRate * 100).toFixed(1)}%) is elevated`,
+          { current: errorRate, threshold: this.thresholds.error_rate_warning }
+        ));
+      }
+    }
+
+    // Check friction rate (per hour)
+    const sessionHours = (Date.now() - this.sessionStart) / 3600000;
+    if (sessionHours > 0.1) { // Only after 6 minutes
+      const frictionsPerHour = this.frictions.length / sessionHours;
+      if (frictionsPerHour > this.thresholds.frictions_per_hour_critical) {
+        checks.push(this._triggerAlert('friction_rate', AlertLevel.CRITICAL,
+          `Friction rate (${Math.round(frictionsPerHour)}/hr) is critical`,
+          { current: frictionsPerHour, threshold: this.thresholds.frictions_per_hour_critical }
+        ));
+      } else if (frictionsPerHour > this.thresholds.frictions_per_hour_warning) {
+        checks.push(this._triggerAlert('friction_rate', AlertLevel.WARNING,
+          `Friction rate (${Math.round(frictionsPerHour)}/hr) is elevated`,
+          { current: frictionsPerHour, threshold: this.thresholds.frictions_per_hour_warning }
+        ));
+      }
+    }
+
+    // Check memory
+    const heapGauge = this.gauges.get('system_memory_heap_used{category=system}');
+    if (heapGauge) {
+      const heapMB = heapGauge.value;
+      if (heapMB > this.thresholds.memory_heap_critical) {
+        checks.push(this._triggerAlert('memory_heap', AlertLevel.CRITICAL,
+          `Heap memory (${Math.round(heapMB)}MB) exceeds critical threshold`,
+          { current: heapMB, threshold: this.thresholds.memory_heap_critical }
+        ));
+      } else if (heapMB > this.thresholds.memory_heap_warning) {
+        checks.push(this._triggerAlert('memory_heap', AlertLevel.WARNING,
+          `Heap memory (${Math.round(heapMB)}MB) is elevated`,
+          { current: heapMB, threshold: this.thresholds.memory_heap_warning }
+        ));
+      }
+    }
+
+    // Check session duration
+    const sessionDuration = Date.now() - this.sessionStart;
+    if (sessionDuration > this.thresholds.session_duration_critical) {
+      checks.push(this._triggerAlert('session_duration', AlertLevel.CRITICAL,
+        `Session duration (${Math.round(sessionDuration / 60000)} min) is very long`,
+        { current: sessionDuration, threshold: this.thresholds.session_duration_critical }
+      ));
+    } else if (sessionDuration > this.thresholds.session_duration_warning) {
+      checks.push(this._triggerAlert('session_duration', AlertLevel.WARNING,
+        `Session duration (${Math.round(sessionDuration / 60000)} min) is getting long`,
+        { current: sessionDuration, threshold: this.thresholds.session_duration_warning }
+      ));
+    }
+
+    // Check token usage
+    const inputTokens = this.counters.get('llm_input_tokens_total{model=*,category=llm}');
+    const outputTokens = this.counters.get('llm_output_tokens_total{model=*,category=llm}');
+    let totalTokens = 0;
+    for (const [key, counter] of this.counters) {
+      if (key.includes('tokens_total')) {
+        totalTokens += counter.value;
+      }
+    }
+    if (totalTokens > this.thresholds.tokens_per_session_critical) {
+      checks.push(this._triggerAlert('token_usage', AlertLevel.CRITICAL,
+        `Token usage (${totalTokens.toLocaleString()}) is critical`,
+        { current: totalTokens, threshold: this.thresholds.tokens_per_session_critical }
+      ));
+    } else if (totalTokens > this.thresholds.tokens_per_session) {
+      checks.push(this._triggerAlert('token_usage', AlertLevel.WARNING,
+        `Token usage (${totalTokens.toLocaleString()}) is high`,
+        { current: totalTokens, threshold: this.thresholds.tokens_per_session }
+      ));
+    }
+
+    return checks.filter(Boolean);
+  }
+
+  /**
+   * Get recent alerts
+   * @param {Object} [options]
+   * @param {string} [options.level] - Filter by level
+   * @param {number} [options.limit=10] - Max alerts to return
+   * @returns {Object[]} Recent alerts
+   */
+  getAlerts(options = {}) {
+    let alerts = [...this.alerts];
+
+    if (options.level) {
+      alerts = alerts.filter(a => a.level === options.level);
+    }
+
+    const limit = options.limit || 10;
+    return alerts.slice(-limit).reverse();
+  }
+
+  /**
+   * Get current health status based on thresholds
+   * @returns {Object} Health status
+   */
+  getHealth() {
+    const checks = this._checkThresholds() || [];
+    const criticalAlerts = checks.filter(a => a?.level === AlertLevel.CRITICAL);
+    const warningAlerts = checks.filter(a => a?.level === AlertLevel.WARNING);
+
+    let status = 'healthy';
+    if (criticalAlerts.length > 0) {
+      status = 'critical';
+    } else if (warningAlerts.length > 0) {
+      status = 'degraded';
+    }
+
+    return {
+      status,
+      healthy: status === 'healthy',
+      criticalCount: criticalAlerts.length,
+      warningCount: warningAlerts.length,
+      alerts: checks.filter(Boolean),
+      checkedAt: Date.now(),
+    };
   }
 }
 

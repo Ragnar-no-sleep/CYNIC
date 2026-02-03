@@ -85,4 +85,7 @@ export {
   MetricType,
   FrictionSeverity,
   Category as TelemetryCategory,
+  // Task #62: Thresholds and alerts
+  AlertLevel,
+  DEFAULT_THRESHOLDS,
 } from './telemetry-collector.js';

@@ -24,7 +24,10 @@
 'use strict';
 
 import { EventEmitter } from 'events';
-import { PHI_INV, PHI_INV_2, PHI_INV_3, MIN_PATTERN_SOURCES } from '@cynic/core';
+import {
+  PHI_INV, PHI_INV_2, PHI_INV_3, MIN_PATTERN_SOURCES,
+  globalEventBus, // Task #60: Subscribe to circuit breaker events
+} from '@cynic/core';
 import { getAllDimensions } from './dimensions.js';
 
 /**
@@ -38,6 +41,8 @@ export class LearningService extends EventEmitter {
    * @param {number} [options.maxAdjustment] - Max weight adjustment (default: φ⁻² = 38.2%)
    * @param {number} [options.minFeedback] - Min feedback before learning (default: 3)
    * @param {number} [options.decayRate] - How fast old learnings decay (default: 0.95)
+   * @param {boolean} [options.immediateLearn] - Enable per-judgment immediate learning (default: true)
+   * @param {number} [options.immediateRate] - Immediate learning rate (default: φ⁻⁴ = 0.146)
    */
   constructor(options = {}) {
     super();
@@ -47,6 +52,10 @@ export class LearningService extends EventEmitter {
     this.maxAdjustment = options.maxAdjustment || PHI_INV_2;
     this.minFeedback = options.minFeedback || MIN_PATTERN_SOURCES;
     this.decayRate = options.decayRate || 0.95;
+
+    // Task #58: Per-judgment immediate learning
+    this.immediateLearn = options.immediateLearn !== false; // Default true
+    this.immediateRate = options.immediateRate || 0.146; // φ⁻⁴ = small immediate adjustments
 
     // Weight modifiers: dimension -> adjustment multiplier
     // 1.0 = no change, 0.8 = 20% decrease, 1.2 = 20% increase
@@ -95,8 +104,66 @@ export class LearningService extends EventEmitter {
       await this._loadState();
     }
 
+    // Task #60: Subscribe to circuit breaker events for learning
+    this._subscribeToCircuitBreakerEvents();
+
     this._initialized = true;
     this.emit('initialized');
+  }
+
+  /**
+   * Subscribe to circuit breaker events for reliability learning
+   * Task #60: Circuit breaker failures → learning adjustments
+   * @private
+   */
+  _subscribeToCircuitBreakerEvents() {
+    // When circuit opens (service failing) - decrease reliability weight
+    globalEventBus.on('CIRCUIT_OPENED', (event) => {
+      const { service, feedback } = event.payload || {};
+      if (feedback?.dimensionScores) {
+        // Apply negative learning for reliability dimensions
+        for (const [dim, score] of Object.entries(feedback.dimensionScores)) {
+          if (this._weightModifiers.has(dim) || dim === 'reliability' || dim === 'availability') {
+            // Negative adjustment: service is unreliable
+            const delta = -this.immediateRate * (1 - score / 100);
+            this.adjustDimensionWeight(dim, delta);
+          }
+        }
+      }
+
+      // Track pattern: which services fail most
+      const key = `circuit:${service}`;
+      const pattern = this._patterns.bySource.get(key) || { count: 0, correctRate: 0, avgDelta: 0 };
+      pattern.count++;
+      pattern.avgDelta = (pattern.avgDelta * (pattern.count - 1) + (feedback?.scoreDelta || -50)) / pattern.count;
+      this._patterns.bySource.set(key, pattern);
+
+      this.emit('circuit:learned', { service, type: 'opened', feedback });
+    });
+
+    // When circuit recovers - restore reliability weight slightly
+    globalEventBus.on('CIRCUIT_RECOVERED', (event) => {
+      const { service, feedback } = event.payload || {};
+      if (feedback?.dimensionScores) {
+        // Positive adjustment: service recovered
+        for (const [dim, score] of Object.entries(feedback.dimensionScores)) {
+          if (this._weightModifiers.has(dim) || dim === 'reliability' || dim === 'availability') {
+            // Smaller positive adjustment (recovery is good but trust slowly)
+            const delta = this.immediateRate * 0.5 * (score / 100);
+            this.adjustDimensionWeight(dim, delta);
+          }
+        }
+      }
+
+      // Update source pattern
+      const key = `circuit:${service}`;
+      const pattern = this._patterns.bySource.get(key) || { count: 0, correctRate: 0, avgDelta: 0 };
+      pattern.correctRate = (pattern.correctRate * pattern.count + 1) / (pattern.count + 1);
+      pattern.count++;
+      this._patterns.bySource.set(key, pattern);
+
+      this.emit('circuit:learned', { service, type: 'recovered', feedback });
+    });
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -248,14 +315,63 @@ export class LearningService extends EventEmitter {
       processedAt: Date.now(),
     });
 
+    // Task #58: Immediate per-judgment learning
+    // Apply small immediate adjustments without waiting for batch
+    let immediateAdjustments = null;
+    if (this.immediateLearn && Object.keys(dimensionScores).length > 0) {
+      immediateAdjustments = this._applyImmediateLearning(dimensionScores, scoreDelta, outcome);
+    }
+
     const result = {
       scoreDelta,
       queueSize: this._feedbackQueue.length,
       shouldLearn: this._feedbackQueue.length >= this.minFeedback,
+      immediateAdjustments, // New: what was adjusted immediately
     };
 
     this.emit('feedback-processed', result);
     return result;
+  }
+
+  /**
+   * Apply immediate small adjustments per judgment
+   * Uses φ⁻⁴ learning rate (0.146) for micro-adjustments
+   * @private
+   */
+  _applyImmediateLearning(dimensionScores, scoreDelta, outcome) {
+    if (outcome === 'correct' || Math.abs(scoreDelta) < 5) {
+      return null; // No adjustment needed for correct judgments
+    }
+
+    const adjustments = {};
+    const direction = scoreDelta > 0 ? -1 : 1; // If we underscored, increase weights
+
+    for (const [dimension, score] of Object.entries(dimensionScores)) {
+      // Higher dimension scores get adjusted more when they contributed to the error
+      const contribution = (score - 50) / 100; // -0.5 to +0.5
+      const adjustment = direction * contribution * this.immediateRate * (Math.abs(scoreDelta) / 50);
+
+      // Bound the immediate adjustment (smaller than batch adjustments)
+      const boundedAdjustment = Math.max(-0.05, Math.min(0.05, adjustment));
+
+      if (Math.abs(boundedAdjustment) > 0.001) {
+        const currentModifier = this._weightModifiers.get(dimension) || 1.0;
+        const newModifier = Math.max(0.6, Math.min(1.4, currentModifier + boundedAdjustment));
+        this._weightModifiers.set(dimension, newModifier);
+        adjustments[dimension] = { from: currentModifier, to: newModifier, delta: boundedAdjustment };
+      }
+    }
+
+    if (Object.keys(adjustments).length > 0) {
+      this.emit('immediate-learning', {
+        scoreDelta,
+        outcome,
+        adjustments,
+        timestamp: Date.now(),
+      });
+    }
+
+    return adjustments;
   }
 
   /**
@@ -403,6 +519,9 @@ export class LearningService extends EventEmitter {
     // Persist state
     if (this.persistence) {
       await this._saveState();
+
+      // Task #61: Sync patterns to PatternRepository for cross-session persistence
+      await this._syncPatternsToRepository();
 
       // Mark feedback as applied in DB
       for (const fb of feedbackBatch) {
@@ -1162,7 +1281,10 @@ export class LearningService extends EventEmitter {
    * @private
    */
   async _loadState() {
-    // Try to load from knowledge store if available
+    // Task #61: First load patterns from PatternRepository (cross-session)
+    await this._loadPatternsFromRepository();
+
+    // Then load from knowledge store if available (full state)
     if (this.persistence?.knowledge) {
       try {
         const results = await this.persistence.knowledge.search('learning_state', {
@@ -1202,6 +1324,160 @@ export class LearningService extends EventEmitter {
       } catch (e) {
         // Ignore - learning still works in-memory
       }
+    }
+  }
+
+  /**
+   * Sync in-memory patterns to PatternRepository for cross-session persistence
+   * Task #61: Persist cross-session patterns to PostgreSQL
+   * @private
+   */
+  async _syncPatternsToRepository() {
+    if (!this.persistence?.patterns) return;
+
+    try {
+      // Sync dimension patterns (most important for learning)
+      for (const [dimension, pattern] of this._patterns.byDimension) {
+        await this.persistence.patterns.upsert({
+          category: 'learning:dimension',
+          name: dimension,
+          description: `Learning pattern for dimension: ${dimension}`,
+          confidence: Math.min(pattern.avgError ? (1 - pattern.avgError / 100) : 0.5, 0.618), // φ-bounded
+          frequency: pattern.feedbackCount || 1,
+          tags: ['learning', 'dimension', dimension],
+          data: {
+            avgError: pattern.avgError,
+            feedbackCount: pattern.feedbackCount,
+            weightModifier: this._weightModifiers.get(dimension) || 1.0,
+            trend: pattern.trend || 'stable',
+          },
+        });
+      }
+
+      // Sync item type patterns
+      for (const [itemType, pattern] of this._patterns.byItemType) {
+        await this.persistence.patterns.upsert({
+          category: 'learning:itemType',
+          name: itemType,
+          description: `Learning pattern for item type: ${itemType}`,
+          confidence: Math.min(0.618, 0.5 + (pattern.overscoring + pattern.underscoring > 10 ? 0.1 : 0)), // φ-bounded
+          frequency: pattern.overscoring + pattern.underscoring,
+          tags: ['learning', 'itemType', itemType],
+          data: {
+            overscoring: pattern.overscoring,
+            underscoring: pattern.underscoring,
+            bias: pattern.overscoring - pattern.underscoring,
+          },
+        });
+      }
+
+      // Sync source patterns (important for service reliability tracking)
+      for (const [source, pattern] of this._patterns.bySource) {
+        await this.persistence.patterns.upsert({
+          category: 'learning:source',
+          name: source,
+          description: `Learning pattern for source: ${source}`,
+          confidence: Math.min(pattern.correctRate || 0.5, 0.618), // φ-bounded
+          frequency: pattern.count || 1,
+          tags: ['learning', 'source', source.split(':')[0]], // First part of source as tag
+          data: {
+            count: pattern.count,
+            correctRate: pattern.correctRate,
+            avgDelta: pattern.avgDelta,
+          },
+        });
+      }
+
+      // Store overall learning statistics as a meta pattern
+      await this.persistence.patterns.upsert({
+        patternId: 'pat_learning_overall',
+        category: 'learning:meta',
+        name: 'overall_statistics',
+        description: 'Overall learning statistics across all feedback',
+        confidence: this._patterns.overall.totalFeedback > 0
+          ? Math.min(this._patterns.overall.correctCount / this._patterns.overall.totalFeedback, 0.618)
+          : 0.5,
+        frequency: this._patterns.overall.learningIterations,
+        tags: ['learning', 'meta', 'statistics'],
+        data: {
+          ...this._patterns.overall,
+          accuracy: this._patterns.overall.totalFeedback > 0
+            ? this._patterns.overall.correctCount / this._patterns.overall.totalFeedback
+            : 0,
+        },
+      });
+
+      this.emit('patterns:synced', {
+        dimensions: this._patterns.byDimension.size,
+        itemTypes: this._patterns.byItemType.size,
+        sources: this._patterns.bySource.size,
+      });
+    } catch (e) {
+      // Log but don't fail - patterns are also in-memory
+      this.emit('patterns:sync-error', { error: e.message });
+    }
+  }
+
+  /**
+   * Load patterns from PatternRepository (for cross-session restoration)
+   * Task #61: Load persisted patterns on startup
+   * @private
+   */
+  async _loadPatternsFromRepository() {
+    if (!this.persistence?.patterns) return;
+
+    try {
+      // Load dimension patterns
+      const dimensionPatterns = await this.persistence.patterns.findByCategory('learning:dimension');
+      for (const pat of dimensionPatterns) {
+        if (pat.data) {
+          this._patterns.byDimension.set(pat.name, {
+            avgError: pat.data.avgError || 0,
+            feedbackCount: pat.data.feedbackCount || 0,
+            trend: pat.data.trend || 'stable',
+          });
+          if (pat.data.weightModifier) {
+            this._weightModifiers.set(pat.name, pat.data.weightModifier);
+          }
+        }
+      }
+
+      // Load item type patterns
+      const itemTypePatterns = await this.persistence.patterns.findByCategory('learning:itemType');
+      for (const pat of itemTypePatterns) {
+        if (pat.data) {
+          this._patterns.byItemType.set(pat.name, {
+            overscoring: pat.data.overscoring || 0,
+            underscoring: pat.data.underscoring || 0,
+          });
+        }
+      }
+
+      // Load source patterns
+      const sourcePatterns = await this.persistence.patterns.findByCategory('learning:source');
+      for (const pat of sourcePatterns) {
+        if (pat.data) {
+          this._patterns.bySource.set(pat.name, {
+            count: pat.data.count || 0,
+            correctRate: pat.data.correctRate || 0,
+            avgDelta: pat.data.avgDelta || 0,
+          });
+        }
+      }
+
+      // Load overall meta pattern
+      const overall = await this.persistence.patterns.findById('pat_learning_overall');
+      if (overall?.data) {
+        Object.assign(this._patterns.overall, overall.data);
+      }
+
+      this.emit('patterns:loaded', {
+        dimensions: this._patterns.byDimension.size,
+        itemTypes: this._patterns.byItemType.size,
+        sources: this._patterns.bySource.size,
+      });
+    } catch (e) {
+      // Ignore - start fresh
     }
   }
 

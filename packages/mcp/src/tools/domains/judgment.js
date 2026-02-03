@@ -952,6 +952,7 @@ Actions:
         try {
           const { LearningService } = await import('@cynic/node');
           service = new LearningService({
+            persistence, // ← Task #56: Connect to FeedbackRepository via persistence
             learningRate: 0.236,
             decayRate: 0.146,
             minFeedback: 5,

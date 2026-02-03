@@ -214,13 +214,17 @@ export class Trigger {
 
   /**
    * Check pattern-based condition
+   *
+   * Uses _patternMatches injected by TriggerManager._enrichWithPatterns()
+   * which counts similar events in the recent history window.
+   *
    * @private
    */
   _matchesPattern(event) {
-    const { pattern, minOccurrences = 3 } = this.condition;
+    const { minOccurrences = 3 } = this.condition;
 
-    // Pattern matching requires context from trigger manager
-    // This is a placeholder - actual implementation in TriggerManager
+    // _patternMatches is set by TriggerManager._enrichWithPatterns()
+    // which counts matching events in the PATTERN_WINDOW (last 13 events)
     return event._patternMatches >= minOccurrences;
   }
 
@@ -577,9 +581,14 @@ export class TriggerManager {
 
   /**
    * Register common predefined triggers
+   * Task #63: Register default auto-judge triggers
    */
   registerDefaults() {
-    // Error trigger
+    // ═══════════════════════════════════════════════════════════════════════════
+    // EVENT-BASED TRIGGERS (Code & Session Events)
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // Error trigger - judge all errors
     this.register({
       id: 'trg_error',
       name: 'Error Handler',
@@ -591,7 +600,7 @@ export class TriggerManager {
       config: { priority: 'high' },
     });
 
-    // Commit trigger
+    // Commit trigger - review code changes
     this.register({
       id: 'trg_commit',
       name: 'Commit Review',
@@ -603,7 +612,47 @@ export class TriggerManager {
       config: { priority: 'normal' },
     });
 
-    // Decision trigger
+    // Push trigger - review before remote push
+    this.register({
+      id: 'trg_push',
+      name: 'Push Review',
+      type: TriggerType.EVENT,
+      condition: {
+        eventType: TriggerEvent.PUSH,
+      },
+      action: TriggerAction.REVIEW,
+      config: { priority: 'high' },
+    });
+
+    // Merge trigger - review merges
+    this.register({
+      id: 'trg_merge',
+      name: 'Merge Review',
+      type: TriggerType.EVENT,
+      condition: {
+        eventType: TriggerEvent.MERGE,
+      },
+      action: TriggerAction.JUDGE,
+      config: { priority: 'high' },
+    });
+
+    // Code change trigger - judge significant code changes
+    this.register({
+      id: 'trg_code_change',
+      name: 'Code Change Review',
+      type: TriggerType.EVENT,
+      condition: {
+        eventType: TriggerEvent.CODE_CHANGE,
+      },
+      action: TriggerAction.JUDGE,
+      config: { priority: 'normal', debounceMs: 30000 }, // 30s debounce
+    });
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // DECISION TRIGGERS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // Decision trigger - evaluate all decisions
     this.register({
       id: 'trg_decision',
       name: 'Decision Evaluator',
@@ -615,7 +664,67 @@ export class TriggerManager {
       config: { priority: 'normal' },
     });
 
-    // Repeated error pattern
+    // Architecture decision trigger - high priority review
+    this.register({
+      id: 'trg_arch_decision',
+      name: 'Architecture Decision Review',
+      type: TriggerType.EVENT,
+      condition: {
+        eventType: TriggerEvent.ARCHITECTURE_DECISION,
+      },
+      action: TriggerAction.JUDGE,
+      config: { priority: 'critical' },
+    });
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // TOOL TRIGGERS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // Tool error trigger - judge tool failures
+    this.register({
+      id: 'trg_tool_error',
+      name: 'Tool Error Handler',
+      type: TriggerType.EVENT,
+      condition: {
+        eventType: TriggerEvent.TOOL_ERROR,
+      },
+      action: TriggerAction.JUDGE,
+      config: { priority: 'high' },
+    });
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SESSION TRIGGERS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // Session start - log only (judgments are for content, not session events)
+    this.register({
+      id: 'trg_session_start',
+      name: 'Session Start Logger',
+      type: TriggerType.EVENT,
+      condition: {
+        eventType: TriggerEvent.SESSION_START,
+      },
+      action: TriggerAction.LOG,
+      config: { priority: 'low' },
+    });
+
+    // Session end - summarize session
+    this.register({
+      id: 'trg_session_end',
+      name: 'Session End Summary',
+      type: TriggerType.EVENT,
+      condition: {
+        eventType: TriggerEvent.SESSION_END,
+      },
+      action: TriggerAction.LOG,
+      config: { priority: 'low' },
+    });
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PATTERN TRIGGERS (Anomaly Detection)
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // Repeated error pattern - 3+ errors in window
     this.register({
       id: 'trg_error_pattern',
       name: 'Repeated Error Alert',
@@ -628,7 +737,37 @@ export class TriggerManager {
       config: { priority: 'high' },
     });
 
-    // Low score threshold
+    // Repeated tool errors - 3+ failures in window
+    this.register({
+      id: 'trg_tool_error_pattern',
+      name: 'Repeated Tool Error Alert',
+      type: TriggerType.PATTERN,
+      condition: {
+        eventType: TriggerEvent.TOOL_ERROR,
+        minOccurrences: 3,
+      },
+      action: TriggerAction.ALERT,
+      config: { priority: 'high' },
+    });
+
+    // Failure cascade pattern - 5+ failures = critical
+    this.register({
+      id: 'trg_failure_cascade',
+      name: 'Failure Cascade Alert',
+      type: TriggerType.PATTERN,
+      condition: {
+        eventType: TriggerEvent.FAILURE,
+        minOccurrences: 5,
+      },
+      action: TriggerAction.ALERT,
+      config: { priority: 'critical' },
+    });
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // THRESHOLD TRIGGERS (Score-Based)
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // Low score threshold - Q-score below GROWL
     this.register({
       id: 'trg_low_score',
       name: 'Low Score Alert',
@@ -640,6 +779,69 @@ export class TriggerManager {
       },
       action: TriggerAction.ALERT,
       config: { priority: 'high' },
+    });
+
+    // Very low score threshold - critical
+    this.register({
+      id: 'trg_critical_score',
+      name: 'Critical Score Alert',
+      type: TriggerType.THRESHOLD,
+      condition: {
+        field: 'qScore',
+        operator: 'lt',
+        value: 20, // Very low
+      },
+      action: TriggerAction.ALERT,
+      config: { priority: 'critical' },
+    });
+
+    // Low confidence threshold - unreliable judgment
+    this.register({
+      id: 'trg_low_confidence',
+      name: 'Low Confidence Alert',
+      type: TriggerType.THRESHOLD,
+      condition: {
+        field: 'confidence',
+        operator: 'lt',
+        value: PHI_INV_2, // 38.2%
+      },
+      action: TriggerAction.LOG,
+      config: { priority: 'normal' },
+    });
+
+    // High severity friction - immediate alert
+    this.register({
+      id: 'trg_high_friction',
+      name: 'High Friction Alert',
+      type: TriggerType.THRESHOLD,
+      condition: {
+        field: 'severity',
+        operator: 'eq',
+        value: 'critical',
+      },
+      action: TriggerAction.ALERT,
+      config: { priority: 'critical' },
+    });
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // COMPOSITE TRIGGERS (Multiple Conditions)
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // Error + Low Score = Block
+    this.register({
+      id: 'trg_error_low_score',
+      name: 'Error with Low Score Block',
+      type: TriggerType.COMPOSITE,
+      condition: {
+        operator: 'AND',
+        conditions: [
+          { type: TriggerType.EVENT, eventType: TriggerEvent.ERROR },
+          { type: TriggerType.THRESHOLD, field: 'qScore', operator: 'lt', value: 30 },
+        ],
+        blockReason: 'Error occurred with very low quality score',
+      },
+      action: TriggerAction.BLOCK,
+      config: { priority: 'critical' },
     });
 
     return this;

@@ -25,6 +25,8 @@ import {
   getVerdict,
   analyzeWeaknesses,
   createLogger,
+  globalEventBus,
+  EventType,
 } from '@cynic/core';
 
 const log = createLogger('CYNICJudge');
@@ -363,6 +365,19 @@ export class CYNICJudge {
 
     // Update stats
     this._updateStats(judgment);
+
+    // Task #57: Emit JUDGMENT_CREATED for SONA real-time adaptation
+    // This allows SONA to observe judgment patterns and correlate with outcomes
+    globalEventBus.emit(EventType.JUDGMENT_CREATED, {
+      id: judgment.id,
+      payload: {
+        qScore: judgment.qScore,
+        verdict: judgment.verdict,
+        dimensions: judgment.dimensionScores,
+        itemType: item.type || item.itemType || 'unknown',
+        confidence: judgment.confidence,
+      },
+    });
 
     return judgment;
   }
