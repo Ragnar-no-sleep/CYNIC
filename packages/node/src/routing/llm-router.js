@@ -1,17 +1,35 @@
 /**
+ * @deprecated This module is deprecated. Use @cynic/llm instead.
+ *
  * LLM Router - Connects CostOptimizer tiers to LLM Providers
+ *
+ * DEPRECATED: This module has been superseded by @cynic/llm which provides:
+ * - Unified LLMRouter with cost-optimized routing
+ * - Multi-LLM consensus with φ⁻¹ quorum
+ * - AirLLM integration for large models
+ *
+ * Migration:
+ * ```javascript
+ * // OLD (deprecated)
+ * import { LLMRouter } from '@cynic/node/routing/llm-router';
+ *
+ * // NEW (use this instead)
+ * import { LLMRouter, createLLMRouter } from '@cynic/llm';
+ * ```
  *
  * "Le plus petit chien qui peut faire le travail" - κυνικός
  *
- * Tier mapping:
- * - LOCAL → No LLM (rule-based resolution)
- * - LIGHT → Ollama (mistral, qwen, llama3.2)
- * - FULL  → Ollama 70B or Claude Code subagent
- *
  * @module @cynic/node/routing/llm-router
+ * @deprecated Use @cynic/llm instead
  */
 
 'use strict';
+
+// DEPRECATION WARNING
+console.warn(
+  '[DEPRECATED] @cynic/node/routing/llm-router is deprecated. ' +
+  'Use @cynic/llm instead: import { LLMRouter } from "@cynic/llm"'
+);
 
 import { EventEmitter } from 'events';
 import { PHI_INV } from '@cynic/core';

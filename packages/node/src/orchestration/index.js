@@ -163,6 +163,11 @@ export {
   createOpenAIValidator,
   createValidatorsFromEnv,
   getRouterWithValidators,
+  // Task #98: AirLLM integration (large models via disk offloading)
+  AirLLMAdapter,
+  createAirLLMValidator,
+  checkAirLLMAvailability,
+  createHybridRouter,
 } from './llm-adapter.js';
 
 // LLM Orchestrator - Da'at Bridge (Task #93)

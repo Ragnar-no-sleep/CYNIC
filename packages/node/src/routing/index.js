@@ -99,7 +99,12 @@ export {
   getCostOptimizer,
 } from './cost-optimizer.js';
 
-// LLM Router - Connects tiers to LLM providers (Task #21)
+// LLM Router - DEPRECATED: Use @cynic/llm instead
+// This export is maintained for backward compatibility only
+// Migration: import { LLMRouter } from '@cynic/llm';
+/**
+ * @deprecated Use @cynic/llm instead
+ */
 export {
   LLMRouter,
   TIER_MODEL_MAP,
