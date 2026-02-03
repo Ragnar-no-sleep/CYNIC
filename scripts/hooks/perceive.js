@@ -63,6 +63,9 @@ import {
   isBrainAvailable,
 } from './lib/brain-bridge.js';
 
+// PlanningGate Integration: Meta-cognition layer
+import { getPlanningGate, PlanningDecision } from '@cynic/node/orchestration';
+
 // =============================================================================
 // LOAD OPTIONAL MODULES
 // =============================================================================
@@ -637,6 +640,94 @@ async function main() {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // PLANNING GATE: Meta-cognition - think before acting
+    // "Un système qui pense avant d'agir"
+    // ═══════════════════════════════════════════════════════════════════════════
+    let planningResult = null;
+    let planningInjection = null;
+
+    try {
+      const planningGate = getPlanningGate();
+
+      if (planningGate) {
+        // Detect prompt complexity based on type and length
+        const promptType = detectPromptType(prompt);
+        const isComplexPrompt = ['decision', 'architecture'].includes(promptType) ||
+                                prompt.length > 500 ||
+                                escalationLevel !== 'normal';
+
+        // Create planning event
+        const planningEvent = {
+          id: `perceive-${Date.now()}`,
+          content: prompt,
+          context: {
+            promptType,
+            hasWarnings: recentWarnings.length > 0,
+            requestPlanning: promptType === 'architecture',
+          },
+          userContext: {
+            userId: user.userId,
+            trustLevel: profile.trustLevel || 'BUILDER',
+          },
+          routing: {
+            risk: isComplexPrompt ? 'medium' : 'low',
+            domain: promptType,
+          },
+          judgment: brainThought ? {
+            consensusRatio: brainThought.confidence || 0.5,
+          } : null,
+          setPlanning: function(p) { this.planning = p; },
+          recordError: function() {},
+        };
+
+        // Check planning gate
+        planningResult = planningGate.shouldPlan(planningEvent, {
+          complexity: isComplexPrompt ? 0.25 : 0.8,
+          confidence: brainThought?.confidence || 0.5,
+          entropy: errorState.errorRate || 0,
+        });
+
+        if (planningResult.needed) {
+          logger.debug('Planning triggered', {
+            triggers: planningResult.triggers,
+            decision: planningResult.decision,
+          });
+
+          // Generate plan with alternatives
+          await planningGate.generatePlan(planningEvent, planningResult);
+
+          // Format planning injection
+          if (planningResult.decision === PlanningDecision.PAUSE) {
+            const triggers = planningResult.triggers.join(', ');
+            const alternatives = planningResult.alternatives || [];
+
+            planningInjection = `${c(ANSI.brightCyan, '── 📋 PLANNING GATE ───────────────────────────────────────')}
+   ${c(ANSI.brightYellow, '*head tilt*')} This request triggered planning review.
+   Triggers: ${c(ANSI.cyan, triggers)}
+
+   ${c(ANSI.brightWhite, 'Alternatives to consider:')}`;
+
+            for (const alt of alternatives.slice(0, 3)) {
+              const riskColor = alt.risk === 'high' ? ANSI.brightRed :
+                               alt.risk === 'medium' ? ANSI.yellow : ANSI.brightGreen;
+              planningInjection += `\n   • ${c(ANSI.brightCyan, alt.label || alt.id)}: ${alt.description || ''} ${c(riskColor, `[${alt.risk || 'unknown'}]`)}`;
+            }
+
+            planningInjection += `\n\n   ${c(ANSI.dim, 'φ⁻¹ max confidence. Consider alternatives before proceeding.')}`;
+          } else if (planningResult.decision === PlanningDecision.CONSULT) {
+            // CONSULT = lighter warning, auto-proceed
+            planningInjection = `${c(ANSI.cyan, '── 📋 PLANNING ────────────────────────────────────────────')}
+   ${c(ANSI.cyan, '*sniff*')} Complexity detected (${planningResult.triggers[0] || 'borderline'}).
+   ${c(ANSI.dim, 'Auto-proceeding with caution.')}`;
+          }
+        }
+      }
+    } catch (e) {
+      logger.debug('Planning gate failed', { error: e.message });
+      // Continue without planning - graceful degradation
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // LLM TIER DECISION (Task #21) - Determine which LLM tier to use
     // LOCAL = No LLM (rule-based), LIGHT = Ollama, FULL = Claude/Large models
     // "Le plus petit chien qui peut faire le travail"
@@ -735,6 +826,14 @@ async function main() {
     // ═══════════════════════════════════════════════════════════════════════════
     if (brainInjection) {
       injections.push(brainInjection);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PLANNING INJECTION: Add planning gate result (second priority)
+    // "Le système réfléchit avant d'agir"
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (planningInjection) {
+      injections.push(planningInjection);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════

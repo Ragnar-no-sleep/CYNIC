@@ -21,7 +21,7 @@
 
 'use strict';
 
-import { PHI_INV } from '@cynic/core';
+import { PHI_INV, PHI_INV_2 } from '@cynic/core';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CONSTANTS
@@ -89,6 +89,7 @@ class AutoOrchestrator {
     this._collectivePack = null;
     this._neuronalConsensus = null;
     this._swarmConsensus = null;
+    this._planningGate = null;
     this._initialized = false;
     this._initPromise = null;
     this._decisionCache = new Map();
@@ -98,6 +99,8 @@ class AutoOrchestrator {
       preChecks: 0,
       postAnalyzes: 0,
       consensusRequests: 0,
+      planningTriggered: 0,
+      planningPaused: 0,
       blocksIssued: 0,
       cacheHits: 0,
       errors: 0,
@@ -165,6 +168,14 @@ class AutoOrchestrator {
         // Swarm consensus optional
       }
 
+      // Import PlanningGate for meta-cognition
+      try {
+        const { getPlanningGate } = await import('@cynic/node/orchestration');
+        this._planningGate = getPlanningGate();
+      } catch {
+        // Planning gate optional
+      }
+
       this._initialized = true;
       return true;
     } catch (error) {
@@ -228,6 +239,61 @@ class AutoOrchestrator {
     // Determine risk level
     const isHighRisk = HIGH_RISK_TOOLS.has(toolLower) ||
       this._assessRisk(tool, input) > CONFIG.HIGH_RISK_THRESHOLD;
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PLANNING GATE: Meta-cognition layer - think before acting
+    // "Un système qui pense avant d'agir"
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (this._planningGate && isHighRisk) {
+      try {
+        // Create minimal decision event for planning gate
+        const planningEvent = {
+          id: `hook-${Date.now()}`,
+          content: `${tool}: ${JSON.stringify(input).slice(0, 200)}`,
+          context: { tool, input, isHighRisk, skipPlanning: false },
+          userContext: {
+            userId: event.userId,
+            trustLevel: 'BUILDER', // Default, could be enhanced
+          },
+          routing: { risk: isHighRisk ? 'high' : 'medium' },
+          judgment: null,
+          setPlanning: function(p) { this.planning = p; },
+          recordError: function() {},
+        };
+
+        const planningResult = this._planningGate.shouldPlan(planningEvent, {
+          complexity: isHighRisk ? 0.3 : 0.7,
+          confidence: 0.5,
+        });
+
+        if (planningResult.needed) {
+          this.stats.planningTriggered++;
+
+          // Generate plan with alternatives
+          await this._planningGate.generatePlan(planningEvent, planningResult);
+
+          // If PAUSE decision, return for human approval
+          if (planningResult.decision === 'pause') {
+            this.stats.planningPaused++;
+
+            return {
+              blocked: false,
+              needsPlanning: true,
+              planningDecision: 'pause',
+              triggers: planningResult.triggers,
+              alternatives: planningResult.alternatives,
+              plan: planningResult.plan,
+              confidence: planningResult.confidence,
+              reason: `Planning triggered: ${planningResult.triggers.join(', ')}`,
+              isHighRisk,
+            };
+          }
+        }
+      } catch (planErr) {
+        // DEFENSIVE: Planning gate failure should NOT block execution
+        console.error('[AutoOrchestrator] Planning gate error (non-blocking):', planErr.message);
+      }
+    }
 
     // Route through CollectivePack (KabbalisticRouter)
     try {
@@ -621,6 +687,8 @@ class AutoOrchestrator {
       hasCollectivePack: !!this._collectivePack,
       hasNeuronalConsensus: !!this._neuronalConsensus,
       hasSwarmConsensus: !!this._swarmConsensus,
+      hasPlanningGate: !!this._planningGate,
+      planningGateStats: this._planningGate?.getStats() || null,
     };
   }
 
@@ -630,6 +698,14 @@ class AutoOrchestrator {
    */
   getCollectivePack() {
     return this._collectivePack;
+  }
+
+  /**
+   * Get PlanningGate (for advanced usage)
+   * @returns {Object|null}
+   */
+  getPlanningGate() {
+    return this._planningGate;
   }
 
   /**

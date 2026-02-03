@@ -67,6 +67,35 @@ async function main() {
       sessionId: process.env.CYNIC_SESSION_ID,
     });
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PLANNING GATE: Handle planning pause requests
+    // "Le système réfléchit avant d'agir"
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (result.needsPlanning && result.planningDecision === 'pause') {
+      // Format alternatives for user
+      const alternatives = (result.alternatives || []).slice(0, 3);
+      let altText = alternatives.map((a, i) =>
+        `  ${i + 1}. ${a.label || a.id}: ${a.description || ''} [${a.risk || 'unknown'} risk]`
+      ).join('\n');
+
+      const output = {
+        decision: 'block',
+        reason: `*head tilt* Planning triggered: ${result.triggers?.join(', ') || 'complexity detected'}
+
+Alternatives to consider:
+${altText}
+
+φ⁻¹ max confidence. Consider alternatives before proceeding with ${toolName}.`,
+        blockedBy: 'planning_gate',
+        confidence: result.confidence || 0.5,
+        needsPlanning: true,
+        alternatives: alternatives,
+      };
+
+      console.log(JSON.stringify(output));
+      process.exit(1);  // Non-zero = paused for planning
+    }
+
     // If blocked, output decision and exit with non-zero
     if (result.blocked) {
       const output = {
