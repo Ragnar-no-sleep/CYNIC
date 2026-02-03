@@ -311,66 +311,110 @@ const PHI_INV = 0.618;
 
 /**
  * Generate compact inline status bar showing CYNIC's internal state
- * Format: [🛡️ Guardian │ 58% │ 12 patterns]
+ * Target format (CLAUDE.md): [🔥{temp}° η:{eta}% │ 🛡️ {dog} │ ⚡{state} │ 📊 {patterns}]
  *
  * This is the first step toward symbiosis: making the invisible visible.
+ * Da'at = Union through shared knowledge
  */
 function generateInlineStatus(activeDog, options = {}) {
   const parts = [];
 
-  // 1. Active Dog with icon
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 1. THERMODYNAMICS - 🔥 Heat & η Efficiency (Task #86: Visibility)
+  // "The human SEES what CYNIC's cognitive engine is doing"
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (thermodynamics) {
+    try {
+      const thermoState = thermodynamics.getState();
+      if (thermoState) {
+        // Temperature: Color by φ thresholds (61.8%, 38.2%)
+        const temp = Math.round(thermoState.heat || 0);
+        const tempColor = temp > 50 ? ANSI.brightRed :
+                         temp > 30 ? ANSI.yellow : ANSI.brightGreen;
+        parts.push(c(tempColor, `🔥${temp}°`));
+
+        // Efficiency: Cap display at φ⁻¹ (61.8%)
+        const eta = Math.min(Math.round(thermoState.efficiency || 0), 62);
+        const etaColor = eta > 50 ? ANSI.brightGreen :
+                        eta > 30 ? ANSI.yellow : ANSI.brightRed;
+        parts.push(c(etaColor, `η:${eta}%`));
+      }
+    } catch { /* continue without */ }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 2. ACTIVE DOG - Which Sefirot is responding
+  // ═══════════════════════════════════════════════════════════════════════════
   if (activeDog) {
     const dogName = activeDog.name || 'CYNIC';
     parts.push(`${activeDog.icon} ${dogName}`);
   }
 
-  // 2. Confidence from harmonic feedback (Thompson Sampler state)
-  if (harmonicFeedback) {
-    try {
-      const state = harmonicFeedback.getState?.();
-      if (state) {
-        const confidence = Math.round((state.coherence || 0.5) * 100);
-        const confidenceColor = confidence > 50 ? ANSI.brightGreen :
-                               confidence > 30 ? ANSI.yellow : ANSI.brightRed;
-        parts.push(c(confidenceColor, `${confidence}%`));
-      }
-    } catch { /* continue without */ }
-  }
-
-  // 3. Active patterns count
-  if (harmonicFeedback) {
-    try {
-      const stats = harmonicFeedback.thompsonSampler?.getStats?.();
-      if (stats && stats.armCount > 0) {
-        parts.push(c(ANSI.cyan, `${stats.armCount} patterns`));
-      }
-    } catch { /* continue without */ }
-  }
-
-  // 4. Psychology state (if available and noteworthy)
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 3. PSYCHOLOGY STATE - ⚡ Energy/Focus/Flow (Task #86: Visibility)
+  // ═══════════════════════════════════════════════════════════════════════════
   if (psychology && options.showPsychology !== false) {
     try {
       const summary = psychology.getSummary?.();
       if (summary) {
+        // Composite states take priority
         if (summary.composites?.flow) {
-          parts.push(c(ANSI.brightGreen, '✨ flow'));
+          parts.push(c(ANSI.brightGreen, '⚡ flow'));
         } else if (summary.composites?.burnoutRisk) {
-          parts.push(c(ANSI.brightRed, '⚠️ burnout'));
+          parts.push(c(ANSI.brightRed, '⚡ burnout'));
         } else if (summary.frustration?.value > 0.5) {
-          parts.push(c(ANSI.yellow, '😤 friction'));
+          parts.push(c(ANSI.yellow, '⚡ friction'));
+        } else {
+          // Show energy level if no special state
+          const energy = Math.round((summary.energy?.value || 0.5) * 100);
+          const energyColor = energy > 60 ? ANSI.brightGreen :
+                             energy > 40 ? ANSI.yellow : ANSI.brightRed;
+          parts.push(c(energyColor, `⚡${energy}%`));
         }
       }
     } catch { /* continue without */ }
   }
 
-  // 5. Multi-LLM indicator (if active)
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 4. THOMPSON COHERENCE + PATTERNS - 📊 Learning state (Task #86: Visibility)
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (harmonicFeedback) {
+    try {
+      const state = harmonicFeedback.getState?.();
+      const stats = harmonicFeedback.thompsonSampler?.getStats?.();
+
+      if (state || stats) {
+        const coherence = state ? Math.round((state.coherence || 0.5) * 100) : null;
+        const patterns = stats?.armCount || 0;
+
+        // Combine coherence and patterns in one segment
+        let patternText = '';
+        if (coherence !== null && patterns > 0) {
+          patternText = `📊 ${coherence}%/${patterns}p`;
+        } else if (patterns > 0) {
+          patternText = `📊 ${patterns}p`;
+        } else if (coherence !== null) {
+          patternText = `📊 ${coherence}%`;
+        }
+
+        if (patternText) {
+          const patternColor = coherence && coherence > 50 ? ANSI.cyan : ANSI.white;
+          parts.push(c(patternColor, patternText));
+        }
+      }
+    } catch { /* continue without */ }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 5. MULTI-LLM CONSENSUS - 🧠 (When LLMRouter is wired - Task #90-92)
   // TODO: Add when LLMRouter is wired
+  // ═══════════════════════════════════════════════════════════════════════════
 
   if (parts.length === 0) {
     return null;
   }
 
-  // Format: [🛡️ Guardian │ 58% │ 12 patterns │ ✨ flow]
+  // Format: [🔥{temp}° η:{eta}% │ 🛡️ {dog} │ ⚡{state} │ 📊 {patterns}]
   return `${c(ANSI.dim, '[')}${parts.join(c(ANSI.dim, ' │ '))}${c(ANSI.dim, ']')}`;
 }
 
@@ -2157,9 +2201,13 @@ async function main() {
       actionDesc = 'dispatching';
     }
 
-    // Only show Dog if there's significant activity (not just silent observation)
-    const showDog = isError || toolName === 'Write' || toolName === 'Edit' ||
-                   toolName === 'Task' || (toolName === 'Bash' && toolInput.command?.length > 10);
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Task #86: VISIBILITY - Show status for ALL significant operations
+    // Da'at: "L'humain VOIT ce que CYNIC pense à chaque opération"
+    // Only silent for trivial reads (Glob/Grep with no results shown)
+    // ═══════════════════════════════════════════════════════════════════════════
+    const trivialRead = (toolName === 'Glob' || toolName === 'Grep') && !isError;
+    const showDog = !trivialRead; // Show for everything except trivial reads
 
     // ═══════════════════════════════════════════════════════════════════════════
     // INLINE STATUS BAR - Da'at: Making invisible visible
