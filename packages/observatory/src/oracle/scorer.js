@@ -52,10 +52,10 @@ const K_TIERS = Object.freeze([
  * Sum = 1.0 (normalized)
  */
 const AXIOM_WEIGHTS = Object.freeze({
-  PHI: PHI_INV,       // 0.618 — Harmony is the most important
-  VERIFY: PHI_INV_2,  // 0.382 — Truth is second
-  CULTURE: PHI_INV_3, // 0.236 — Memory matters
-  BURN: 1 - PHI_INV - PHI_INV_2 - PHI_INV_3, // Remainder ≈ 0.146
+  PHI: PHI_INV,                 // φ⁻¹ ≈ 0.618 — Harmony is the most important
+  VERIFY: PHI_INV_2,            // φ⁻² ≈ 0.382 — Truth is second
+  CULTURE: PHI_INV_3,           // φ⁻³ ≈ 0.236 — Memory matters
+  BURN: PHI_INV_3 * PHI_INV,   // φ⁻⁴ ≈ 0.146 — Action is the foundation
 });
 
 // Normalize weights to sum to 1
