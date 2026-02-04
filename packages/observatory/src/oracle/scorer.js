@@ -78,6 +78,21 @@ const HOLDER_SCALE = 100;
 const AGE_TAU = 21; // F₈
 
 /**
+ * Market cap per holder inflection point in USD.
+ * F₆ = 8 ($8/holder). A dead/rugged token has < $1/holder.
+ * Formula: S = 1 - 1/(1 + ln(1 + mcapPerHolder/MCAP_PER_HOLDER_SCALE))
+ * At $0.30/holder → 4, at $8/holder → 41, at $80/holder → 71, at $800/holder → 82
+ */
+const MCAP_PER_HOLDER_SCALE = 8; // F₆
+
+/**
+ * Market cap liquidity threshold in USD.
+ * F₈ × 1000 = $21,000. Pump.fun graduation ≈ $90K mcap.
+ * Scores the "depth" of available market from total market cap.
+ */
+const LIQUIDITY_MCAP_SCALE = 21000; // F₈ × 1000
+
+/**
  * K-Score security caps — authority revocation limits max K-Score.
  * Both renounced = full range. One active = capped at φ⁻¹. Both active = capped at φ⁻².
  * Derives directly from the φ power series: no arbitrary thresholds.
@@ -276,12 +291,20 @@ export class TokenScorer {
     return Math.round(100 - dominance);
   }
 
-  /** D2: Liquidity Depth — DEX listing + holder breadth as proxy */
+  /** D2: Liquidity Depth — market cap depth + holder breadth */
   _scoreLiquidityDepth(data) {
     if (data.isNative) return 100;
     let score = 0;
-    // Has price data from Helius = listed and traded on DEX
-    if (data.priceInfo?.pricePerToken > 0) score += 50;
+
+    // Market cap depth: asymptotic scaling by actual mcap (not just "has price")
+    const price = data.priceInfo?.pricePerToken || 0;
+    if (price > 0) {
+      const mcap = price * (data.supply?.total || 0);
+      if (mcap > 0) {
+        score += Math.round((1 - 1 / (1 + Math.log(1 + mcap / LIQUIDITY_MCAP_SCALE))) * 50);
+      }
+    }
+
     // Holder breadth: more holders = more potential liquidity
     // Uses asymptotic formula consistent with D9
     const h = data.distribution?.holderCount || 0;
@@ -289,11 +312,19 @@ export class TokenScorer {
     return Math.min(100, score);
   }
 
-  /** D3: Price Stability — requires price history we don't have */
+  /** D3: Price Stability — market cap per holder as economic health proxy */
   _scorePriceStability(data) {
     if (data.isNative) return 80; // SOL is relatively stable for crypto
-    // "Don't trust, verify" — no price history = 0, not 50
-    return 0;
+    // No price data = unverified = 0
+    if (!data.priceInfo?.pricePerToken || data.priceInfo.pricePerToken <= 0) return 0;
+
+    const mcap = data.priceInfo.pricePerToken * (data.supply?.total || 0);
+    const holders = data.distribution?.holderCount || 1;
+    const mcapPerHolder = mcap / holders;
+
+    // Asymptotic: dead tokens ($0.30/holder) → 4, healthy ($80/holder) → 71
+    if (mcapPerHolder <= 0) return 0;
+    return Math.round((1 - 1 / (1 + Math.log(1 + mcapPerHolder / MCAP_PER_HOLDER_SCALE))) * 100);
   }
 
   /** D4: Supply Mechanics — mint authority analysis */
@@ -523,7 +554,7 @@ export class TokenScorer {
     const reasons = {
       supplyDistribution: 'Token supply concentrated in few wallets',
       liquidityDepth: 'Insufficient liquidity depth',
-      priceStability: 'Insufficient price history data',
+      priceStability: 'Low market cap per holder — economic health weak',
       supplyMechanics: 'Mint/freeze authority still active',
       mintAuthority: 'Mint authority not renounced — inflation risk',
       freezeAuthority: 'Freeze authority active — accounts can be frozen',

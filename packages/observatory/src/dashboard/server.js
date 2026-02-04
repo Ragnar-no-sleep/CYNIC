@@ -1344,6 +1344,7 @@ export function createServer(options = {}) {
             ...verdict,
             _raw: tokenData._raw,
             supply: tokenData.supply,
+            priceInfo: tokenData.priceInfo,
             distribution: {
               holderCount: tokenData.distribution.holderCount,
               whaleConcentration: tokenData.distribution.whaleConcentration,
