@@ -265,20 +265,27 @@ export class TokenScorer {
   // PHI DIMENSIONS (Harmony / Balance)
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /** D1: Supply Distribution — Gini coefficient inverted (lower gini = higher score) */
+  /** D1: Supply Distribution — top holder dominance (lower = better distributed) */
   _scoreSupplyDistribution(data) {
     if (data.isNative) return 70; // SOL has wide distribution but validators concentrate
-    const gini = data.distribution?.giniCoefficient ?? 1;
-    return Math.round((1 - gini) * 100);
+    // How much does the single largest account hold?
+    // Gini from top-20 is unreliable (biased sample → always ~1.0), so we use direct %
+    const topHolder = data.distribution?.topHolders?.[0];
+    if (!topHolder) return 50; // No data → neutral
+    const dominance = Math.min(100, topHolder.percentage);
+    return Math.round(100 - dominance);
   }
 
-  /** D2: Liquidity Depth — whale concentration as proxy, price as signal */
+  /** D2: Liquidity Depth — DEX listing + holder breadth as proxy */
   _scoreLiquidityDepth(data) {
-    if (data.isNative) return 100; // SOL is the most liquid Solana asset
+    if (data.isNative) return 100;
     let score = 0;
-    const whaleConc = data.distribution?.whaleConcentration ?? 1;
-    score += Math.round((1 - whaleConc) * 60); // 0-60 from distribution
-    if (data.priceInfo?.pricePerToken > 0) score += 40; // Has DEX liquidity
+    // Has price data from Helius = listed and traded on DEX
+    if (data.priceInfo?.pricePerToken > 0) score += 50;
+    // Holder breadth: more holders = more potential liquidity
+    // Uses asymptotic formula consistent with D9
+    const h = data.distribution?.holderCount || 0;
+    if (h > 0) score += Math.round((1 - 1 / (1 + Math.log(1 + h / HOLDER_SCALE))) * 50);
     return Math.min(100, score);
   }
 
@@ -385,13 +392,15 @@ export class TokenScorer {
     return Math.min(100, score);
   }
 
-  /** D12: Organic Growth — distribution quality */
+  /** D12: Organic Growth — top-10 concentration inverted (lower concentration = more organic) */
   _scoreOrganicGrowth(data) {
-    if (data.isNative) return 90; // SOL has organic ecosystem-wide distribution
-    const gini = data.distribution?.giniCoefficient ?? 1;
-    const whaleConc = data.distribution?.whaleConcentration ?? 1;
-    const organicScore = ((1 - gini) * 0.5 + (1 - whaleConc) * 0.5) * 100;
-    return Math.round(organicScore);
+    if (data.isNative) return 90;
+    // What % do the top 10 accounts hold? Less = more organically distributed
+    // Combined with holderCount via √ in K-Score extraction — no redundancy
+    const topHolders = data.distribution?.topHolders || [];
+    if (topHolders.length === 0) return 50; // No data → neutral
+    const top10Pct = topHolders.reduce((sum, h) => sum + (h.percentage || 0), 0);
+    return Math.round(Math.max(0, 100 - Math.min(100, top10Pct)));
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
