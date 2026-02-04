@@ -496,7 +496,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 <div class="ctr">
   <header class="hdr">
     <h1>CYNIC ORACLE</h1>
-    <p class="sub"><b>\\u03C6 distrusts \\u03C6</b> \\u2014 17 on-chain dimensions, max 61.8% confidence</p>
+    <p class="sub"><b>φ distrusts φ</b> — 17 on-chain dimensions, max 61.8% confidence</p>
   </header>
 
   <div class="iw">
@@ -525,11 +525,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 </div>
 
 <footer class="ft">
-  <a href="/api/oracle/health">API</a><span class="d">\\u00B7</span>
-  <a href="/api/oracle/judge?mint=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v">Example</a><span class="d">\\u00B7</span>
-  <a href="/">Observatory</a><span class="d">\\u00B7</span>
-  CYNIC Oracle v2<span class="d">\\u00B7</span>
-  \\u03C6\\u207B\\u00B9 = 61.8%
+  <a href="/api/oracle/health">API</a><span class="d">·</span>
+  <a href="/api/oracle/judge?mint=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v">Example</a><span class="d">·</span>
+  <a href="/">Observatory</a><span class="d">·</span>
+  CYNIC Oracle v2<span class="d">·</span>
+  φ⁻¹ = 61.8%
 </footer>
 
 <script>
@@ -539,7 +539,7 @@ document.getElementById('mint').addEventListener('keydown',function(e){if(e.key=
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 function dc(s){return s>=61.8?'var(--green)':s>=38.2?'var(--yellow)':'var(--red)'}
 function vc(v){return v==='HOWL'?'var(--green)':v==='WAG'?'var(--blue)':v==='GROWL'?'var(--yellow)':'var(--red)'}
-function fu(n){if(n==null)return'\\u2014';if(n>=1e9)return'$'+(n/1e9).toFixed(1)+'B';if(n>=1e6)return'$'+(n/1e6).toFixed(1)+'M';if(n>=1e3)return'$'+(n/1e3).toFixed(1)+'K';if(n>=1)return'$'+n.toFixed(2);if(n>=.001)return'$'+n.toFixed(4);return'$'+n.toFixed(8)}
+function fu(n){if(n==null)return'—';if(n>=1e9)return'$'+(n/1e9).toFixed(1)+'B';if(n>=1e6)return'$'+(n/1e6).toFixed(1)+'M';if(n>=1e3)return'$'+(n/1e3).toFixed(1)+'K';if(n>=1)return'$'+n.toFixed(2);if(n>=.001)return'$'+n.toFixed(4);return'$'+n.toFixed(8)}
 
 async function judgeToken(){
   var mint=document.getElementById('mint').value.trim();
@@ -559,10 +559,10 @@ async function judgeToken(){
 function renderV(d){
   var c=vc(d.verdict),q=d.qScore,off=CIRC-(q/100*CIRC);
   var axs=[
-    {k:'PHI',cls:'',lbl:'\\u03C6 Harmony',ds:['supplyDistribution','liquidityDepth','priceStability','supplyMechanics']},
-    {k:'VERIFY',cls:'a-v',lbl:'\\u2713 Verify',ds:['mintAuthority','freezeAuthority','metadataIntegrity','programVerification']},
-    {k:'CULTURE',cls:'a-c',lbl:'\\u2605 Culture',ds:['holderCount','tokenAge','ecosystemIntegration','organicGrowth']},
-    {k:'BURN',cls:'a-b',lbl:'\\u2737 Burn',ds:['burnActivity','creatorBehavior','feeRedistribution','realUtility']}
+    {k:'PHI',cls:'',lbl:'φ Harmony',ds:['supplyDistribution','liquidityDepth','priceStability','supplyMechanics']},
+    {k:'VERIFY',cls:'a-v',lbl:'✓ Verify',ds:['mintAuthority','freezeAuthority','metadataIntegrity','programVerification']},
+    {k:'CULTURE',cls:'a-c',lbl:'★ Culture',ds:['holderCount','tokenAge','ecosystemIntegration','organicGrowth']},
+    {k:'BURN',cls:'a-b',lbl:'✷ Burn',ds:['burnActivity','creatorBehavior','feeRedistribution','realUtility']}
   ];
   var dn={supplyDistribution:'Supply Dist',liquidityDepth:'Liquidity',priceStability:'Price Stability',supplyMechanics:'Supply Mech',mintAuthority:'Mint Auth',freezeAuthority:'Freeze Auth',metadataIntegrity:'Metadata',programVerification:'Prog Verify',holderCount:'Holders',tokenAge:'Token Age',ecosystemIntegration:'Ecosystem',organicGrowth:'Organic Growth',burnActivity:'Burn Activity',creatorBehavior:'Creator Behav',feeRedistribution:'Fee Redist',realUtility:'Real Utility'};
 
@@ -606,7 +606,7 @@ function renderV(d){
   // ── Trajectory
   if(d.trajectory&&!(d.trajectory.direction==='new'&&d.trajectory.previousJudgments<=1)){
     var t=d.trajectory;
-    var ar={improving:'\\u2197',declining:'\\u2198',stable:'\\u2192',new:'\\u2728'};
+    var ar={improving:'↗',declining:'↘',stable:'→',new:'✨'};
     var lb={improving:'Improving',declining:'Declining',stable:'Stable',new:'First'};
     h+='<div class="traj"><span class="traj-a '+t.direction+'">'+(ar[t.direction]||'')+'</span>';
     h+='<strong>'+(lb[t.direction]||'')+'</strong>';
@@ -619,7 +619,7 @@ function renderV(d){
   // ── Confidence bar
   h+='<div class="conf"><div class="conf-hd"><span>Confidence</span><span class="v">'+(d.confidence*100).toFixed(1)+'% / 61.8%</span></div>';
   h+='<div class="conf-tk"><div class="conf-fl" style="width:'+Math.min(61.8,d.confidence*100).toFixed(1)+'%"></div>';
-  h+='<div class="conf-ph"></div><div class="conf-pl">\\u03C6\\u207B\\u00B9</div></div></div>';
+  h+='<div class="conf-ph"></div><div class="conf-pl">φ⁻¹</div></div></div>';
 
   // ── Axiom Grid (2x2)
   h+='<div class="agrid">';
@@ -636,13 +636,13 @@ function renderV(d){
   h+='</div>';
 
   // ── THE UNNAMEABLE
-  h+='<div class="unm"><strong>THE UNNAMEABLE</strong> \\u2014 '+d.theUnnameable+'% uncertainty \\u2014 ';
+  h+='<div class="unm"><strong>THE UNNAMEABLE</strong> — '+d.theUnnameable+'% uncertainty — ';
   h+=d.theUnnameable>50?'Much we cannot measure.':d.theUnnameable>25?'Moderate data gaps.':'Good data coverage.';
   h+='</div>';
 
   // ── Weaknesses (compact pills)
   if(d.weaknesses&&d.weaknesses.length>0){
-    h+='<div class="wsec"><div class="wsec-t">Weaknesses (below \\u03C6\\u207B\\u00B2)</div><div class="wpl">';
+    h+='<div class="wsec"><div class="wsec-t">Weaknesses (below φ⁻²)</div><div class="wpl">';
     for(var k=0;k<d.weaknesses.length;k++){
       var w=d.weaknesses[k];
       h+='<div class="wp"><span class="a">'+w.axiom+'</span>'+(dn[w.dimension]||w.dimension)+'<span class="sc">'+w.score+'</span></div>';
@@ -676,7 +676,7 @@ function rWL(items,alerts){
   if(!items.length){el.innerHTML='<div class="wl-e">No tokens watched. Judge a token and add it.</div>';return}
   el.innerHTML=items.map(function(w){
     var c=vc(w.lastVerdict),ago=w.lastCheckedAt?tAgo(new Date(w.lastCheckedAt)):'';
-    return '<div class="wl-i" onclick="qm(\\''+w.mint+'\\')">'+'<div class="wl-l"><span class="wl-lb">'+esc(w.label||w.mint.slice(0,6)+'..')+'</span><span class="wl-m">'+w.mint.slice(0,8)+'...'+w.mint.slice(-4)+'</span></div>'+'<div class="wl-r">'+(w.lastQScore?'<span class="wl-sc" style="color:'+c+'">'+w.lastQScore+'</span>':'')+(w.lastVerdict?'<span class="wl-vt" style="color:'+c+';background:'+c+'12">'+w.lastVerdict+'</span>':'')+(ago?'<span class="wl-tm">'+ago+'</span>':'')+'<span class="wl-x" onclick="event.stopPropagation();uwM(\\''+w.mint+'\\')">\\u00D7</span></div></div>'
+    return '<div class="wl-i" onclick="qm(\\''+w.mint+'\\')">'+'<div class="wl-l"><span class="wl-lb">'+esc(w.label||w.mint.slice(0,6)+'..')+'</span><span class="wl-m">'+w.mint.slice(0,8)+'...'+w.mint.slice(-4)+'</span></div>'+'<div class="wl-r">'+(w.lastQScore?'<span class="wl-sc" style="color:'+c+'">'+w.lastQScore+'</span>':'')+(w.lastVerdict?'<span class="wl-vt" style="color:'+c+';background:'+c+'12">'+w.lastVerdict+'</span>':'')+(ago?'<span class="wl-tm">'+ago+'</span>':'')+'<span class="wl-x" onclick="event.stopPropagation();uwM(\\''+w.mint+'\\')">×</span></div></div>'
   }).join('');
   var as=document.getElementById('al-sec'),ai=document.getElementById('al-items');
   if(alerts.length>0){as.style.display='block';ai.innerHTML=alerts.slice(0,5).map(function(a){return '<div class="al-i"><strong>'+esc(a.label||a.mint?.slice(0,8))+'</strong>: '+esc(a.message||a.alertType)+'<span style="float:right;color:var(--muted)">'+tAgo(new Date(a.createdAt))+'</span></div>'}).join('')}else{as.style.display='none'}
