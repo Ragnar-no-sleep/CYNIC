@@ -146,6 +146,110 @@
       "C:\\Program Files (x86)\\"
     ]
   },
+  "codingStyleHeuristics": {
+    "description": "Mined patterns from zeyxx's codebase - guides code generation",
+    "source": "pattern_mining",
+    "minedAt": "2026-02-04T01:30:00.000Z",
+    "minedFrom": "CYNIC",
+    "heuristics": [
+      {
+        "id": "H1_PHI_THRESHOLDS",
+        "name": "φ-Thresholds",
+        "description": "Use φ⁻¹/φ⁻²/φ⁻³ for all thresholds, never arbitrary magic numbers",
+        "confidence": 0.618033988749895,
+        "evidence": {
+          "PHI_occurrences": 1267,
+          "phi_symbol_occurrences": 881,
+          "decimal_618_occurrences": 130
+        },
+        "rules": [
+          { "pattern": "0.618|61.8%", "meaning": "φ⁻¹ - max confidence, learning rate" },
+          { "pattern": "0.382|38.2%", "meaning": "φ⁻² - stable threshold, discount factor" },
+          { "pattern": "0.236|23.6%", "meaning": "φ⁻³ - critical threshold, exploration" }
+        ]
+      },
+      {
+        "id": "H2_DESCRIPTIVE_VARS",
+        "name": "Descriptive Variables",
+        "description": "Variable names 12-20 chars, camelCase, semantic prefixes",
+        "confidence": 0.618033988749895,
+        "evidence": {
+          "avg_var_length": "12-20",
+          "examples": ["avgSentenceLength", "confidenceCoherence", "potentialDimensions"]
+        },
+        "rules": [
+          { "prefix": "is/has", "meaning": "boolean" },
+          { "prefix": "get/create/build", "meaning": "factory function" },
+          { "prefix": "on/handle", "meaning": "event handler" }
+        ]
+      },
+      {
+        "id": "H3_DOMAIN_SPLIT",
+        "name": "Domain Architecture",
+        "description": "Separate domains/ services/ repositories/",
+        "confidence": 0.618033988749895,
+        "evidence": {
+          "repositories_files": 30,
+          "domains_files": 18,
+          "services_files": 12
+        },
+        "structure": [
+          "packages/*/src/domains/",
+          "packages/*/src/services/",
+          "packages/*/src/repositories/"
+        ]
+      },
+      {
+        "id": "H4_ASYNC_AWAIT",
+        "name": "Async/Await Pattern",
+        "description": "Prefer async/await over Promise.then()",
+        "confidence": 0.618033988749895,
+        "evidence": {
+          "async_lines": 1013
+        },
+        "rules": [
+          { "prefer": "async/await", "avoid": ".then().catch()" }
+        ]
+      },
+      {
+        "id": "H5_CATCH_CONTEXT",
+        "name": "Contextual Error Handling",
+        "description": "throw new Error(`context: ${details}`)",
+        "confidence": 0.618033988749895,
+        "evidence": {
+          "catch_error_count": 9,
+          "throw_with_context": 12
+        },
+        "pattern": "throw new Error(`${operation} failed: ${error.message}`)"
+      },
+      {
+        "id": "H6_NAMED_EXPORTS",
+        "name": "Named Exports",
+        "description": "Prefer export { X, Y } over export default",
+        "confidence": 0.618033988749895,
+        "evidence": {
+          "named_exports": 173,
+          "default_exports": 112
+        },
+        "rules": [
+          { "prefer": "export { X, Y }", "for": "multiple exports" },
+          { "allow": "export default", "for": "main module entry" }
+        ]
+      },
+      {
+        "id": "H7_IMPORT_DESTRUCT",
+        "name": "Destructured Imports",
+        "description": "import { X } from '@pkg' over import *",
+        "confidence": 0.618033988749895,
+        "evidence": {
+          "top_import": "import { PHI_INV, PHI_INV_2, PHI_INV_3 } from '@cynic/core'"
+        },
+        "rules": [
+          { "prefer": "import { X, Y } from", "avoid": "import * as" }
+        ]
+      }
+    ]
+  },
   "learnedPatterns": [
     {
       "signature": "sql-injection:sql-001",
@@ -198,8 +302,14 @@
   ],
   "metadata": {
     "createdAt": "2026-02-02T00:00:00Z",
-    "updatedAt": "2026-02-02T00:00:00Z",
+    "updatedAt": "2026-02-04T01:30:00.000Z",
     "learningEnabled": true,
-    "lastLearningUpdate": null
+    "lastLearningUpdate": "2026-02-04T01:30:00.000Z",
+    "lastPatternMining": {
+      "timestamp": "2026-02-04T01:30:00.000Z",
+      "source": "CYNIC",
+      "heuristicsExtracted": 7,
+      "method": "static_analysis"
+    }
   }
 }
