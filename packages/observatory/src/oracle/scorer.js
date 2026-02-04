@@ -289,11 +289,11 @@ export class TokenScorer {
     return Math.min(100, score);
   }
 
-  /** D3: Price Stability — placeholder (needs price history) */
-  _scorePriceStability(_data) {
-    // Without price data, return neutral score
-    // THE_UNNAMEABLE will capture this uncertainty
-    return 50;
+  /** D3: Price Stability — requires price history we don't have */
+  _scorePriceStability(data) {
+    if (data.isNative) return 80; // SOL is relatively stable for crypto
+    // "Don't trust, verify" — no price history = 0, not 50
+    return 0;
   }
 
   /** D4: Supply Mechanics — mint authority analysis */
@@ -407,33 +407,37 @@ export class TokenScorer {
   // BURN DIMENSIONS (Creation vs Extraction)
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /** D13: Burn Activity — placeholder (needs burn tx analysis) */
+  /** D13: Burn Activity — needs burn tx analysis we don't have */
   _scoreBurnActivity(data) {
-    if (data.isNative) return 80; // SOL has natural burns via fees
-    // Without burn data, return neutral
-    return 50;
+    if (data.isNative) return 80; // SOL burns via transaction fees
+    // No burn data = no evidence of burn mechanism = 0
+    return 0;
   }
 
-  /** D14: Creator Behavior — has creator dumped? */
+  /** D14: Creator Behavior — mint authority as proxy for extraction risk */
   _scoreCreatorBehavior(data) {
-    // Without creator wallet tracking, use supply mechanics as proxy
-    if (data.authorities?.mintAuthorityActive === false) return 70; // Renounced = less extraction
-    return 40; // Active authority = could extract
+    if (data.isNative) return 70;
+    // Renounced mint = creator gave up control = φ⁻¹ level trust
+    if (data.authorities?.mintAuthorityActive === false) return Math.round(PHI_INV * 100);
+    // Active or unknown = unverified = don't trust
+    return 0;
   }
 
-  /** D15: Fee Redistribution — placeholder (needs protocol fee analysis) */
+  /** D15: Fee Redistribution — needs protocol fee analysis we don't have */
   _scoreFeeRedistribution(_data) {
-    return 50; // Neutral without data
+    // No fee redistribution data for any token = 0
+    return 0;
   }
 
-  /** D16: Real Utility — placeholder (needs dApp usage data) */
+  /** D16: Real Utility — DEX listing + holder breadth as evidence */
   _scoreRealUtility(data) {
-    if (data.isNative) return 100; // SOL has maximum utility
-    // Without usage data, use holder count as weak proxy
-    const holders = data.distribution?.holderCount || 0;
-    if (holders >= 1000) return 60;
-    if (holders >= 100) return 40;
-    return 20;
+    if (data.isNative) return 100;
+    // Not listed on any DEX = no utility evidence
+    if (!data.priceInfo?.pricePerToken) return 0;
+    // Listed: holder breadth as utility proxy (asymptotic, consistent with D9)
+    const h = data.distribution?.holderCount || 0;
+    if (h === 0) return Math.round(PHI_INV_3 * 100); // ~24: listed but no holders yet
+    return Math.round((1 - 1 / (1 + Math.log(1 + h / HOLDER_SCALE))) * 100);
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
