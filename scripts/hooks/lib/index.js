@@ -96,12 +96,15 @@ export function getReasoningBank() {
   if (_reasoningBank) return _reasoningBank;
 
   try {
-    // Dynamic import to avoid circular dependencies
     const { createReasoningBank } = require('@cynic/node/learning');
     _reasoningBank = createReasoningBank();
     return _reasoningBank;
   } catch (e) {
-    // ReasoningBank not available - return null
+    // First-time failure is expected if module not available
+    // Only record friction if it's a runtime error, not module-not-found
+    if (e.code !== 'MODULE_NOT_FOUND') {
+      recordFriction('reasoning_bank_error', 'low', { error: e.message });
+    }
     return null;
   }
 }
@@ -113,7 +116,6 @@ export function getFactExtractor() {
   if (_factExtractor) return _factExtractor;
 
   try {
-    // Dynamic import to avoid circular dependencies
     const { createFactExtractor } = require('@cynic/persistence/services');
     const { getPool } = require('@cynic/persistence');
     const pool = getPool();
@@ -121,10 +123,14 @@ export function getFactExtractor() {
       _factExtractor = createFactExtractor({ pool });
       return _factExtractor;
     }
+    // No pool - expected during startup
+    return null;
   } catch (e) {
-    // FactExtractor not available - return null
+    if (e.code !== 'MODULE_NOT_FOUND') {
+      recordFriction('fact_extractor_error', 'low', { error: e.message });
+    }
+    return null;
   }
-  return null;
 }
 
 // FactsRepository (M2.1: Cross-session fact retrieval)
@@ -141,10 +147,13 @@ export function getFactsRepository() {
       _factsRepository = new FactsRepository(pool);
       return _factsRepository;
     }
+    return null;
   } catch (e) {
-    // FactsRepository not available - return null
+    if (e.code !== 'MODULE_NOT_FOUND') {
+      recordFriction('facts_repository_error', 'low', { error: e.message });
+    }
+    return null;
   }
-  return null;
 }
 
 // ArchitecturalDecisionsRepository (Self-Knowledge: Decision awareness)
@@ -161,38 +170,37 @@ export function getArchitecturalDecisionsRepository() {
       _archDecisionsRepository = new ArchitecturalDecisionsRepository(pool);
       return _archDecisionsRepository;
     }
+    return null;
   } catch (e) {
-    // ArchitecturalDecisionsRepository not available - return null
+    if (e.code !== 'MODULE_NOT_FOUND') {
+      recordFriction('arch_decisions_repo_error', 'low', { error: e.message });
+    }
+    return null;
   }
-  return null;
 }
 
 // CodebaseIndexer (Self-Knowledge: Codebase awareness)
-const _codebaseIndexer = null;
-
+// Factory function - always creates fresh instance to allow different options
 export function getCodebaseIndexer(options = {}) {
-  // Always create fresh to allow different options
   try {
     const { createCodebaseIndexer } = require('@cynic/persistence/services');
     return createCodebaseIndexer(options);
   } catch (e) {
-    // CodebaseIndexer not available - return null
+    recordFriction('codebase_indexer_unavailable', 'low', { error: e.message });
+    return null;
   }
-  return null;
 }
 
 // BurnAnalyzer (Vision → Compréhension → Burn)
-const _burnAnalyzer = null;
-
+// Factory function - always creates fresh instance to allow different options
 export function getBurnAnalyzer(options = {}) {
-  // Always create fresh to allow different options
   try {
     const { createBurnAnalyzer } = require('@cynic/persistence/services/burn-analyzer');
     return createBurnAnalyzer(options);
   } catch (e) {
-    // BurnAnalyzer not available - return null
+    recordFriction('burn_analyzer_unavailable', 'low', { error: e.message });
+    return null;
   }
-  return null;
 }
 
 // SessionRepository (GAP #1 FIX: Direct PostgreSQL session persistence)
@@ -209,10 +217,13 @@ export function getSessionRepository() {
       _sessionRepository = new SessionRepository(pool);
       return _sessionRepository;
     }
+    return null;
   } catch (e) {
-    // SessionRepository not available - return null
+    if (e.code !== 'MODULE_NOT_FOUND') {
+      recordFriction('session_repository_error', 'low', { error: e.message });
+    }
+    return null;
   }
-  return null;
 }
 
 // SessionPatternsRepository (Task #66: Cross-session pattern persistence)
@@ -229,13 +240,17 @@ export function getSessionPatternsRepository() {
       _sessionPatternsRepository = new SessionPatternsRepository(pool);
       return _sessionPatternsRepository;
     }
-  } catch {
-    // SessionPatternsRepository not available - return null
+    return null;
+  } catch (e) {
+    if (e.code !== 'MODULE_NOT_FOUND') {
+      recordFriction('session_patterns_repo_error', 'low', { error: e.message });
+    }
+    return null;
   }
-  return null;
 }
 
 // TelemetryCollector (Stats, frictions, benchmarking)
+// NOTE: This is the telemetry itself, so we can't record friction when it fails
 let _telemetry = null;
 
 export function getTelemetryCollector() {
@@ -255,9 +270,13 @@ export function getTelemetryCollector() {
 
     return _telemetry;
   } catch (e) {
-    // Telemetry not available - return null
+    // Telemetry is the error handler - can't record itself
+    // Log to console as fallback
+    if (e.code !== 'MODULE_NOT_FOUND') {
+      console.warn('[CYNIC] Telemetry unavailable:', e.message);
+    }
+    return null;
   }
-  return null;
 }
 
 // Shorthand telemetry helpers
@@ -277,11 +296,23 @@ export function recordFriction(name, severity, details = {}) {
 }
 
 // QLearningService with PostgreSQL persistence (Task #84: Wire Q-Learning to hooks)
+// CRITICAL FIX: Promise-based singleton to prevent race conditions during async init
 let _qlearningService = null;
+let _qlearningInitPromise = null;
 let _dotenvLoaded = false;
 
+/**
+ * Get Q-Learning service with PostgreSQL persistence.
+ * Uses promise-based singleton to prevent race conditions during async initialization.
+ * @returns {Object|null} Q-Learning service or null if unavailable
+ */
 export function getQLearningServiceWithPersistence() {
-  if (_qlearningService) return _qlearningService;
+  // Fast path: already initialized
+  if (_qlearningService?._initialized) return _qlearningService;
+
+  // If init in progress, return the existing (possibly uninitialized) service
+  // Callers can use it immediately for recording; persistence will catch up
+  if (_qlearningInitPromise && _qlearningService) return _qlearningService;
 
   try {
     // Load .env if not already loaded (hooks context doesn't have env vars)
@@ -292,9 +323,9 @@ export function getQLearningServiceWithPersistence() {
         // Try multiple possible paths to find .env
         const possiblePaths = [
           path.resolve(process.cwd(), '.env'),
-          path.resolve(__dirname, '../../.env'),  // scripts/hooks/lib -> scripts/hooks -> .env (if at CYNIC root)
-          path.resolve(__dirname, '../../../.env'), // scripts/hooks/lib -> scripts/hooks -> scripts -> CYNIC/.env
-          'C:/Users/zeyxm/Desktop/asdfasdfa/CYNIC/.env', // Absolute fallback
+          path.resolve(__dirname, '../../.env'),
+          path.resolve(__dirname, '../../../.env'),
+          'C:/Users/zeyxm/Desktop/asdfasdfa/CYNIC/.env',
         ];
         for (const dotenvPath of possiblePaths) {
           if (fs.existsSync(dotenvPath)) {
@@ -304,7 +335,7 @@ export function getQLearningServiceWithPersistence() {
           }
         }
       } catch (e) {
-        // dotenv not available or .env not found - continue without
+        recordFriction('dotenv_load_failed', 'low', { error: e.message });
       }
     }
 
@@ -318,16 +349,44 @@ export function getQLearningServiceWithPersistence() {
       serviceId: 'hooks',
     });
 
-    // Initialize async (load from DB if exists)
-    if (pool) {
-      _qlearningService.initialize().catch(() => {
-        // Initialization failed - continue with in-memory only
-      });
+    // Initialize async with proper error handling and telemetry
+    if (pool && !_qlearningInitPromise) {
+      _qlearningInitPromise = _qlearningService.initialize()
+        .then(() => {
+          _qlearningService._initialized = true;
+          recordMetric('qlearning.init.success', 1, { serviceId: 'hooks' });
+        })
+        .catch((e) => {
+          // Record failure but don't crash - service works in-memory
+          recordFriction('qlearning_init_failed', 'medium', {
+            error: e.message,
+            serviceId: 'hooks',
+          });
+          // Mark as initialized anyway (in-memory mode)
+          _qlearningService._initialized = true;
+        });
+    } else if (!pool) {
+      // No pool - mark as initialized (in-memory only)
+      _qlearningService._initialized = true;
+      recordFriction('qlearning_no_pool', 'low', { serviceId: 'hooks' });
     }
 
     return _qlearningService;
   } catch (e) {
-    // QLearningService not available - return null
+    recordFriction('qlearning_service_unavailable', 'high', { error: e.message });
     return null;
   }
+}
+
+/**
+ * Async version that waits for initialization to complete.
+ * Use when you need guaranteed persistence before continuing.
+ * @returns {Promise<Object|null>} Initialized Q-Learning service or null
+ */
+export async function getQLearningServiceWithPersistenceAsync() {
+  const service = getQLearningServiceWithPersistence();
+  if (_qlearningInitPromise) {
+    await _qlearningInitPromise;
+  }
+  return service;
 }
