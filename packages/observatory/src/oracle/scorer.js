@@ -360,32 +360,35 @@ export class TokenScorer {
     return 50; // Unknown
   }
 
-  /** D6: Freeze Authority — can accounts be frozen? */
+  /** D6: Freeze Authority — revoked is baseline (pump.fun default), not merit */
   _scoreFreezeAuthority(data) {
     if (data.isNative) return 100;
-    if (data.authorities?.freezeAuthorityActive === false) return 100; // No freeze = safe
+    // Pump.fun revokes freeze by default → capped at φ⁻¹ (it's the minimum bar, not merit)
+    if (data.authorities?.freezeAuthorityActive === false) return Math.round(PHI_INV * 100);
     if (data.authorities?.freezeAuthorityActive === true) return 15; // Can freeze = major risk
     return 50; // Unknown
   }
 
-  /** D7: Metadata Integrity — is metadata complete and valid? */
+  /** D7: Metadata Integrity — capped at φ⁻² (pump.fun gives metadata to ALL tokens) */
   _scoreMetadataIntegrity(data) {
+    if (data.isNative) return 100;
     const meta = data.metadataIntegrity || {};
     let score = 0;
     if (meta.hasName) score += 30;
     if (meta.hasSymbol) score += 25;
     if (meta.hasUri) score += 25;
     if (meta.hasImage) score += 20;
-    return score;
+    // Cap: having metadata is the bare minimum, not a quality signal
+    // Pump.fun auto-generates metadata for ALL tokens → zero discriminative power
+    return Math.min(Math.round(PHI_INV_2 * 100), score);
   }
 
-  /** D8: Program Verification — placeholder (needs verified program check) */
+  /** D8: Program Verification — 0 without real verification data */
   _scoreProgramVerification(data) {
     if (data.isNative) return 100;
-    // Without program verification data, use metadata completeness as proxy
-    const meta = data.metadataIntegrity || {};
-    const completeFields = [meta.hasName, meta.hasSymbol, meta.hasUri].filter(Boolean).length;
-    return Math.round((completeFields / 3) * 60) + 20;
+    // "Don't trust, verify" — we have no program verification data
+    // Returning 0, not a proxy. Metadata completeness ≠ program safety.
+    return 0;
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
