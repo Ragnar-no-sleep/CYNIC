@@ -319,7 +319,7 @@ export class TokenScorer {
     return Math.min(100, score);
   }
 
-  /** D3: Price Stability — mcap/holder + liquidity/mcap ratio + 24h change */
+  /** D3: Price Stability — mcap/holder + 24h crash + OracleMemory history */
   _scorePriceStability(data) {
     if (data.isNative) return 80; // SOL is relatively stable for crypto
     // No price data = unverified = 0
@@ -337,27 +337,14 @@ export class TokenScorer {
 
     let finalScore = mcapScore;
 
-    // DexScreener signals (if available)
+    // DexScreener: 24h price crash penalty (if dropping hard right now)
     const ds = data.dexScreener;
-    if (ds) {
-      // Liquidity/mcap ratio: devastating signal for post-crash tokens
-      // MELANIA: $20K liquidity / $116M mcap = 0.017% → score ≈ 3
-      // Healthy: $5M liquidity / $100M mcap = 5% → score ≈ 79
-      // Formula: asymptotic on ratio percentage, scale = 1% (F₁ as %)
-      if (ds.liquidityUsd > 0 && ds.marketCap > 0) {
-        const liqRatio = (ds.liquidityUsd / ds.marketCap) * 100; // as percentage
-        const liqRatioScore = Math.round((1 - 1 / (1 + Math.log(1 + liqRatio))) * 100);
-        finalScore = Math.min(finalScore, liqRatioScore);
-      }
-
-      // 24h price crash: -50% in 24h → halve the score
-      if (ds.priceChange24h !== null && ds.priceChange24h < -10) {
-        const crashPenalty = Math.max(0, Math.min(100, Math.round(100 * (1 + ds.priceChange24h / 100))));
-        finalScore = Math.min(finalScore, crashPenalty);
-      }
+    if (ds && ds.priceChange24h !== null && ds.priceChange24h < -10) {
+      const crashPenalty = Math.max(0, Math.min(100, Math.round(100 * (1 + ds.priceChange24h / 100))));
+      finalScore = Math.min(finalScore, crashPenalty);
     }
 
-    // OracleMemory price history (if available — our own judgment-to-judgment tracking)
+    // OracleMemory: judgment-to-judgment price tracking
     const ph = data.priceHistory;
     if (ph && ph.priceChange !== undefined && ph.priceChange !== null) {
       const crashScore = Math.max(0, Math.min(100, Math.round(100 * (1 + ph.priceChange))));
