@@ -23,7 +23,7 @@ CYNIC is a **decentralized collective consciousness** - a network of interconnec
 ## Quick Start
 
 ```bash
-git clone https://github.com/zeyxx/CYNIC.git
+git clone https://github.com/Ragnar-no-sleep/CYNIC.git
 cd CYNIC
 npm install
 claude  # Launch with CYNIC personality
@@ -135,6 +135,46 @@ Reputation score with 7 φ-weighted dimensions:
 | [@cynic/anchor](./packages/anchor) | Wallet, RPC, transaction signing |
 | [@cynic/burns](./packages/burns) | Burn verification, SPL token burns |
 | [@cynic/protocol](./packages/protocol) | PoJ chain, Merkle anchoring |
+
+---
+
+## Infrastructure
+
+CYNIC runs on **shared infrastructure** with [ASDF-Web](https://github.com/Ragnar-no-sleep/ASDF-Web) in Oregon region.
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                      SHARED INFRASTRUCTURE (Oregon)                  │
+├─────────────────────────────────────────────────────────────────────┤
+│   PostgreSQL 16              │           Redis 7                    │
+│   ├─ schema: asdf.*          │           ├─ prefix: asdf:*          │
+│   └─ schema: cynic.*         │           └─ prefix: cynic:*         │
+└─────────────────────────────────────────────────────────────────────┘
+                │                                    │
+         ┌──────┴──────┐                      ┌──────┴──────┐
+         ▼             ▼                      ▼             ▼
+   ┌───────────┐ ┌───────────┐          ┌───────────────────┐
+   │asdf-gateway│ │ asdf-api │          │    cynic-mcp      │
+   └───────────┘ └───────────┘          └───────────────────┘
+```
+
+### Services
+
+| Service | URL | Description |
+|---------|-----|-------------|
+| cynic-mcp | https://cynic-mcp-w5sh.onrender.com | MCP Server (55 tools) |
+| asdf-api | https://asdf-api.onrender.com | ASDF Backend API |
+| asdf-gateway | https://asdf-gateway.onrender.com | ASDF Frontend |
+
+### Environment Variables
+
+```bash
+# Required for production
+CYNIC_DATABASE_URL=postgresql://...@oregon-postgres.render.com/asdf_shared_db
+CYNIC_REDIS_URL=redis://red-xxx:6379
+
+# Schema isolation via search_path=cynic,public
+```
 
 ---
 
