@@ -362,20 +362,20 @@ export class TokenScorer {
     return finalScore;
   }
 
-  /** D4: Supply Mechanics — mint authority analysis */
+  /** D4: Supply Mechanics — authority analysis (reduced bonuses: renunciation is baseline on Solana) */
   _scoreSupplyMechanics(data) {
     let score = 50; // Baseline
 
-    // Renounced mint authority = supply is fixed = +30
+    // Renounced mint authority = supply is fixed = +15 (was +30; pump.fun default)
     if (data.authorities?.mintAuthorityActive === false) {
-      score += 30;
+      score += 15;
     } else {
       score -= 20; // Active mint authority = inflation risk
     }
 
-    // Renounced freeze authority = +20
+    // Renounced freeze authority = +15 (was +20; pump.fun default)
     if (data.authorities?.freezeAuthorityActive === false) {
-      score += 20;
+      score += 15;
     } else {
       score -= 10;
     }
@@ -387,10 +387,11 @@ export class TokenScorer {
   // VERIFY DIMENSIONS (Truth / Verifiability)
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /** D5: Mint Authority — is it renounced? */
+  /** D5: Mint Authority — renounced = baseline (pump.fun default), not merit */
   _scoreMintAuthority(data) {
     if (data.isNative) return 100; // Native SOL
-    if (data.authorities?.mintAuthorityActive === false) return 100; // Renounced
+    // Pump.fun renounces mint by default → capped at φ⁻¹ (same logic as freezeAuthority)
+    if (data.authorities?.mintAuthorityActive === false) return Math.round(PHI_INV * 100);
     if (data.authorities?.mintAuthorityActive === true) return 20; // Active = risk
     return 50; // Unknown
   }
@@ -446,18 +447,30 @@ export class TokenScorer {
     return Math.round((1 - Math.exp(-d / AGE_TAU)) * 100);
   }
 
-  /** D11: Ecosystem Integration — based on holder count + price availability */
+  /** D11: Ecosystem Integration — real volume signal + holder breadth + DEX listing */
   _scoreEcosystemIntegration(data) {
     if (data.isNative) return 100;
-    let score = 30; // Base: token exists on-chain
-    // Has price data from Helius = listed on DEX
-    if (data.priceInfo?.pricePerToken > 0) score += 35;
-    // Many holders = ecosystem presence
+    let score = 0;
+
+    // Listed on DEX with price = base integration
+    if (data.priceInfo?.pricePerToken > 0) score += 25;
+
+    // Real trading volume (DexScreener) = actual ecosystem usage
+    // This is the KEY differentiator: dead tokens have $0 volume
+    const ds = data.dexScreener;
+    if (ds && ds.volume24h > 0) {
+      // Asymptotic: $10K → 27, $100K → 38, $1M → 46, $10M → 51
+      score += Math.round((1 - 1 / (1 + Math.log(1 + ds.volume24h / LIQUIDITY_MCAP_SCALE))) * 50);
+    }
+
+    // Holder breadth (reduced from binary threshold)
     const holders = data.distribution?.holderCount || 0;
-    if (holders >= 1000) score += 25;
-    else if (holders >= 100) score += 15;
-    // Has metadata URI = project cares
+    if (holders >= 1000) score += 15;
+    else if (holders >= 100) score += 8;
+
+    // Has metadata URI = project structure
     if (data.metadataIntegrity?.hasUri) score += 10;
+
     return Math.min(100, score);
   }
 
@@ -483,13 +496,29 @@ export class TokenScorer {
     return 0;
   }
 
-  /** D14: Creator Behavior — mint authority as proxy for extraction risk */
+  /** D14: Creator Behavior — mint authority + sell pressure (DexScreener sell/buy ratio) */
   _scoreCreatorBehavior(data) {
     if (data.isNative) return 70;
-    // Renounced mint = creator gave up control = φ⁻¹ level trust
-    if (data.authorities?.mintAuthorityActive === false) return Math.round(PHI_INV * 100);
-    // Active or unknown = unverified = don't trust
-    return 0;
+
+    let score = 0;
+
+    // Renounced mint = creator gave up control = base trust (φ⁻² not φ⁻¹)
+    if (data.authorities?.mintAuthorityActive === false) {
+      score += Math.round(PHI_INV_2 * 100); // 38 (was 62)
+    }
+
+    // DexScreener sell/buy ratio = extraction signal
+    // sellBuyRatio < 1 = more buys than sells (healthy accumulation)
+    // sellBuyRatio > 1.5 = heavy dumping (extraction behavior)
+    const ds = data.dexScreener;
+    if (ds && ds.sellBuyRatio !== null && ds.sellBuyRatio !== undefined) {
+      if (ds.sellBuyRatio <= 1.0) score += 24;       // balanced or buy-heavy
+      else if (ds.sellBuyRatio <= 1.5) score += 12;   // slightly sell-heavy
+      // > 1.5: no bonus (extraction)
+    }
+
+    // Cap at φ⁻¹: even best creator behavior can't exceed the ceiling
+    return Math.min(Math.round(PHI_INV * 100), score);
   }
 
   /** D15: Fee Redistribution — needs protocol fee analysis we don't have */
