@@ -312,7 +312,7 @@ export class TokenScorer {
     return Math.min(100, score);
   }
 
-  /** D3: Price Stability — market cap per holder as economic health proxy */
+  /** D3: Price Stability — market cap per holder + price crash detection */
   _scorePriceStability(data) {
     if (data.isNative) return 80; // SOL is relatively stable for crypto
     // No price data = unverified = 0
@@ -322,9 +322,22 @@ export class TokenScorer {
     const holders = data.distribution?.holderCount || 1;
     const mcapPerHolder = mcap / holders;
 
-    // Asymptotic: dead tokens ($0.30/holder) → 4, healthy ($80/holder) → 71
-    if (mcapPerHolder <= 0) return 0;
-    return Math.round((1 - 1 / (1 + Math.log(1 + mcapPerHolder / MCAP_PER_HOLDER_SCALE))) * 100);
+    // Mcap/holder score: dead tokens ($0.30/holder) → 4, healthy ($80/holder) → 71
+    let mcapScore = 0;
+    if (mcapPerHolder > 0) {
+      mcapScore = Math.round((1 - 1 / (1 + Math.log(1 + mcapPerHolder / MCAP_PER_HOLDER_SCALE))) * 100);
+    }
+
+    // Price crash detection: if we have historical price data, penalize crashes
+    // crashScore: -100% → 0, -50% → 50, 0% → 100, +anything → 100 (capped)
+    const ph = data.priceHistory;
+    if (ph && ph.priceChange !== undefined && ph.priceChange !== null) {
+      const crashScore = Math.max(0, Math.min(100, Math.round(100 * (1 + ph.priceChange))));
+      // Final = min(economic health, price trajectory) — both must be healthy
+      return Math.min(crashScore, mcapScore);
+    }
+
+    return mcapScore;
   }
 
   /** D4: Supply Mechanics — mint authority analysis */

@@ -1168,7 +1168,7 @@ export function createServer(options = {}) {
   // Initialize Oracle (no database needed)
   function ensureOracleInitialized() {
     if (!tokenFetcher) {
-      tokenFetcher = new TokenFetcher(process.env.HELIUS_API_KEY);
+      tokenFetcher = new TokenFetcher(process.env.HELIUS_API_KEY, process.env.BIRDEYE_API_KEY);
       tokenScorer = new TokenScorer();
     }
   }
@@ -1338,6 +1338,41 @@ export function createServer(options = {}) {
 
         try {
           const tokenData = await tokenFetcher.getTokenData(mint);
+
+          // ── Hybrid price history: Birdeye (external) + OracleMemory (our own) ──
+          const currentPrice = tokenData.priceInfo?.pricePerToken || 0;
+          let priceHistory = null;
+
+          if (currentPrice > 0) {
+            // 1. Birdeye: 30-day historical price
+            priceHistory = await tokenFetcher.getPriceHistory(mint, currentPrice);
+
+            // 2. Our own memory: first-seen price from past judgments
+            if (oracleMemory) {
+              const firstSeen = await oracleMemory.getFirstPrice(mint);
+              if (firstSeen && firstSeen.price > 0) {
+                const ownChange = (currentPrice - firstSeen.price) / firstSeen.price;
+                if (!priceHistory) {
+                  priceHistory = {
+                    priceNow: currentPrice,
+                    priceFirstSeen: firstSeen.price,
+                    priceChange: ownChange,
+                    firstSeenAt: firstSeen.judgedAt,
+                    source: 'oracle_memory',
+                  };
+                } else if (ownChange < priceHistory.priceChange) {
+                  // Our memory shows a worse crash — use the worse number
+                  priceHistory.priceFirstSeen = firstSeen.price;
+                  priceHistory.priceChange = Math.min(priceHistory.priceChange, ownChange);
+                  priceHistory.source = 'birdeye+oracle_memory';
+                }
+              }
+            }
+          }
+
+          // Attach price history for scorer
+          tokenData.priceHistory = priceHistory;
+
           const verdict = tokenScorer.score(tokenData);
 
           const response = {
@@ -1345,6 +1380,7 @@ export function createServer(options = {}) {
             _raw: tokenData._raw,
             supply: tokenData.supply,
             priceInfo: tokenData.priceInfo,
+            priceHistory: priceHistory,
             distribution: {
               holderCount: tokenData.distribution.holderCount,
               whaleConcentration: tokenData.distribution.whaleConcentration,
@@ -1354,7 +1390,11 @@ export function createServer(options = {}) {
 
           // Agent: store judgment + attach trajectory
           if (oracleMemory) {
-            await oracleMemory.store({ mint, name: tokenData.name, symbol: tokenData.symbol, ...verdict });
+            await oracleMemory.store({
+              mint, name: tokenData.name, symbol: tokenData.symbol,
+              ...verdict,
+              pricePerToken: currentPrice || null,
+            });
             const trajectory = await oracleMemory.getTrajectory(mint);
             response.trajectory = {
               direction: trajectory.direction,
@@ -1413,7 +1453,8 @@ export function createServer(options = {}) {
         try {
           const tokenData = await tokenFetcher.getTokenData(body.mint);
           const verdict = tokenScorer.score(tokenData);
-          await oracleMemory.store({ mint: body.mint, name: tokenData.name, symbol: tokenData.symbol, ...verdict });
+          const watchPrice = tokenData.priceInfo?.pricePerToken || null;
+          await oracleMemory.store({ mint: body.mint, name: tokenData.name, symbol: tokenData.symbol, ...verdict, pricePerToken: watchPrice });
           await oracleWatchlist.pool.query(
             'UPDATE oracle_watchlist SET last_verdict = $2, last_q_score = $3, last_k_score = $4, last_checked_at = NOW() WHERE mint = $1',
             [body.mint, verdict.verdict, verdict.qScore, verdict.kScore]

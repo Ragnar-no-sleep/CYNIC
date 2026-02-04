@@ -28,12 +28,18 @@ CREATE TABLE IF NOT EXISTS oracle_judgments (
   tier TEXT,
   dimensions JSONB,
   weaknesses JSONB,
+  price_per_token REAL,
   judged_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_oracle_judgments_mint ON oracle_judgments(mint);
 CREATE INDEX IF NOT EXISTS idx_oracle_judgments_judged_at ON oracle_judgments(judged_at DESC);
 CREATE INDEX IF NOT EXISTS idx_oracle_judgments_mint_time ON oracle_judgments(mint, judged_at DESC);
+`;
+
+// Migration: add price_per_token column if missing (existing DBs)
+const MIGRATE_SQL = `
+ALTER TABLE oracle_judgments ADD COLUMN IF NOT EXISTS price_per_token REAL;
 `;
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -50,6 +56,7 @@ export class OracleMemory {
     if (this._initialized) return;
     try {
       await this.pool.query(INIT_SQL);
+      await this.pool.query(MIGRATE_SQL);
       this._initialized = true;
     } catch (e) {
       console.warn('[OracleMemory] Schema init failed:', e.message);
@@ -64,8 +71,8 @@ export class OracleMemory {
     await this.ensureSchema();
     try {
       await this.pool.query(
-        `INSERT INTO oracle_judgments (mint, name, symbol, verdict, q_score, k_score, confidence, tier, dimensions, weaknesses)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        `INSERT INTO oracle_judgments (mint, name, symbol, verdict, q_score, k_score, confidence, tier, dimensions, weaknesses, price_per_token)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
         [
           judgment.mint,
           judgment.name || null,
@@ -77,10 +84,32 @@ export class OracleMemory {
           judgment.tier || null,
           JSON.stringify(judgment.dimensions || {}),
           JSON.stringify(judgment.weaknesses || []),
+          judgment.pricePerToken || null,
         ]
       );
     } catch (e) {
       console.warn('[OracleMemory] Store failed:', e.message);
+    }
+  }
+
+  /**
+   * Get first recorded price for a mint (oldest judgment with price)
+   * @param {string} mint
+   * @returns {Object|null} { price, judgedAt } or null
+   */
+  async getFirstPrice(mint) {
+    await this.ensureSchema();
+    try {
+      const { rows } = await this.pool.query(
+        `SELECT price_per_token, judged_at FROM oracle_judgments
+         WHERE mint = $1 AND price_per_token IS NOT NULL
+         ORDER BY judged_at ASC LIMIT 1`,
+        [mint]
+      );
+      if (rows.length === 0) return null;
+      return { price: rows[0].price_per_token, judgedAt: rows[0].judged_at };
+    } catch {
+      return null;
     }
   }
 

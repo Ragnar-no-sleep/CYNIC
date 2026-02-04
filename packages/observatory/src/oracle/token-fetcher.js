@@ -15,6 +15,7 @@
 
 const HELIUS_RPC_BASE = 'https://mainnet.helius-rpc.com';
 const PUBLIC_RPC = 'https://api.mainnet-beta.solana.com';
+const BIRDEYE_API_BASE = 'https://public-api.birdeye.so';
 const REQUEST_TIMEOUT_MS = 15000;
 
 // Known DEX program IDs — accounts owned by these are pools, not holders
@@ -45,8 +46,9 @@ const MAX_HOLDER_PAGES = 5;
 // ═══════════════════════════════════════════════════════════════════════════
 
 export class TokenFetcher {
-  constructor(heliusApiKey) {
+  constructor(heliusApiKey, birdeyeApiKey) {
     this._heliusApiKey = heliusApiKey;
+    this._birdeyeApiKey = birdeyeApiKey || null;
     this._heliusUrl = heliusApiKey
       ? `${HELIUS_RPC_BASE}/?api-key=${heliusApiKey}`
       : null;
@@ -428,6 +430,72 @@ export class TokenFetcher {
       freezeAuthorityActive: !!freezeAuth,
     };
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BIRDEYE PRICE HISTORY
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Fetch historical price from Birdeye at a specific unix timestamp.
+   * Free tier supports /defi/historical_price_unix on Solana.
+   * @param {string} mint
+   * @param {number} unixtime — seconds since epoch
+   * @returns {Object|null} { price, priceChange24h, updateUnixTime } or null
+   */
+  async getBirdeyePrice(mint, unixtime) {
+    if (!this._birdeyeApiKey) return null;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    try {
+      const url = `${BIRDEYE_API_BASE}/defi/historical_price_unix?address=${mint}&unixtime=${unixtime}`;
+      const response = await fetch(url, {
+        headers: {
+          'accept': 'application/json',
+          'x-chain': 'solana',
+          'X-API-KEY': this._birdeyeApiKey,
+        },
+        signal: controller.signal,
+      });
+      const json = await response.json();
+      if (!json.success || !json.data) return null;
+      return {
+        price: json.data.value,
+        priceChange24h: json.data.priceChange24h,
+        updateUnixTime: json.data.updateUnixTime,
+      };
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  /**
+   * Get price history for a token: current price + 30-day-ago price via Birdeye
+   * @param {string} mint
+   * @param {number|null} currentPrice — current price from DAS
+   * @returns {Object|null} { priceNow, price30dAgo, priceChange, source }
+   */
+  async getPriceHistory(mint, currentPrice) {
+    if (!currentPrice || currentPrice <= 0) return null;
+
+    // 30 days ago in unix seconds
+    const thirtyDaysAgo = Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60;
+    const historical = await this.getBirdeyePrice(mint, thirtyDaysAgo);
+    if (!historical || !historical.price || historical.price <= 0) return null;
+
+    const priceChange = (currentPrice - historical.price) / historical.price;
+    return {
+      priceNow: currentPrice,
+      price30dAgo: historical.price,
+      priceChange,
+      source: 'birdeye',
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // DATA EXTRACTION
+  // ═══════════════════════════════════════════════════════════════════════════
 
   _calculateAge(asset) {
     // 1. DAS created_at (most reliable)
