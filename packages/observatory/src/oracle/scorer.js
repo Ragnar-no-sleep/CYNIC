@@ -319,26 +319,34 @@ export class TokenScorer {
     return Math.min(100, score);
   }
 
-  /** D3: Price Stability — mcap/holder + 24h crash + OracleMemory history */
+  /** D3: Price Stability — real liquidity per holder + 24h crash + OracleMemory */
   _scorePriceStability(data) {
     if (data.isNative) return 80; // SOL is relatively stable for crypto
-    // No price data = unverified = 0
     if (!data.priceInfo?.pricePerToken || data.priceInfo.pricePerToken <= 0) return 0;
 
-    const mcap = data.priceInfo.pricePerToken * (data.supply?.total || 0);
     const holders = data.distribution?.holderCount || 1;
-    const mcapPerHolder = mcap / holders;
+    const ds = data.dexScreener;
 
-    // Mcap/holder score: dead tokens ($0.30/holder) → 4, healthy ($80/holder) → 71
-    let mcapScore = 0;
-    if (mcapPerHolder > 0) {
-      mcapScore = Math.round((1 - 1 / (1 + Math.log(1 + mcapPerHolder / MCAP_PER_HOLDER_SCALE))) * 100);
+    let baseScore;
+    if (ds && ds.liquidityUsd > 0) {
+      // Real liquidity per holder: what each holder can actually extract
+      // MELANIA: $20K / 2000 = $10/holder → 33
+      // TRUMP: $114M / 2000 = $57K/holder → 89
+      // Scale = F₆ = 8 (same as MCAP_PER_HOLDER_SCALE)
+      const liqPerHolder = ds.liquidityUsd / holders;
+      baseScore = Math.round((1 - 1 / (1 + Math.log(1 + liqPerHolder / MCAP_PER_HOLDER_SCALE))) * 100);
+    } else {
+      // Fallback: mcap/holder when DexScreener unavailable
+      const mcap = data.priceInfo.pricePerToken * (data.supply?.total || 0);
+      const mcapPerHolder = mcap / holders;
+      baseScore = mcapPerHolder > 0
+        ? Math.round((1 - 1 / (1 + Math.log(1 + mcapPerHolder / MCAP_PER_HOLDER_SCALE))) * 100)
+        : 0;
     }
 
-    let finalScore = mcapScore;
+    let finalScore = baseScore;
 
-    // DexScreener: 24h price crash penalty (if dropping hard right now)
-    const ds = data.dexScreener;
+    // DexScreener: 24h price crash penalty
     if (ds && ds.priceChange24h !== null && ds.priceChange24h < -10) {
       const crashPenalty = Math.max(0, Math.min(100, Math.round(100 * (1 + ds.priceChange24h / 100))));
       finalScore = Math.min(finalScore, crashPenalty);
