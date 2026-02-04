@@ -170,6 +170,30 @@
       "observationCount": 3,
       "source": "L3_learning_loop",
       "learnedAt": "2026-02-03T23:47:25.834Z"
+    },
+    {
+      "signature": "command-injection:cmd-001",
+      "type": "command-injection",
+      "verdict": "BARK",
+      "qScore": 87.5,
+      "confidence": 0.618033988749895,
+      "category": "security",
+      "dangerLevel": "critical",
+      "observationCount": 3,
+      "source": "L3_learning_loop",
+      "learnedAt": "2026-02-04T00:13:43.239Z"
+    },
+    {
+      "signature": "authentication:auth-002",
+      "type": "authentication",
+      "verdict": "BARK",
+      "qScore": 75,
+      "confidence": 0.618033988749895,
+      "category": "security",
+      "dangerLevel": "critical",
+      "observationCount": 3,
+      "source": "L3_learning_loop",
+      "learnedAt": "2026-02-04T00:13:43.801Z"
     }
   ],
   "metadata": {
