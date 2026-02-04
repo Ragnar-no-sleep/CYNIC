@@ -174,6 +174,7 @@ const instance = createIdentity();
 | `getCollectivePack()` | Get CollectivePack singleton |
 | `getCollectivePackAsync()` | Get CollectivePackAsync singleton |
 | `getSharedMemory()` | Get SharedMemory singleton |
+| `getQLearningServiceSingleton()` | Get QLearningServiceSingleton singleton |
 | `getSingletonStatus()` | Get SingletonStatus singleton |
 | `getDefaultWalletPath()` | Get DefaultWalletPath singleton |
 | `getEventBus()` | Get EventBus singleton |
@@ -197,7 +198,7 @@ const instance = createIdentity();
 
 ### Functions
 
-`importIdentity`, `exportIdentity`, `calculateCompositeEScore`, `updateEScoreState`, `dimensionRegistry`, `serialize`, `deserialize`, `isValidMessage`, `awakenCynic`, `saveState` + 19 more
+`importIdentity`, `exportIdentity`, `calculateCompositeEScore`, `updateEScoreState`, `dimensionRegistry`, `serialize`, `deserialize`, `isValidMessage`, `initializeQLearning`, `awakenCynic` + 20 more
 
 ## Dependencies
 
@@ -209,7 +210,7 @@ const instance = createIdentity();
 - **Source files**: 175
 - **Test files**: 50
 - **Test ratio**: 29%
-- **Exports**: 210 named
+- **Exports**: 212 named
 
 ## Fractal Structure
 

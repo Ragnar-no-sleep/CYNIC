@@ -1110,6 +1110,74 @@ async function main() {
       }
 
       // ═══════════════════════════════════════════════════════════════════════════
+      // M2.3: MULTI-DIMENSIONAL AWARENESS (Smart Conditional)
+      // "Le chien surveille la meute" - Check infra only when previous session had issues
+      // Fractal: same perception-judgment-memory cycle applied to infrastructure level
+      // ═══════════════════════════════════════════════════════════════════════════
+      try {
+        const previousHadErrors = lastSessionData?.handoff?.unresolvedErrors?.length > 0;
+        const previousSummary = lastSessionData?.handoff?.summary || '';
+        const previousHadInfraErrors = previousSummary.includes('ECONNREFUSED') ||
+                                        previousSummary.includes('timeout') ||
+                                        previousSummary.includes('ENOTFOUND');
+
+        if (previousHadErrors || previousHadInfraErrors) {
+          const awareness = {};
+
+          // A. System health (CYNIC brain_health — covers MCP, DB, Redis)
+          try {
+            const healthResult = await Promise.race([
+              callBrainTool('brain_health', {}),
+              new Promise(resolve => setTimeout(() => resolve(null), 3000)),
+            ]);
+            if (healthResult) {
+              awareness.system = {
+                status: healthResult.status || 'unknown',
+                uptime: healthResult.uptime,
+                services: healthResult.services?.length || 0,
+              };
+            }
+          } catch { /* health check optional */ }
+
+          // B. Database connectivity (direct pool test)
+          try {
+            const { getPool } = await import('@cynic/persistence');
+            const pool = getPool();
+            if (pool) {
+              const dbResult = await Promise.race([
+                pool.query('SELECT 1 AS ok'),
+                new Promise(resolve => setTimeout(() => resolve(null), 2000)),
+              ]);
+              awareness.database = {
+                connected: !!dbResult?.rows?.[0]?.ok,
+              };
+            }
+          } catch {
+            awareness.database = { connected: false };
+          }
+
+          if (Object.keys(awareness).length > 0) {
+            const statusLines = [];
+            if (awareness.system) {
+              statusLines.push(`System: ${awareness.system.status} (${awareness.system.services} services)`);
+            }
+            if (awareness.database) {
+              statusLines.push(`Database: ${awareness.database.connected ? 'connected' : 'DISCONNECTED'}`);
+            }
+
+            contextInjections.push({
+              type: 'awareness',
+              title: 'Infrastructure Awareness (triggered by previous session errors)',
+              content: statusLines.join('\n'),
+              dimensions: Object.keys(awareness),
+            });
+          }
+        }
+      } catch (e) {
+        // Awareness scan failed - continue without
+      }
+
+      // ═══════════════════════════════════════════════════════════════════════════
       // ARCHITECTURAL DECISIONS INJECTION (Self-Knowledge Enhancement)
       // "CYNIC remembers its own design choices"
       // ═══════════════════════════════════════════════════════════════════════════

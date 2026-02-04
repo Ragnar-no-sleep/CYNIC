@@ -2,7 +2,7 @@
 
 > CYNIC LLM Package Unified LLM integration for the CYNIC ecosystem. Provides: - Multi-LLM routing and consensus - Provider adapters (Ollama, Claude Code, OpenAI-compatible) - AirLLM integration for large models - φ-aligned confidence thresholds
 
-**Category**: llm | **Version**: 0.1.0 | **Quality**: 🟡 adequate
+**Category**: llm | **Version**: 0.1.0 | **Quality**: 🟠 needs tests
 
 ## Installation
 
@@ -35,6 +35,8 @@ const instance = createOllamaValidator();
 | `AirLLMAdapter` | AirLLMAdapter implementation |
 | `LLMRouter` | LLMRouter implementation |
 | `SimilarityThresholds` | SimilarityThresholds implementation |
+| `PerceptionRouter` | PerceptionRouter implementation |
+| `PerceptionLayer` | PerceptionLayer implementation |
 
 ### Factory Functions
 
@@ -54,6 +56,7 @@ const instance = createOllamaValidator();
 |----------|-------------|
 | `getLLMRouter()` | Get LLMRouter singleton |
 | `getRouterWithValidators()` | Get RouterWithValidators singleton |
+| `getPerceptionRouter()` | Get PerceptionRouter singleton |
 
 ### Constants
 
@@ -61,7 +64,7 @@ const instance = createOllamaValidator();
 
 ### Functions
 
-`checkAirLLMAvailability`, `_resetLLMRouterForTesting`, `tokenize`, `removeStopwords`, `jaccardSimilarity`, `textSimilarity`, `clusterBySimilarity`, `calculateSemanticAgreement`, `PHI_INV_2`
+`checkAirLLMAvailability`, `_resetLLMRouterForTesting`, `tokenize`, `removeStopwords`, `jaccardSimilarity`, `textSimilarity`, `clusterBySimilarity`, `calculateSemanticAgreement`, `_resetPerceptionRouterForTesting`, `PHI_INV_2`
 
 ## Dependencies
 
@@ -69,10 +72,10 @@ const instance = createOllamaValidator();
 
 ## Stats
 
-- **Source files**: 9
+- **Source files**: 11
 - **Test files**: 4
-- **Test ratio**: 44%
-- **Exports**: 32 named
+- **Test ratio**: 36%
+- **Exports**: 36 named
 
 ## Fractal Structure
 
@@ -82,7 +85,7 @@ const instance = createOllamaValidator();
 ## Dimensions (4 Axioms)
 
 ```
-[████░░░░░░] 44% φ (Confidence)
+[████░░░░░░] 36% φ (Confidence)
 [█████░░░░░] 50% Verify
 [█████░░░░░] 50% Culture
 [░░░░░░░░░░]  0% Burn (Simplicity)

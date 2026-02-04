@@ -358,6 +358,12 @@ export class MCPServer {
       }
     }
 
+    // Wire PerceptionRouter to UnifiedOrchestrator (data source awareness)
+    if (this.perceptionRouter && this.unifiedOrchestrator) {
+      this.unifiedOrchestrator.setPerceptionRouter(this.perceptionRouter);
+      console.error('   UnifiedOrchestrator: wired with PerceptionRouter');
+    }
+
     // ═══════════════════════════════════════════════════════════════════════════
     // MCPServer-specific initialization (not in ServiceInitializer)
     // ═══════════════════════════════════════════════════════════════════════════

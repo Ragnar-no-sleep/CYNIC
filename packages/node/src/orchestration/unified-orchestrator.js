@@ -61,6 +61,8 @@ export class UnifiedOrchestrator extends EventEmitter {
    * @param {Object} [options.eventBus] - EventBus instance
    * @param {Object} [options.decisionTracer] - DecisionTracer instance
    * @param {Object} [options.planningGate] - PlanningGate instance for meta-cognition
+   * @param {Object} [options.llmRouter] - LLMRouter instance for multi-model routing
+   * @param {Object} [options.perceptionRouter] - PerceptionRouter for data source routing
    */
   constructor(options = {}) {
     super();
@@ -75,6 +77,8 @@ export class UnifiedOrchestrator extends EventEmitter {
     this.eventBus = options.eventBus || getEventBus();
     this.decisionTracer = options.decisionTracer || null;
     this.planningGate = options.planningGate || null;
+    this.llmRouter = options.llmRouter || null;
+    this.perceptionRouter = options.perceptionRouter || null;
 
     // Wire learning and cost services to kabbalistic router if available
     if (this.kabbalisticRouter) {
@@ -668,6 +672,84 @@ export class UnifiedOrchestrator extends EventEmitter {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // LLM ROUTING
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Route a request to the appropriate LLM
+   *
+   * Routing logic:
+   *   code/logic → Claude (primary, always available)
+   *   design/UI  → Gemini API (if GEMINI_API_KEY)
+   *   simple     → Ollama/local (if OLLAMA_ENDPOINT)
+   *   fallback   → Claude
+   *
+   * @param {Object} request - Request to route
+   * @param {string} request.content - Request content
+   * @param {string} [request.domain] - Task domain hint
+   * @param {Object} [request.context] - Additional context
+   * @returns {Promise<Object>} Routed LLM response
+   */
+  async routeToLLM(request) {
+    if (!this.llmRouter) {
+      return { error: 'LLM Router not configured', tier: 'none' };
+    }
+
+    try {
+      return await this.llmRouter.route(request);
+    } catch (err) {
+      log.error('LLM routing failed', { error: err.message });
+      return { error: err.message, tier: 'error' };
+    }
+  }
+
+  /**
+   * Set LLM Router at runtime
+   *
+   * @param {Object} llmRouter - LLMRouter instance
+   */
+  setLLMRouter(llmRouter) {
+    this.llmRouter = llmRouter;
+    log.debug('LLM Router set');
+  }
+
+  /**
+   * Set the PerceptionRouter for data source routing
+   * @param {Object} perceptionRouter - PerceptionRouter instance
+   */
+  setPerceptionRouter(perceptionRouter) {
+    this.perceptionRouter = perceptionRouter;
+    log.debug('Perception Router set');
+  }
+
+  /**
+   * Consult PerceptionRouter for optimal data source
+   *
+   * @param {string} target - URL, path, keyword, or intent description
+   * @param {Object} [options] - Routing options
+   * @param {string} [options.intent='read'] - read|write|monitor
+   * @param {boolean} [options.preferStructured=true] - Prefer API/MCP over browser
+   * @param {boolean} [options.preferFast=false] - Prefer speed over accuracy
+   * @returns {Object|null} Routing decision { layer, tools, plan, confidence }
+   */
+  requestPerception(target, options = {}) {
+    if (!this.perceptionRouter) return null;
+    try {
+      const result = this.perceptionRouter.route({
+        target,
+        intent: options.intent || 'read',
+        preferStructured: options.preferStructured !== false,
+        preferFast: options.preferFast || false,
+      });
+      this.stats.perceptionRouted = (this.stats.perceptionRouted || 0) + 1;
+      return result;
+    } catch (e) {
+      log.debug(`Perception routing failed for "${target}": ${e.message}`);
+      return null;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // PUBLIC API
   // ═══════════════════════════════════════════════════════════════════════════
 
@@ -711,6 +793,11 @@ export class UnifiedOrchestrator extends EventEmitter {
     // Add planning gate stats if available
     if (this.planningGate) {
       stats.planning = this.planningGate.getStats();
+    }
+
+    // Add LLM router stats if available
+    if (this.llmRouter) {
+      stats.llmRouter = this.llmRouter.getStatus();
     }
 
     return stats;
