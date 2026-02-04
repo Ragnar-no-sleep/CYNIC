@@ -1137,6 +1137,9 @@ export function createServer(options = {}) {
         telemetry = new TelemetryQueries(pool);
         learningProof = new LearningProofQueries(pool);
 
+        // Verify pool actually works before wiring agent capabilities
+        await pool.query('SELECT 1');
+
         // Wire Oracle memory + watchlist (agent capabilities)
         ensureOracleInitialized();
         oracleMemory = new OracleMemory(pool);
@@ -1396,8 +1399,12 @@ export function createServer(options = {}) {
       }
 
       if (path === '/api/oracle/health') {
-        const stats = oracleMemory ? await oracleMemory.getStats() : null;
-        const watchlist = oracleWatchlist ? await oracleWatchlist.list() : [];
+        let stats = null;
+        let watchlist = [];
+        try {
+          if (oracleMemory) stats = await oracleMemory.getStats();
+          if (oracleWatchlist) watchlist = await oracleWatchlist.list();
+        } catch { /* DB not available — agent works without memory */ }
         return jsonResponse(res, {
           status: 'operational',
           service: 'CYNIC Oracle',
