@@ -61,6 +61,33 @@ const AXIOM_WEIGHTS = Object.freeze({
 // Normalize weights to sum to 1
 const WEIGHT_SUM = Object.values(AXIOM_WEIGHTS).reduce((s, v) => s + v, 0);
 
+/**
+ * Holder count asymptotic scaling factor.
+ * At HOLDER_SCALE holders, the curve reaches its inflection.
+ * Formula: H = 1 - 1/(1 + ln(1 + h/HOLDER_SCALE))
+ * At 100 → ~41, at 1000 → ~71, at 10000 → ~82. Continuous, no tier jumps.
+ */
+const HOLDER_SCALE = 100;
+
+/**
+ * Token age time constant τ in days.
+ * τ = 21 = F₈ (8th Fibonacci number).
+ * At τ days, score = 1 - e⁻¹ ≈ 0.632 (within 2% of φ⁻¹).
+ * Formula: A = 1 - e^(-d/AGE_TAU)
+ */
+const AGE_TAU = 21; // F₈
+
+/**
+ * K-Score security caps — authority revocation limits max K-Score.
+ * Both renounced = full range. One active = capped at φ⁻¹. Both active = capped at φ⁻².
+ * Derives directly from the φ power series: no arbitrary thresholds.
+ */
+const SECURITY_CAPS = Object.freeze({
+  BOTH_REVOKED: 1.0,
+  ONE_REVOKED: PHI_INV,    // 61.8%
+  BOTH_ACTIVE: PHI_INV_2,  // 38.2%
+});
+
 // ═══════════════════════════════════════════════════════════════════════════
 // SCORER
 // ═══════════════════════════════════════════════════════════════════════════
@@ -159,7 +186,11 @@ export class TokenScorer {
     const d = this._extractDiamondHands(tokenData, dimensions);
     const o = this._extractOrganicGrowth(tokenData, dimensions);
     const l = this._extractLongevity(tokenData, dimensions);
-    const kScore = calculateKScore(d, o, l);
+    const rawKScore = calculateKScore(d, o, l);
+
+    // Security cap: authority revocation limits max K-Score
+    const securityCap = this._getSecurityCap(tokenData);
+    const kScore = Math.min(rawKScore, Math.round(100 * securityCap));
     const tier = this._getTier(kScore);
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -323,30 +354,20 @@ export class TokenScorer {
   // CULTURE DIMENSIONS (Community / Memory)
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /** D9: Holder Count — more holders = stronger community */
+  /** D9: Holder Count — asymptotic: H = 1 - 1/(1 + ln(1 + h/HOLDER_SCALE)) */
   _scoreHolderCount(data) {
-    if (data.isNative) return 100; // SOL is held by everyone
-    const holders = data.distribution?.holderCount || 0;
-    if (holders >= 100000) return 100;
-    if (holders >= 10000) return 90;
-    if (holders >= 1000) return 75;
-    if (holders >= 100) return 55;
-    if (holders >= 20) return 35;
-    if (holders >= 5) return 15;
-    return 5;
+    if (data.isNative) return 100;
+    const h = data.distribution?.holderCount || 0;
+    if (h === 0) return 0;
+    return Math.round((1 - 1 / (1 + Math.log(1 + h / HOLDER_SCALE))) * 100);
   }
 
-  /** D10: Token Age — older = more battle-tested */
+  /** D10: Token Age — exponential: A = 1 - e^(-d/AGE_TAU), τ=F₈=21 days */
   _scoreTokenAge(data) {
-    if (data.isNative) return 100; // SOL has existed since genesis
-    const days = data.ageInDays || 0;
-    if (days >= 730) return 100;   // 2+ years
-    if (days >= 365) return 90;    // 1+ year
-    if (days >= 180) return 75;    // 6+ months
-    if (days >= 90) return 60;     // 3+ months
-    if (days >= 30) return 40;     // 1+ month
-    if (days >= 7) return 20;      // 1+ week
-    return 5;                       // Very new = very risky
+    if (data.isNative) return 100;
+    const d = data.ageInDays || 0;
+    if (d === 0) return 0;
+    return Math.round((1 - Math.exp(-d / AGE_TAU)) * 100);
   }
 
   /** D11: Ecosystem Integration — based on holder count + price availability */
@@ -434,21 +455,27 @@ export class TokenScorer {
   }
 
   _extractDiamondHands(_data, dimensions) {
-    // D = conviction = how much holders believe
-    // Weighted: supply mechanics matters more than raw distribution
-    return (dimensions.supplyDistribution * 0.4 + dimensions.supplyMechanics * 0.6) / 100;
+    // D = √(distribution × mechanics) — geometric mean: both must be strong
+    return Math.sqrt((dimensions.supplyDistribution / 100) * (dimensions.supplyMechanics / 100));
   }
 
   _extractOrganicGrowth(_data, dimensions) {
-    // O = organic = natural community growth
-    // Weighted: holder count is the strongest signal
-    return (dimensions.organicGrowth * 0.35 + dimensions.holderCount * 0.65) / 100;
+    // O = √(holders × growth) — geometric mean: community AND distribution
+    return Math.sqrt((dimensions.holderCount / 100) * (dimensions.organicGrowth / 100));
   }
 
   _extractLongevity(_data, dimensions) {
-    // L = longevity = time-tested and integrated
-    // Weighted: age is strongest signal
-    return (dimensions.tokenAge * 0.6 + dimensions.ecosystemIntegration * 0.4) / 100;
+    // L = √(age × ecosystem) — geometric mean: time AND integration
+    return Math.sqrt((dimensions.tokenAge / 100) * (dimensions.ecosystemIntegration / 100));
+  }
+
+  _getSecurityCap(data) {
+    if (data.isNative) return SECURITY_CAPS.BOTH_REVOKED;
+    const mintActive = data.authorities?.mintAuthorityActive !== false;
+    const freezeActive = data.authorities?.freezeAuthorityActive !== false;
+    if (!mintActive && !freezeActive) return SECURITY_CAPS.BOTH_REVOKED;
+    if (!mintActive || !freezeActive) return SECURITY_CAPS.ONE_REVOKED;
+    return SECURITY_CAPS.BOTH_ACTIVE;
   }
 
   _getTier(kScore) {
