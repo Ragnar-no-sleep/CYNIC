@@ -331,56 +331,75 @@ const ORACLE_HTML = `<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CYNIC Oracle — Token Verdict</title>
+  <title>CYNIC Oracle - Solana Token Verdict</title>
   <style>
     :root {
-      --bg: #0a0e14;
-      --card: #131920;
-      --card-hover: #1a2130;
-      --border: #1e2a3a;
-      --text: #d4dae4;
-      --text-dim: #6b7d93;
-      --gold: #c9a84c;
-      --gold-dim: rgba(201,168,76,0.15);
-      --green: #3fb950;
-      --yellow: #d29922;
-      --red: #f85149;
-      --blue: #58a6ff;
-      --phi: 0.618;
-      --phi2: 0.382;
+      --bg: #06080c;
+      --bg2: #0c1018;
+      --card: #111820;
+      --card-alt: #161e28;
+      --border: #1c2838;
+      --border-light: #253345;
+      --text: #e0e6ef;
+      --text-dim: #6880a0;
+      --text-muted: #3d506a;
+      --gold: #d4a847;
+      --gold-dim: rgba(212,168,71,0.12);
+      --gold-glow: rgba(212,168,71,0.08);
+      --green: #4ade80;
+      --green-dim: rgba(74,222,128,0.10);
+      --blue: #60a5fa;
+      --blue-dim: rgba(96,165,250,0.10);
+      --yellow: #facc15;
+      --yellow-dim: rgba(250,204,21,0.10);
+      --red: #f87171;
+      --red-dim: rgba(248,113,113,0.10);
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       background: var(--bg);
       color: var(--text);
       min-height: 100vh;
       overflow-x: hidden;
     }
 
+    .container { max-width: 860px; margin: 0 auto; padding: 0 20px; }
+
     /* Header */
     .header {
       text-align: center;
-      padding: 40px 20px 30px;
-      border-bottom: 1px solid var(--border);
+      padding: 48px 20px 36px;
+      position: relative;
     }
+    .header::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 120px;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--gold), transparent);
+    }
+    .logo { font-size: 0.7rem; letter-spacing: 0.4em; color: var(--text-muted); text-transform: uppercase; margin-bottom: 12px; }
     .header h1 {
-      font-size: 1.8rem;
-      letter-spacing: 0.15em;
+      font-size: 2rem;
+      font-weight: 300;
+      letter-spacing: 0.2em;
       color: var(--gold);
-      margin-bottom: 8px;
     }
     .header .sub {
       color: var(--text-dim);
-      font-size: 0.85rem;
-      font-style: italic;
+      font-size: 0.8rem;
+      margin-top: 10px;
+      letter-spacing: 0.05em;
     }
+    .header .sub em { font-style: normal; color: var(--gold); }
 
-    /* Input section */
+    /* Input */
     .input-section {
-      max-width: 700px;
-      margin: 30px auto;
-      padding: 0 20px;
+      padding: 32px 0 24px;
     }
     .input-row {
       display: flex;
@@ -391,663 +410,692 @@ const ORACLE_HTML = `<!DOCTYPE html>
       padding: 14px 18px;
       background: var(--card);
       border: 1px solid var(--border);
-      border-radius: 8px;
+      border-radius: 10px;
       color: var(--text);
-      font-family: inherit;
-      font-size: 0.95rem;
+      font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+      font-size: 0.9rem;
       outline: none;
-      transition: border-color 0.2s;
+      transition: border-color 0.2s, box-shadow 0.2s;
     }
     .mint-input:focus {
       border-color: var(--gold);
+      box-shadow: 0 0 0 3px var(--gold-dim);
     }
-    .mint-input::placeholder {
-      color: var(--text-dim);
-    }
+    .mint-input::placeholder { color: var(--text-muted); }
     .judge-btn {
-      padding: 14px 28px;
-      background: var(--gold-dim);
-      border: 1px solid var(--gold);
-      border-radius: 8px;
-      color: var(--gold);
+      padding: 14px 32px;
+      background: var(--gold);
+      border: none;
+      border-radius: 10px;
+      color: #000;
       font-family: inherit;
-      font-size: 0.95rem;
-      font-weight: 600;
+      font-size: 0.85rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
       cursor: pointer;
       transition: all 0.2s;
       white-space: nowrap;
     }
-    .judge-btn:hover { background: rgba(201,168,76,0.25); }
-    .judge-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .judge-btn:hover { filter: brightness(1.1); transform: translateY(-1px); }
+    .judge-btn:active { transform: translateY(0); }
+    .judge-btn:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
     .quick-links {
-      margin-top: 12px;
+      margin-top: 14px;
       display: flex;
       gap: 8px;
       flex-wrap: wrap;
     }
     .quick-link {
-      padding: 4px 12px;
-      background: var(--card);
+      padding: 5px 14px;
+      background: transparent;
       border: 1px solid var(--border);
       border-radius: 20px;
       color: var(--text-dim);
       font-size: 0.75rem;
       cursor: pointer;
-      transition: all 0.2s;
+      transition: all 0.15s;
+      font-family: 'SF Mono', monospace;
     }
-    .quick-link:hover { border-color: var(--gold); color: var(--gold); }
+    .quick-link:hover { border-color: var(--gold); color: var(--gold); background: var(--gold-dim); }
 
     /* Result */
-    .result { max-width: 800px; margin: 0 auto; padding: 0 20px 60px; }
+    .result { padding-bottom: 40px; }
     .loading-msg {
       text-align: center;
-      padding: 40px;
+      padding: 60px 20px;
       color: var(--text-dim);
       font-size: 0.9rem;
     }
-    .loading-msg .spinner {
+    .spinner {
       display: inline-block;
-      width: 20px;
-      height: 20px;
+      width: 20px; height: 20px;
       border: 2px solid var(--border);
       border-top-color: var(--gold);
       border-radius: 50%;
-      animation: spin 0.8s linear infinite;
+      animation: spin 0.7s linear infinite;
       margin-right: 10px;
       vertical-align: middle;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-
     .error-msg {
       text-align: center;
-      padding: 30px;
+      padding: 24px;
       color: var(--red);
-      background: rgba(248,81,73,0.08);
-      border: 1px solid rgba(248,81,73,0.3);
-      border-radius: 8px;
+      background: var(--red-dim);
+      border: 1px solid rgba(248,113,113,0.2);
+      border-radius: 10px;
       margin-top: 20px;
+      font-size: 0.9rem;
     }
 
-    /* Verdict banner */
+    /* Verdict Card */
     .verdict-card {
       text-align: center;
-      padding: 30px;
-      border-radius: 12px;
+      padding: 40px 30px 32px;
+      border-radius: 16px;
       margin-top: 20px;
       position: relative;
-      overflow: hidden;
     }
-    .verdict-card.HOWL { background: rgba(63,185,80,0.08); border: 2px solid var(--green); }
-    .verdict-card.WAG { background: rgba(88,166,255,0.08); border: 2px solid var(--blue); }
-    .verdict-card.GROWL { background: rgba(210,153,34,0.08); border: 2px solid var(--yellow); }
-    .verdict-card.BARK { background: rgba(248,81,73,0.08); border: 2px solid var(--red); }
+    .verdict-card.HOWL { background: var(--green-dim); border: 1px solid rgba(74,222,128,0.25); }
+    .verdict-card.WAG { background: var(--blue-dim); border: 1px solid rgba(96,165,250,0.25); }
+    .verdict-card.GROWL { background: var(--yellow-dim); border: 1px solid rgba(250,204,21,0.25); }
+    .verdict-card.BARK { background: var(--red-dim); border: 1px solid rgba(248,113,113,0.25); }
 
-    .verdict-verdict {
-      font-size: 2.5rem;
+    .verdict-icon { font-size: 2rem; margin-bottom: 8px; }
+    .verdict-name {
+      font-size: 2.8rem;
       font-weight: 800;
       letter-spacing: 0.2em;
-      margin-bottom: 5px;
+      line-height: 1;
+      margin-bottom: 4px;
     }
-    .HOWL .verdict-verdict { color: var(--green); }
-    .WAG .verdict-verdict { color: var(--blue); }
-    .GROWL .verdict-verdict { color: var(--yellow); }
-    .BARK .verdict-verdict { color: var(--red); }
+    .HOWL .verdict-name { color: var(--green); }
+    .WAG .verdict-name { color: var(--blue); }
+    .GROWL .verdict-name { color: var(--yellow); }
+    .BARK .verdict-name { color: var(--red); }
 
-    .verdict-token {
-      font-size: 1.1rem;
+    .verdict-desc {
+      font-size: 0.85rem;
       color: var(--text-dim);
-      margin-bottom: 15px;
+      margin-bottom: 6px;
     }
-    .verdict-scores {
+    .verdict-token {
+      font-size: 1rem;
+      color: var(--text);
+      margin-bottom: 24px;
+      font-weight: 500;
+    }
+    .verdict-token .sym { color: var(--text-dim); font-weight: 400; }
+
+    .scores-row {
       display: flex;
       justify-content: center;
-      gap: 30px;
+      gap: 2px;
+    }
+    .score-pill {
+      padding: 10px 24px;
+      background: rgba(0,0,0,0.25);
+      text-align: center;
+    }
+    .score-pill:first-child { border-radius: 10px 0 0 10px; }
+    .score-pill:last-child { border-radius: 0 10px 10px 0; }
+    .score-pill .val { font-size: 1.5rem; font-weight: 700; font-family: 'SF Mono', monospace; }
+    .score-pill .lbl { font-size: 0.65rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.1em; margin-top: 2px; }
+
+    .verdict-meta {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      margin-top: 16px;
       flex-wrap: wrap;
     }
-    .score-block { text-align: center; }
-    .score-value {
-      font-size: 1.8rem;
-      font-weight: 700;
-    }
-    .score-label {
-      font-size: 0.7rem;
-      color: var(--text-dim);
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-    }
-
-    /* Confidence gauge */
-    .confidence-section {
-      margin-top: 25px;
-      padding: 20px;
-      background: var(--card);
-      border-radius: 8px;
-      border: 1px solid var(--border);
-    }
-    .confidence-bar-bg {
-      width: 100%;
-      height: 8px;
-      background: var(--border);
-      border-radius: 4px;
-      position: relative;
-      margin-top: 10px;
-    }
-    .confidence-bar {
-      height: 100%;
-      border-radius: 4px;
-      background: var(--gold);
-      transition: width 0.6s ease;
-    }
-    .confidence-mark {
-      position: absolute;
-      right: 38.2%;
-      top: -18px;
-      font-size: 0.65rem;
-      color: var(--text-dim);
-    }
-    .confidence-label {
-      display: flex;
-      justify-content: space-between;
-      font-size: 0.8rem;
-      color: var(--text-dim);
-    }
-
-    /* Dimensions grid */
-    .dimensions-section {
-      margin-top: 20px;
-    }
-    .section-title {
-      font-size: 0.85rem;
-      color: var(--gold);
-      text-transform: uppercase;
-      letter-spacing: 0.15em;
-      margin-bottom: 15px;
-      padding-bottom: 8px;
-      border-bottom: 1px solid var(--border);
-    }
-    .axiom-group {
-      margin-bottom: 20px;
-    }
-    .axiom-header {
-      font-size: 0.8rem;
-      color: var(--text-dim);
-      margin-bottom: 8px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .axiom-score {
-      font-weight: 600;
-      padding: 2px 8px;
-      border-radius: 4px;
-      font-size: 0.75rem;
-    }
-    .dim-row {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 6px 0;
-    }
-    .dim-name {
-      width: 160px;
-      font-size: 0.8rem;
-      color: var(--text-dim);
-      flex-shrink: 0;
-    }
-    .dim-bar-bg {
-      flex: 1;
-      height: 6px;
-      background: var(--border);
-      border-radius: 3px;
-    }
-    .dim-bar {
-      height: 100%;
-      border-radius: 3px;
-      transition: width 0.4s ease;
-    }
-    .dim-val {
-      width: 35px;
-      text-align: right;
-      font-size: 0.8rem;
-      font-weight: 600;
-    }
-
-    /* Weaknesses */
-    .weakness-item {
-      padding: 10px 14px;
-      background: rgba(248,81,73,0.05);
-      border-left: 3px solid var(--red);
-      margin-bottom: 8px;
-      border-radius: 0 6px 6px 0;
-      font-size: 0.85rem;
-    }
-    .weakness-dim {
-      color: var(--yellow);
-      font-weight: 600;
-    }
-    .weakness-reason { color: var(--text-dim); }
-
-    /* Tier badge */
-    .tier-badge {
+    .meta-chip {
       display: inline-flex;
       align-items: center;
-      gap: 6px;
-      padding: 6px 16px;
+      gap: 5px;
+      padding: 5px 14px;
+      background: rgba(0,0,0,0.2);
       border-radius: 20px;
-      background: var(--card);
-      border: 1px solid var(--border);
-      font-size: 0.85rem;
-      margin-top: 10px;
+      font-size: 0.78rem;
+      color: var(--text-dim);
     }
+    .meta-chip .val { color: var(--text); font-weight: 600; }
 
-    /* THE_UNNAMEABLE */
-    .unnameable {
-      margin-top: 20px;
-      padding: 15px;
-      background: rgba(201,168,76,0.05);
-      border: 1px dashed var(--gold);
+    .watch-btn {
+      margin-top: 16px;
+      padding: 8px 20px;
+      background: transparent;
+      border: 1px solid currentColor;
       border-radius: 8px;
-      text-align: center;
-      font-size: 0.85rem;
       color: var(--text-dim);
+      font-family: inherit;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: all 0.15s;
     }
-    .unnameable strong { color: var(--gold); }
-
-    /* Footer */
-    .footer {
-      text-align: center;
-      padding: 30px;
-      color: var(--text-dim);
-      font-size: 0.75rem;
-      border-top: 1px solid var(--border);
-      margin-top: 40px;
-    }
-    .footer a { color: var(--gold); text-decoration: none; }
+    .watch-btn:hover { color: var(--gold); background: var(--gold-dim); }
 
     /* Trajectory */
     .trajectory {
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 12px;
-      margin-top: 12px;
-      padding: 10px;
+      gap: 16px;
+      margin-top: 16px;
+      padding: 12px 20px;
       background: var(--card);
-      border-radius: 8px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
       font-size: 0.85rem;
     }
-    .traj-arrow { font-size: 1.4rem; }
-    .traj-arrow.improving { color: var(--green); }
-    .traj-arrow.declining { color: var(--red); }
-    .traj-arrow.stable { color: var(--text-dim); }
-    .traj-arrow.new { color: var(--gold); }
-    .traj-detail { color: var(--text-dim); }
-    .traj-detail strong { color: var(--text); }
+    .traj-dir { font-size: 1.3rem; }
+    .traj-dir.improving { color: var(--green); }
+    .traj-dir.declining { color: var(--red); }
+    .traj-dir.stable { color: var(--text-dim); }
+    .traj-dir.new { color: var(--gold); }
+    .traj-text { color: var(--text-dim); }
+    .traj-text strong { color: var(--text); }
 
-    /* History mini-list */
-    .history-section { margin-top: 20px; }
-    .history-item {
+    /* Confidence */
+    .confidence-row {
+      margin-top: 20px;
+      padding: 16px 20px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+    .conf-header {
       display: flex;
       justify-content: space-between;
-      align-items: center;
-      padding: 8px 12px;
-      border-bottom: 1px solid var(--border);
       font-size: 0.8rem;
+      color: var(--text-dim);
+      margin-bottom: 10px;
     }
-    .history-item:last-child { border-bottom: none; }
-    .history-verdict { font-weight: 700; width: 55px; }
+    .conf-header .val { color: var(--gold); font-weight: 600; font-family: 'SF Mono', monospace; }
+    .conf-track {
+      height: 6px;
+      background: var(--border);
+      border-radius: 3px;
+      position: relative;
+    }
+    .conf-fill {
+      height: 100%;
+      border-radius: 3px;
+      background: linear-gradient(90deg, var(--gold), #e8c94a);
+      transition: width 0.5s ease;
+    }
+    .conf-phi {
+      position: absolute;
+      left: 61.8%;
+      top: -2px;
+      bottom: -2px;
+      width: 2px;
+      background: var(--text-muted);
+      border-radius: 1px;
+    }
+    .conf-phi-label {
+      position: absolute;
+      left: 61.8%;
+      top: -18px;
+      transform: translateX(-50%);
+      font-size: 0.6rem;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
 
-    /* Watchlist panel */
-    .watchlist-panel {
-      max-width: 800px;
-      margin: 30px auto 0;
-      padding: 0 20px;
+    /* Dimensions */
+    .section {
+      margin-top: 24px;
     }
-    .watchlist-header {
+    .section-head {
+      font-size: 0.75rem;
+      color: var(--gold);
+      text-transform: uppercase;
+      letter-spacing: 0.2em;
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .axiom-block { margin-bottom: 20px; }
+    .axiom-label {
       display: flex;
       justify-content: space-between;
       align-items: center;
       margin-bottom: 10px;
-    }
-    .watchlist-header h3 { color: var(--gold); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.1em; }
-    .watch-btn {
-      padding: 6px 14px;
-      background: transparent;
-      border: 1px solid var(--gold);
-      border-radius: 6px;
-      color: var(--gold);
-      font-family: inherit;
       font-size: 0.8rem;
-      cursor: pointer;
     }
-    .watch-btn:hover { background: var(--gold-dim); }
-    .watch-btn.active { background: var(--gold-dim); }
-    .watchlist-items { }
+    .axiom-name { color: var(--text-dim); font-weight: 500; }
+    .axiom-val {
+      font-weight: 700;
+      font-size: 0.75rem;
+      padding: 2px 10px;
+      border-radius: 4px;
+      font-family: 'SF Mono', monospace;
+    }
+    .dim-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 5px 0;
+    }
+    .dim-name {
+      width: 150px;
+      font-size: 0.78rem;
+      color: var(--text-dim);
+      flex-shrink: 0;
+    }
+    .dim-track {
+      flex: 1;
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .dim-fill {
+      height: 100%;
+      border-radius: 2px;
+      transition: width 0.4s ease;
+    }
+    .dim-val {
+      width: 30px;
+      text-align: right;
+      font-size: 0.78rem;
+      font-weight: 600;
+      font-family: 'SF Mono', monospace;
+    }
+
+    /* Unnameable */
+    .unnameable-card {
+      margin-top: 20px;
+      padding: 16px 20px;
+      background: var(--gold-glow);
+      border: 1px dashed rgba(212,168,71,0.3);
+      border-radius: 10px;
+      text-align: center;
+      font-size: 0.85rem;
+      color: var(--text-dim);
+    }
+    .unnameable-card strong { color: var(--gold); }
+
+    /* Weaknesses */
+    .weakness-item {
+      padding: 10px 16px;
+      background: var(--red-dim);
+      border-left: 3px solid var(--red);
+      margin-bottom: 8px;
+      border-radius: 0 8px 8px 0;
+      font-size: 0.82rem;
+    }
+    .weakness-dim { color: var(--yellow); font-weight: 600; }
+    .weakness-reason { color: var(--text-dim); }
+
+    /* On-chain data */
+    .raw-data {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      padding: 16px 20px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font-size: 0.78rem;
+    }
+    .raw-item { }
+    .raw-item .k { color: var(--text-muted); }
+    .raw-item .v { color: var(--text-dim); font-family: 'SF Mono', monospace; }
+
+    /* Watchlist */
+    .watchlist-section {
+      padding: 32px 0 20px;
+    }
+    .wl-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .wl-head h3 {
+      font-size: 0.75rem;
+      color: var(--gold);
+      text-transform: uppercase;
+      letter-spacing: 0.2em;
+      font-weight: 500;
+    }
+    .wl-count { color: var(--text-muted); font-size: 0.75rem; }
     .wl-item {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 10px 14px;
+      padding: 12px 16px;
       background: var(--card);
       border: 1px solid var(--border);
-      border-radius: 6px;
+      border-radius: 10px;
       margin-bottom: 6px;
       cursor: pointer;
-      transition: border-color 0.2s;
+      transition: border-color 0.15s;
     }
-    .wl-item:hover { border-color: var(--gold); }
-    .wl-left { display: flex; align-items: center; gap: 10px; }
+    .wl-item:hover { border-color: var(--border-light); }
+    .wl-left { display: flex; align-items: center; gap: 12px; }
     .wl-label { font-weight: 600; font-size: 0.85rem; }
-    .wl-mint { color: var(--text-dim); font-size: 0.75rem; }
-    .wl-right { display: flex; align-items: center; gap: 12px; }
-    .wl-score { font-weight: 700; font-size: 0.9rem; }
-    .wl-verdict { font-size: 0.75rem; padding: 2px 8px; border-radius: 4px; font-weight: 600; }
+    .wl-mint { color: var(--text-muted); font-size: 0.72rem; font-family: 'SF Mono', monospace; }
+    .wl-right { display: flex; align-items: center; gap: 14px; }
+    .wl-score { font-weight: 700; font-size: 0.85rem; font-family: 'SF Mono', monospace; }
+    .wl-verdict-tag {
+      font-size: 0.7rem;
+      padding: 3px 10px;
+      border-radius: 4px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+    }
+    .wl-time { color: var(--text-muted); font-size: 0.7rem; }
     .wl-remove {
-      color: var(--text-dim);
+      color: var(--text-muted);
       cursor: pointer;
-      font-size: 1.1rem;
+      font-size: 1rem;
       padding: 0 4px;
+      transition: color 0.15s;
     }
     .wl-remove:hover { color: var(--red); }
-    .wl-time { color: var(--text-dim); font-size: 0.7rem; }
+    .wl-empty {
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      padding: 16px;
+      text-align: center;
+    }
 
     /* Alerts */
+    .alerts-section { margin-top: 16px; }
     .alert-item {
-      padding: 8px 12px;
-      background: rgba(210,153,34,0.08);
+      padding: 10px 14px;
+      background: var(--yellow-dim);
       border-left: 3px solid var(--yellow);
       margin-bottom: 6px;
-      border-radius: 0 6px 6px 0;
+      border-radius: 0 8px 8px 0;
       font-size: 0.8rem;
       color: var(--text-dim);
     }
     .alert-item strong { color: var(--text); }
 
+    /* Footer */
+    .footer {
+      text-align: center;
+      padding: 32px 20px;
+      color: var(--text-muted);
+      font-size: 0.72rem;
+      letter-spacing: 0.03em;
+    }
+    .footer a { color: var(--text-dim); text-decoration: none; transition: color 0.15s; }
+    .footer a:hover { color: var(--gold); }
+    .footer .sep { margin: 0 8px; }
+
     /* Mobile */
-    @media (max-width: 600px) {
+    @media (max-width: 640px) {
       .input-row { flex-direction: column; }
-      .verdict-scores { gap: 15px; }
-      .dim-name { width: 120px; font-size: 0.75rem; }
-      .header h1 { font-size: 1.3rem; }
+      .scores-row { flex-direction: column; align-items: center; gap: 0; }
+      .score-pill { border-radius: 0 !important; width: 100%; }
+      .score-pill:first-child { border-radius: 10px 10px 0 0 !important; }
+      .score-pill:last-child { border-radius: 0 0 10px 10px !important; }
+      .dim-name { width: 110px; font-size: 0.72rem; }
+      .header h1 { font-size: 1.5rem; }
+      .verdict-name { font-size: 2rem; }
+      .verdict-meta { flex-direction: column; align-items: center; }
     }
   </style>
 </head>
 <body>
-  <div class="header">
-    <h1>CYNIC ORACLE</h1>
-    <div class="sub">"\\u03C6 distrusts \\u03C6" — Agent v2.0 — judges, remembers, watches, alerts</div>
-  </div>
-
-  <div class="input-section">
-    <div class="input-row">
-      <input id="mint" class="mint-input" placeholder="Paste Solana mint address..." spellcheck="false" autocomplete="off" />
-      <button id="judge-btn" class="judge-btn" onclick="judgeToken()">JUDGE</button>
+  <div class="container">
+    <div class="header">
+      <div class="logo">Solana Token Intelligence</div>
+      <h1>CYNIC ORACLE</h1>
+      <div class="sub"><em>\\u03C6 distrusts \\u03C6</em> &mdash; 17 on-chain dimensions, confidence capped at 61.8%</div>
     </div>
-    <div class="quick-links">
-      <span class="quick-link" onclick="setMint('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v')">USDC</span>
-      <span class="quick-link" onclick="setMint('Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB')">USDT</span>
-      <span class="quick-link" onclick="setMint('So11111111111111111111111111111111')">SOL</span>
-    </div>
-  </div>
 
-  <div id="result" class="result"></div>
-
-  <div class="watchlist-panel">
-    <div class="watchlist-header">
-      <h3>\\uD83D\\uDC41 Watchlist</h3>
-      <span id="wl-status" style="color:var(--text-dim);font-size:0.75rem;"></span>
+    <div class="input-section">
+      <div class="input-row">
+        <input id="mint" class="mint-input" placeholder="Enter Solana token mint address..." spellcheck="false" autocomplete="off" />
+        <button id="judge-btn" class="judge-btn" onclick="judgeToken()">JUDGE</button>
+      </div>
+      <div class="quick-links">
+        <span class="quick-link" onclick="setMint('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v')">USDC</span>
+        <span class="quick-link" onclick="setMint('Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB')">USDT</span>
+        <span class="quick-link" onclick="setMint('So11111111111111111111111111111111')">SOL</span>
+        <span class="quick-link" onclick="setMint('DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263')">BONK</span>
+      </div>
     </div>
-    <div id="watchlist-items" class="watchlist-items"></div>
-    <div id="alerts-section" style="margin-top:15px;display:none;">
-      <div style="font-size:0.8rem;color:var(--gold);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.1em;">Recent Alerts</div>
-      <div id="alerts-items"></div>
+
+    <div id="result" class="result"></div>
+
+    <div class="watchlist-section">
+      <div class="wl-head">
+        <h3>Watchlist</h3>
+        <span id="wl-status" class="wl-count"></span>
+      </div>
+      <div id="watchlist-items"></div>
+      <div id="alerts-section" class="alerts-section" style="display:none;">
+        <div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.15em;margin-bottom:8px;">Recent Alerts</div>
+        <div id="alerts-items"></div>
+      </div>
     </div>
   </div>
 
   <div class="footer">
-    <a href="/api/oracle/health">API Health</a> &middot;
-    <a href="/">Observatory</a> &middot;
-    CYNIC Oracle v1.0 &middot;
+    <a href="/api/oracle/health">API</a>
+    <span class="sep">&middot;</span>
+    <a href="/api/oracle/judge?mint=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v">Example JSON</a>
+    <span class="sep">&middot;</span>
+    <a href="/">Observatory</a>
+    <span class="sep">&middot;</span>
+    CYNIC Oracle v2.0
+    <span class="sep">&middot;</span>
     \\u03C6\\u207B\\u00B9 = 61.8% max confidence
   </div>
 
   <script>
-    const PHI_INV = 0.618;
-    const PHI_INV_2 = 0.382;
-    const PHI_INV_3 = 0.236;
+    const PHI_INV = 0.618, PHI_INV_2 = 0.382, PHI_INV_3 = 0.236;
+    let currentMint = null;
 
-    function setMint(m) {
-      document.getElementById('mint').value = m;
-      judgeToken();
+    function setMint(m) { document.getElementById('mint').value = m; judgeToken(); }
+    document.getElementById('mint').addEventListener('keydown', e => { if (e.key === 'Enter') judgeToken(); });
+
+    function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+    function dColor(s) {
+      if (s >= 61.8) return 'var(--green)';
+      if (s >= 38.2) return 'var(--yellow)';
+      return 'var(--red)';
     }
 
-    document.getElementById('mint').addEventListener('keydown', e => {
-      if (e.key === 'Enter') judgeToken();
-    });
+    function vColor(v) {
+      return v === 'HOWL' ? 'var(--green)' : v === 'WAG' ? 'var(--blue)' : v === 'GROWL' ? 'var(--yellow)' : 'var(--red)';
+    }
 
     async function judgeToken() {
       const mint = document.getElementById('mint').value.trim();
       if (!mint) return;
-
       const btn = document.getElementById('judge-btn');
-      const resultDiv = document.getElementById('result');
-
-      btn.disabled = true;
-      btn.textContent = 'JUDGING...';
-      resultDiv.innerHTML = '<div class="loading-msg"><span class="spinner"></span>Fetching on-chain data & scoring 17 dimensions...</div>';
-
+      const rd = document.getElementById('result');
+      btn.disabled = true; btn.textContent = 'JUDGING...';
+      rd.innerHTML = '<div class="loading-msg"><span class="spinner"></span>Scoring 17 on-chain dimensions...</div>';
       try {
-        const res = await fetch('/api/oracle/judge?mint=' + encodeURIComponent(mint));
-        const data = await res.json();
-
-        if (data.error) {
-          resultDiv.innerHTML = '<div class="error-msg">' + escapeHtml(data.error) + '</div>';
-          return;
-        }
-
+        const r = await fetch('/api/oracle/judge?mint=' + encodeURIComponent(mint));
+        const d = await r.json();
+        if (d.error) { rd.innerHTML = '<div class="error-msg">' + esc(d.error) + '</div>'; return; }
         currentMint = mint;
-        renderVerdict(data);
+        renderVerdict(d);
         loadWatchlist();
       } catch (e) {
-        resultDiv.innerHTML = '<div class="error-msg">Network error: ' + escapeHtml(e.message) + '</div>';
+        rd.innerHTML = '<div class="error-msg">Network error: ' + esc(e.message) + '</div>';
       } finally {
-        btn.disabled = false;
-        btn.textContent = 'JUDGE';
+        btn.disabled = false; btn.textContent = 'JUDGE';
       }
-    }
-
-    function escapeHtml(s) {
-      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    }
-
-    function dimColor(score) {
-      if (score >= 61.8) return 'var(--green)';
-      if (score >= 38.2) return 'var(--yellow)';
-      return 'var(--red)';
     }
 
     function renderVerdict(d) {
-      const axiomMap = {
-        PHI: { label: '\\u03C6 HARMONY', dims: ['supplyDistribution','liquidityDepth','priceStability','supplyMechanics'] },
-        VERIFY: { label: '\\u2713 VERIFY', dims: ['mintAuthority','freezeAuthority','metadataIntegrity','programVerification'] },
-        CULTURE: { label: '\\u2B50 CULTURE', dims: ['holderCount','tokenAge','ecosystemIntegration','organicGrowth'] },
-        BURN: { label: '\\uD83D\\uDD25 BURN', dims: ['burnActivity','creatorBehavior','feeRedistribution','realUtility'] },
+      const vc = vColor(d.verdict);
+      const axioms = {
+        PHI:     { lbl: '\\u03C6 Harmony',  dims: ['supplyDistribution','liquidityDepth','priceStability','supplyMechanics'] },
+        VERIFY:  { lbl: '\\u2713 Verify',    dims: ['mintAuthority','freezeAuthority','metadataIntegrity','programVerification'] },
+        CULTURE: { lbl: '\\u2605 Culture',   dims: ['holderCount','tokenAge','ecosystemIntegration','organicGrowth'] },
+        BURN:    { lbl: '\\u2737 Burn',      dims: ['burnActivity','creatorBehavior','feeRedistribution','realUtility'] },
+      };
+      const dimN = {
+        supplyDistribution:'Supply Distribution', liquidityDepth:'Liquidity Depth',
+        priceStability:'Price Stability', supplyMechanics:'Supply Mechanics',
+        mintAuthority:'Mint Authority', freezeAuthority:'Freeze Authority',
+        metadataIntegrity:'Metadata Integrity', programVerification:'Program Verification',
+        holderCount:'Holder Count', tokenAge:'Token Age',
+        ecosystemIntegration:'Ecosystem Integration', organicGrowth:'Organic Growth',
+        burnActivity:'Burn Activity', creatorBehavior:'Creator Behavior',
+        feeRedistribution:'Fee Redistribution', realUtility:'Real Utility',
       };
 
-      const dimLabels = {
-        supplyDistribution: 'Supply Distribution',
-        liquidityDepth: 'Liquidity Depth',
-        priceStability: 'Price Stability',
-        supplyMechanics: 'Supply Mechanics',
-        mintAuthority: 'Mint Authority',
-        freezeAuthority: 'Freeze Authority',
-        metadataIntegrity: 'Metadata Integrity',
-        programVerification: 'Program Verification',
-        holderCount: 'Holder Count',
-        tokenAge: 'Token Age',
-        ecosystemIntegration: 'Ecosystem Integration',
-        organicGrowth: 'Organic Growth',
-        burnActivity: 'Burn Activity',
-        creatorBehavior: 'Creator Behavior',
-        feeRedistribution: 'Fee Redistribution',
-        realUtility: 'Real Utility',
-      };
+      let h = '';
 
-      let html = '';
+      // ── Verdict Card
+      h += '<div class="verdict-card ' + d.verdict + '">';
+      h += '<div class="verdict-icon">' + (d.verdictIcon || '') + '</div>';
+      h += '<div class="verdict-name">' + d.verdict + '</div>';
+      h += '<div class="verdict-desc">' + esc(d.verdictDescription || '') + '</div>';
+      h += '<div class="verdict-token">' + esc(d.name || 'Unknown') + ' <span class="sym">(' + esc(d.symbol || '?') + ')</span></div>';
+      h += '<div class="scores-row">';
+      h += '<div class="score-pill"><div class="val" style="color:' + vc + '">' + d.qScore + '</div><div class="lbl">Q-Score</div></div>';
+      h += '<div class="score-pill"><div class="val">' + d.kScore + '</div><div class="lbl">K-Score</div></div>';
+      h += '<div class="score-pill"><div class="val" style="color:var(--gold)">' + (d.confidence * 100).toFixed(1) + '%</div><div class="lbl">Confidence</div></div>';
+      h += '</div>';
 
-      // Verdict banner
-      html += '<div class="verdict-card ' + d.verdict + '">';
-      html += '<div class="verdict-verdict">' + d.verdict + '</div>';
-      html += '<div class="verdict-token">' + escapeHtml(d.name || 'Unknown') + ' (' + escapeHtml(d.symbol || '???') + ')</div>';
-      html += '<div class="verdict-scores">';
-      html += '<div class="score-block"><div class="score-value">' + d.qScore + '</div><div class="score-label">Q-Score</div></div>';
-      html += '<div class="score-block"><div class="score-value">' + d.kScore + '</div><div class="score-label">K-Score</div></div>';
-      html += '<div class="score-block"><div class="score-value">' + (d.confidence * 100).toFixed(1) + '%</div><div class="score-label">Confidence</div></div>';
-      html += '</div>';
-      html += '<div class="tier-badge">' + d.tierIcon + ' ' + d.tier + ' — ' + escapeHtml(d.tierDescription) + '</div>';
-      html += '<div style="margin-top:12px"><button class="watch-btn" onclick="watchCurrentMint()">\\uD83D\\uDC41 Watch this token</button></div>';
-      html += '</div>';
+      // Meta chips
+      h += '<div class="verdict-meta">';
+      h += '<span class="meta-chip">K-Tier: <span class="val">' + esc(d.kTier || d.tier || '?') + '</span></span>';
+      h += '<span class="meta-chip">D: <span class="val">' + (d.kComponents?.d?.toFixed(2) || '?') + '</span></span>';
+      h += '<span class="meta-chip">O: <span class="val">' + (d.kComponents?.o?.toFixed(2) || '?') + '</span></span>';
+      h += '<span class="meta-chip">L: <span class="val">' + (d.kComponents?.l?.toFixed(2) || '?') + '</span></span>';
+      h += '</div>';
+      h += '<button class="watch-btn" onclick="watchCurrentMint()">Add to watchlist</button>';
+      h += '</div>';
 
-      // Trajectory
-      if (d.trajectory) {
-        html += renderTrajectory(d.trajectory);
+      // ── Trajectory
+      if (d.trajectory && !(d.trajectory.direction === 'new' && d.trajectory.previousJudgments <= 1)) {
+        const t = d.trajectory;
+        const arrows = { improving:'\\u2197\\uFE0F', declining:'\\u2198\\uFE0F', stable:'\\u2192', new:'\\u2728' };
+        const labels = { improving:'Improving', declining:'Declining', stable:'Stable', new:'First judgment' };
+        h += '<div class="trajectory">';
+        h += '<span class="traj-dir ' + t.direction + '">' + (arrows[t.direction]||'') + '</span>';
+        h += '<span class="traj-text"><strong>' + (labels[t.direction]||'') + '</strong>';
+        if (t.delta) h += ' (Q ' + (t.delta > 0 ? '+' : '') + t.delta + ')';
+        h += '</span>';
+        if (t.previousJudgments > 1) h += '<span class="traj-text">' + t.previousJudgments + ' past judgments</span>';
+        if (t.averageQScore) h += '<span class="traj-text">avg Q: ' + t.averageQScore + '</span>';
+        h += '</div>';
       }
 
-      // Confidence gauge
-      const confPct = Math.min(100, (d.confidence / PHI_INV) * 100);
-      html += '<div class="confidence-section">';
-      html += '<div class="confidence-label"><span>Confidence</span><span>' + (d.confidence * 100).toFixed(1) + '% / 61.8% max</span></div>';
-      html += '<div class="confidence-bar-bg">';
-      html += '<div class="confidence-bar" style="width:' + (d.confidence * 100).toFixed(1) + '%;max-width:61.8%"></div>';
-      html += '<div class="confidence-mark">\\u2502 \\u03C6\\u207B\\u00B9</div>';
-      html += '</div>';
-      html += '</div>';
+      // ── Confidence bar
+      h += '<div class="confidence-row">';
+      h += '<div class="conf-header"><span>Confidence</span><span class="val">' + (d.confidence * 100).toFixed(1) + '% / 61.8%</span></div>';
+      h += '<div class="conf-track">';
+      h += '<div class="conf-fill" style="width:' + Math.min(61.8, d.confidence * 100).toFixed(1) + '%"></div>';
+      h += '<div class="conf-phi"></div>';
+      h += '<div class="conf-phi-label">\\u03C6\\u207B\\u00B9</div>';
+      h += '</div></div>';
 
-      // Dimension scores by axiom
-      html += '<div class="dimensions-section">';
-      html += '<div class="section-title">17 Dimensions</div>';
-
-      for (const [axiom, info] of Object.entries(axiomMap)) {
-        const aScore = d.axiomScores[axiom];
-        const aColor = dimColor(aScore);
-        html += '<div class="axiom-group">';
-        html += '<div class="axiom-header"><span>' + info.label + '</span>';
-        html += '<span class="axiom-score" style="color:' + aColor + ';background:' + aColor + '20">' + aScore + '</span></div>';
-
+      // ── Axiom dimensions
+      h += '<div class="section"><div class="section-head">17 Dimensions</div>';
+      for (const [ax, info] of Object.entries(axioms)) {
+        const aScore = d.axiomScores[ax];
+        const ac = dColor(aScore);
+        h += '<div class="axiom-block">';
+        h += '<div class="axiom-label"><span class="axiom-name">' + info.lbl + '</span>';
+        h += '<span class="axiom-val" style="color:' + ac + ';background:' + ac + '15">' + aScore + '</span></div>';
         for (const dim of info.dims) {
-          const score = d.dimensions[dim] || 0;
-          const color = dimColor(score);
-          html += '<div class="dim-row">';
-          html += '<span class="dim-name">' + (dimLabels[dim] || dim) + '</span>';
-          html += '<div class="dim-bar-bg"><div class="dim-bar" style="width:' + score + '%;background:' + color + '"></div></div>';
-          html += '<span class="dim-val" style="color:' + color + '">' + score + '</span>';
-          html += '</div>';
+          const s = d.dimensions[dim] || 0;
+          const c = dColor(s);
+          h += '<div class="dim-row">';
+          h += '<span class="dim-name">' + (dimN[dim]||dim) + '</span>';
+          h += '<div class="dim-track"><div class="dim-fill" style="width:' + s + '%;background:' + c + '"></div></div>';
+          h += '<span class="dim-val" style="color:' + c + '">' + s + '</span>';
+          h += '</div>';
         }
-        html += '</div>';
+        h += '</div>';
       }
-      html += '</div>';
+      h += '</div>';
 
-      // THE_UNNAMEABLE
-      html += '<div class="unnameable">';
-      html += '<strong>THE UNNAMEABLE</strong>: ' + d.theUnnameable + '% — ';
-      html += d.theUnnameable > 50 ? 'High uncertainty. Much we cannot measure.' :
-              d.theUnnameable > 25 ? 'Moderate gaps in on-chain data.' :
-              'Good data coverage. Judgment has grounding.';
-      html += '</div>';
+      // ── THE_UNNAMEABLE
+      h += '<div class="unnameable-card">';
+      h += '<strong>THE UNNAMEABLE</strong> \\u2014 ' + d.theUnnameable + '% uncertainty \\u2014 ';
+      h += d.theUnnameable > 50 ? 'Much we cannot measure. Judgment has limited grounding.' :
+           d.theUnnameable > 25 ? 'Moderate gaps in available on-chain data.' :
+           'Good data coverage. Judgment is well-grounded.';
+      h += '</div>';
 
-      // Weaknesses
+      // ── Weaknesses
       if (d.weaknesses && d.weaknesses.length > 0) {
-        html += '<div class="dimensions-section">';
-        html += '<div class="section-title">Weaknesses (below \\u03C6\\u207B\\u00B2 threshold)</div>';
+        h += '<div class="section"><div class="section-head">Weaknesses (below \\u03C6\\u207B\\u00B2)</div>';
         for (const w of d.weaknesses) {
-          html += '<div class="weakness-item">';
-          html += '<span class="weakness-dim">[' + w.axiom + '] ' + (dimLabels[w.dimension] || w.dimension) + ': ' + w.score + '</span><br>';
-          html += '<span class="weakness-reason">' + escapeHtml(w.reason) + '</span>';
-          html += '</div>';
+          h += '<div class="weakness-item">';
+          h += '<span class="weakness-dim">[' + w.axiom + '] ' + (dimN[w.dimension]||w.dimension) + ': ' + w.score + '</span><br>';
+          h += '<span class="weakness-reason">' + esc(w.reason) + '</span>';
+          h += '</div>';
         }
-        html += '</div>';
+        h += '</div>';
       }
 
-      // Raw data
-      html += '<div class="dimensions-section">';
-      html += '<div class="section-title">On-Chain Data</div>';
-      html += '<div style="font-size:0.8rem;color:var(--text-dim)">';
-      html += 'Source: ' + (d._raw?.source || 'unknown') + ' &middot; ';
-      html += 'Latency: ' + (d._raw?.latencyMs || '?') + 'ms &middot; ';
-      html += 'Supply: ' + (d.supply?.total?.toLocaleString() || '?') + ' &middot; ';
-      html += 'Holders (est): ' + (d.distribution?.holderCount || '?') + ' &middot; ';
-      html += 'Whale %: ' + ((d.distribution?.whaleConcentration || 0) * 100).toFixed(1) + '% &middot; ';
-      html += 'Gini: ' + (d.distribution?.giniCoefficient?.toFixed(3) || '?');
-      html += '</div></div>';
+      // ── On-chain data
+      h += '<div class="section"><div class="section-head">On-Chain Data</div>';
+      h += '<div class="raw-data">';
+      h += '<div class="raw-item"><span class="k">Source </span><span class="v">' + esc(d._raw?.source || '?') + '</span></div>';
+      h += '<div class="raw-item"><span class="k">Latency </span><span class="v">' + (d._raw?.latencyMs || '?') + 'ms</span></div>';
+      h += '<div class="raw-item"><span class="k">Supply </span><span class="v">' + (d.supply?.total?.toLocaleString() || '?') + '</span></div>';
+      h += '<div class="raw-item"><span class="k">Holders </span><span class="v">' + (d.distribution?.holderCount?.toLocaleString() || '?') + '</span></div>';
+      h += '<div class="raw-item"><span class="k">Whale% </span><span class="v">' + ((d.distribution?.whaleConcentration || 0) * 100).toFixed(1) + '%</span></div>';
+      h += '<div class="raw-item"><span class="k">Gini </span><span class="v">' + (d.distribution?.giniCoefficient?.toFixed(3) || '?') + '</span></div>';
+      h += '</div></div>';
 
-      document.getElementById('result').innerHTML = html;
+      document.getElementById('result').innerHTML = h;
     }
 
-    function renderTrajectory(t) {
-      if (!t || t.direction === 'new' && t.previousJudgments <= 1) return '';
-      const arrows = { improving: '\\u2197', declining: '\\u2198', stable: '\\u2192', new: '\\u2728' };
-      const labels = { improving: 'Improving', declining: 'Declining', stable: 'Stable', new: 'First judgment' };
-      let html = '<div class="trajectory">';
-      html += '<span class="traj-arrow ' + t.direction + '">' + (arrows[t.direction] || '') + '</span>';
-      html += '<span class="traj-detail"><strong>' + labels[t.direction] + '</strong>';
-      if (t.delta) html += ' (Q ' + (t.delta > 0 ? '+' : '') + t.delta + ')';
-      html += '</span>';
-      if (t.previousJudgments > 1) html += '<span class="traj-detail">' + t.previousJudgments + ' past judgments</span>';
-      if (t.averageQScore) html += '<span class="traj-detail">avg Q: ' + t.averageQScore + '</span>';
-      html += '</div>';
-      return html;
-    }
-
-    // ─── Watchlist ───
-
-    let currentMint = null;
-
+    // ── Watchlist
     async function loadWatchlist() {
       try {
-        const res = await fetch('/api/oracle/watchlist');
-        if (!res.ok) { document.getElementById('wl-status').textContent = 'Memory offline'; return; }
-        const data = await res.json();
-        renderWatchlist(data.watchlist || [], data.recentAlerts || []);
-      } catch(e) {
-        document.getElementById('wl-status').textContent = 'Agent offline';
-      }
+        const r = await fetch('/api/oracle/watchlist');
+        if (!r.ok) { document.getElementById('wl-status').textContent = 'offline'; return; }
+        const d = await r.json();
+        renderWatchlist(d.watchlist || [], d.recentAlerts || []);
+      } catch { document.getElementById('wl-status').textContent = 'offline'; }
     }
 
     function renderWatchlist(items, alerts) {
-      const container = document.getElementById('watchlist-items');
-      if (items.length === 0) {
-        container.innerHTML = '<div style="color:var(--text-dim);font-size:0.8rem;padding:10px;">No tokens watched. Judge a token then click "Watch" to monitor it.</div>';
+      const c = document.getElementById('watchlist-items');
+      document.getElementById('wl-status').textContent = items.length + ' watched';
+      if (!items.length) {
+        c.innerHTML = '<div class="wl-empty">No tokens watched yet. Judge a token and add it to your watchlist.</div>';
       } else {
-        container.innerHTML = items.map(w => {
-          const vColor = w.lastVerdict === 'HOWL' ? 'var(--green)' : w.lastVerdict === 'WAG' ? 'var(--blue)' : w.lastVerdict === 'GROWL' ? 'var(--yellow)' : 'var(--red)';
-          const ago = w.lastCheckedAt ? timeAgo(new Date(w.lastCheckedAt)) : 'never';
+        c.innerHTML = items.map(w => {
+          const vc = vColor(w.lastVerdict);
+          const ago = w.lastCheckedAt ? timeAgo(new Date(w.lastCheckedAt)) : '';
           return '<div class="wl-item" onclick="setMint(\\'' + w.mint + '\\')">' +
             '<div class="wl-left">' +
-              '<span class="wl-label">' + escapeHtml(w.label || w.mint.slice(0,6) + '..') + '</span>' +
-              '<span class="wl-mint">' + w.mint.slice(0,8) + '..' + w.mint.slice(-4) + '</span>' +
+              '<span class="wl-label">' + esc(w.label || w.mint.slice(0,6)+'..') + '</span>' +
+              '<span class="wl-mint">' + w.mint.slice(0,8) + '...' + w.mint.slice(-4) + '</span>' +
             '</div>' +
             '<div class="wl-right">' +
-              (w.lastQScore ? '<span class="wl-score" style="color:' + vColor + '">Q:' + w.lastQScore + '</span>' : '') +
-              (w.lastVerdict ? '<span class="wl-verdict" style="color:' + vColor + ';border:1px solid ' + vColor + '">' + w.lastVerdict + '</span>' : '') +
-              '<span class="wl-time">' + ago + '</span>' +
-              '<span class="wl-remove" onclick="event.stopPropagation();unwatchMint(\\'' + w.mint + '\\')" title="Remove">&times;</span>' +
-            '</div>' +
-          '</div>';
+              (w.lastQScore ? '<span class="wl-score" style="color:'+vc+'">'+w.lastQScore+'</span>' : '') +
+              (w.lastVerdict ? '<span class="wl-verdict-tag" style="color:'+vc+';background:'+vc+'15">'+w.lastVerdict+'</span>' : '') +
+              (ago ? '<span class="wl-time">'+ago+'</span>' : '') +
+              '<span class="wl-remove" onclick="event.stopPropagation();unwatchMint(\\''+w.mint+'\\')">\\u00D7</span>' +
+            '</div></div>';
         }).join('');
       }
-      document.getElementById('wl-status').textContent = items.length + ' watched';
 
-      // Alerts
-      const alertsDiv = document.getElementById('alerts-items');
-      const alertsSection = document.getElementById('alerts-section');
+      const as = document.getElementById('alerts-section');
+      const ai = document.getElementById('alerts-items');
       if (alerts.length > 0) {
-        alertsSection.style.display = 'block';
-        alertsDiv.innerHTML = alerts.slice(0,5).map(a =>
-          '<div class="alert-item"><strong>' + escapeHtml(a.label || a.mint.slice(0,8)) + '</strong>: ' + escapeHtml(a.message || a.alertType) + ' <span style="float:right">' + timeAgo(new Date(a.createdAt)) + '</span></div>'
+        as.style.display = 'block';
+        ai.innerHTML = alerts.slice(0,5).map(a =>
+          '<div class="alert-item"><strong>' + esc(a.label || a.mint?.slice(0,8)) + '</strong>: ' +
+          esc(a.message || a.alertType) +
+          '<span style="float:right;color:var(--text-muted)">' + timeAgo(new Date(a.createdAt)) + '</span></div>'
         ).join('');
-      } else {
-        alertsSection.style.display = 'none';
-      }
+      } else { as.style.display = 'none'; }
     }
 
     async function watchCurrentMint() {
@@ -1074,7 +1122,6 @@ const ORACLE_HTML = `<!DOCTYPE html>
       return Math.floor(s/86400) + 'd ago';
     }
 
-    // Load watchlist on page load
     loadWatchlist();
     setInterval(loadWatchlist, 60000);
   </script>

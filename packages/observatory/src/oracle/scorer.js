@@ -25,15 +25,26 @@ import {
  * K-Score Tiers (token quality rating)
  * φ-aligned thresholds
  */
+/**
+ * Verdict tiers — driven by Q-Score (the unified judgment)
+ * K-Score is a supplementary metric, not the verdict driver.
+ */
+const VERDICT_TIERS = Object.freeze([
+  { name: 'BARK', min: 0, threshold: PHI_INV_3 * 100, icon: '🔴', description: 'High risk — proceed with extreme caution' },
+  { name: 'GROWL', min: PHI_INV_3 * 100, threshold: PHI_INV_2 * 100, icon: '🟡', description: 'Caution — significant concerns detected' },
+  { name: 'WAG', min: PHI_INV_2 * 100, threshold: PHI_INV * 100, icon: '🔵', description: 'Acceptable — some strengths, some gaps' },
+  { name: 'HOWL', min: PHI_INV * 100, threshold: 100, icon: '🟢', description: 'Strong — above the golden threshold' },
+]);
+
 const K_TIERS = Object.freeze([
-  { name: 'Rust', min: 0, max: 20, verdict: 'BARK', icon: '🔴', description: 'Extreme risk' },
-  { name: 'Iron', min: 20, max: 35, verdict: 'BARK', icon: '⚫', description: 'Very high risk' },
-  { name: 'Copper', min: 35, max: 50, verdict: 'GROWL', icon: '🟤', description: 'High risk' },
-  { name: 'Bronze', min: 50, max: 62, verdict: 'GROWL', icon: '🥉', description: 'Moderate risk' },
-  { name: 'Silver', min: 62, max: 70, verdict: 'WAG', icon: '🥈', description: 'Acceptable' },
-  { name: 'Gold', min: 70, max: 80, verdict: 'WAG', icon: '🥇', description: 'Good quality' },
-  { name: 'Platinum', min: 80, max: 90, verdict: 'HOWL', icon: '💠', description: 'High quality' },
-  { name: 'Diamond', min: 90, max: 100, verdict: 'HOWL', icon: '💎', description: 'Exceptional' },
+  { name: 'Rust', min: 0 },
+  { name: 'Iron', min: 20 },
+  { name: 'Copper', min: 35 },
+  { name: 'Bronze', min: 50 },
+  { name: 'Silver', min: 62 },
+  { name: 'Gold', min: 70 },
+  { name: 'Platinum', min: 80 },
+  { name: 'Diamond', min: 90 },
 ]);
 
 /**
@@ -162,7 +173,7 @@ export class TokenScorer {
     // VERDICT
     // ═══════════════════════════════════════════════════════════════════════
 
-    const verdict = this._getVerdict(qScore);
+    const verdictTier = this._getVerdictTier(qScore);
 
     // Identify weaknesses (dimensions below φ⁻² threshold)
     const weaknesses = [];
@@ -189,11 +200,13 @@ export class TokenScorer {
       kScore,
       confidence: Math.round(confidence * 1000) / 1000,
 
-      // Verdict
-      verdict,
-      tier: tier.name,
-      tierIcon: tier.icon,
-      tierDescription: tier.description,
+      // Verdict (driven by Q-Score)
+      verdict: verdictTier.name,
+      verdictIcon: verdictTier.icon,
+      verdictDescription: verdictTier.description,
+
+      // K-Tier (supplementary — token quality metal)
+      kTier: tier.name,
 
       // Dimensions (full transparency)
       axiomScores,
@@ -427,11 +440,11 @@ export class TokenScorer {
     return K_TIERS[0];
   }
 
-  _getVerdict(qScore) {
-    if (qScore >= PHI_INV * 100) return 'HOWL';   // ≥ 61.8%
-    if (qScore >= PHI_INV_2 * 100) return 'WAG';  // ≥ 38.2%
-    if (qScore >= PHI_INV_3 * 100) return 'GROWL'; // ≥ 23.6%
-    return 'BARK';
+  _getVerdictTier(qScore) {
+    for (let i = VERDICT_TIERS.length - 1; i >= 0; i--) {
+      if (qScore >= VERDICT_TIERS[i].min) return VERDICT_TIERS[i];
+    }
+    return VERDICT_TIERS[0];
   }
 
   _dimensionToAxiom(name) {
