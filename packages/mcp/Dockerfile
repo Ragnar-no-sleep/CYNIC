@@ -24,7 +24,6 @@ COPY packages/anchor/package.json ./packages/anchor/
 COPY packages/burns/package.json ./packages/burns/
 COPY packages/identity/package.json ./packages/identity/
 COPY packages/emergence/package.json ./packages/emergence/
-COPY packages/scheduler/package.json ./packages/scheduler/
 COPY packages/mcp/package.json ./packages/mcp/
 
 # Install production dependencies only
@@ -57,7 +56,6 @@ COPY packages/anchor ./packages/anchor
 COPY packages/burns ./packages/burns
 COPY packages/identity ./packages/identity
 COPY packages/emergence ./packages/emergence
-COPY packages/scheduler ./packages/scheduler
 COPY packages/mcp ./packages/mcp
 
 # Set ownership
