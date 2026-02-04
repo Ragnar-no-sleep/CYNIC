@@ -48,6 +48,9 @@ export * from './ecosystem/index.js';
 // Custom Error Types (programmatic error handling)
 export * from './errors.js';
 
+// Harmony Module (φ-based economic engine, adopted from HolDex)
+export * from './harmony.js';
+
 // Cryptographic Utilities (secure random generation)
 export * from './crypto-utils.js';
 

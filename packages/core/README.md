@@ -20,15 +20,15 @@ import * as pkg from '@cynic/core';
 
 ## Stats
 
-- **Source files**: 48
+- **Source files**: 49
 - **Test files**: 21
-- **Test ratio**: 44%
+- **Test ratio**: 43%
 - **Exports**: 0 named
 
 ## Dimensions (4 Axioms)
 
 ```
-[████░░░░░░] 44% φ (Confidence)
+[████░░░░░░] 43% φ (Confidence)
 [█████░░░░░] 50% Verify
 [█████░░░░░] 50% Culture
 [██████░░░░] 62% Burn (Simplicity)
