@@ -155,6 +155,8 @@ export {
   getDogStateEmitterSingleton,
   // C1.5 + C6.7: Learning Scheduler (DPO + Governance)
   getLearningSchedulerSingleton,
+  // Unified Learning Bridge (Judge → UnifiedSignal)
+  getUnifiedBridgeSingleton,
 } from './collective-singleton.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -394,12 +396,22 @@ export {
 } from '@cynic/llm';
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Learning - Self-Optimizing Neural Adaptation (SONA)
+// Learning - Self-Optimizing Neural Adaptation (SONA) + Unified Pipeline
 // ═══════════════════════════════════════════════════════════════════════════════
 export {
   SONA,
   createSONA,
   SONA_CONFIG,
+  // Unified Learning Pipeline
+  UnifiedSignal,
+  UnifiedSignalStore,
+  SignalSource,
+  SignalOutcome,
+  getUnifiedSignalStore,
+  resetUnifiedSignalStore,
+  UnifiedBridge,
+  getUnifiedBridge,
+  resetUnifiedBridge,
 } from './learning/index.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -446,10 +458,12 @@ export {
   FilesystemWatcher,
   createFilesystemWatcher,
   FilesystemEventType,
-  // Solana Watcher
+  // Solana Watcher - C2.1 (SOLANA × PERCEIVE)
   SolanaWatcher,
   createSolanaWatcher,
   SolanaEventType,
+  getSolanaWatcher,
+  resetSolanaWatcher,
   // Unified Perception
   createPerceptionLayer,
   // C6.1: Dog State Emitter (CYNIC × PERCEIVE)
@@ -526,3 +540,43 @@ export {
   getHumanEmergence,
   resetHumanEmergence,
 } from './symbiosis/index.js';
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Solana Module - SOLANA Row of 7×7 Matrix (C2.*)
+// "On-chain is truth"
+// ═══════════════════════════════════════════════════════════════════════════════
+export {
+  // C2.2: SOLANA × JUDGE
+  SolanaJudge,
+  SolanaJudgmentType,
+  getSolanaJudge,
+  resetSolanaJudge,
+  // C2.3: SOLANA × DECIDE
+  SolanaDecider,
+  SolanaDecisionType,
+  PriorityLevel,
+  getSolanaDecider,
+  resetSolanaDecider,
+  // C2.4: SOLANA × ACT
+  SolanaActor,
+  SolanaActionType,
+  ActionStatus as SolanaActionStatus, // Aliased to avoid conflict
+  getSolanaActor,
+  resetSolanaActor,
+  // C2.5: SOLANA × LEARN
+  SolanaLearner,
+  SolanaLearningCategory,
+  getSolanaLearner,
+  resetSolanaLearner,
+  // C2.6: SOLANA × ACCOUNT
+  SolanaAccountant,
+  SolanaTransactionType,
+  getSolanaAccountant,
+  resetSolanaAccountant,
+  // C2.7: SOLANA × EMERGE
+  SolanaEmergence,
+  SolanaEmergencePattern,
+  SolanaSignificance,
+  getSolanaEmergence,
+  resetSolanaEmergence,
+} from './solana/index.js';

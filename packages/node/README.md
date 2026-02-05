@@ -113,6 +113,10 @@ const instance = createIdentity();
 | `TransformStatus` | TransformStatus implementation |
 | `LLMRouter` | LLMRouter implementation |
 | `SONA` | SONA implementation |
+| `UnifiedSignalStore` | UnifiedSignalStore implementation |
+| `SignalSource` | SignalSource implementation |
+| `SignalOutcome` | SignalOutcome implementation |
+| `UnifiedBridge` | UnifiedBridge implementation |
 | `TokenOptimizer` | TokenOptimizer implementation |
 | `CompressionStrategy` | CompressionStrategy implementation |
 | `ABBREVIATIONS` | ABBREVIATIONS implementation |
@@ -135,6 +139,15 @@ const instance = createIdentity();
 | `ActivityType` | ActivityType implementation |
 | `HumanPatternType` | HumanPatternType implementation |
 | `HumanSignificanceLevel` | HumanSignificanceLevel implementation |
+| `SolanaJudgmentType` | SolanaJudgmentType implementation |
+| `SolanaDecisionType` | SolanaDecisionType implementation |
+| `PriorityLevel` | PriorityLevel implementation |
+| `SolanaActionType` | SolanaActionType implementation |
+| `ActionStatus` | ActionStatus implementation |
+| `SolanaLearningCategory` | SolanaLearningCategory implementation |
+| `SolanaTransactionType` | SolanaTransactionType implementation |
+| `SolanaEmergencePattern` | SolanaEmergencePattern implementation |
+| `SolanaSignificance` | SolanaSignificance implementation |
 
 ### Factory Functions
 
@@ -209,7 +222,10 @@ const instance = createIdentity();
 | `getQLearningServiceAsync()` | Get QLearningServiceAsync singleton |
 | `getCostOptimizer()` | Get CostOptimizer singleton |
 | `getLLMRouter()` | Get LLMRouter singleton |
+| `getUnifiedSignalStore()` | Get UnifiedSignalStore singleton |
+| `getUnifiedBridge()` | Get UnifiedBridge singleton |
 | `getWorkerPool()` | Get WorkerPool singleton |
+| `getSolanaWatcher()` | Get SolanaWatcher singleton |
 | `getDogStateEmitter()` | Get DogStateEmitter singleton |
 | `getWorkflowTracker()` | Get WorkflowTracker singleton |
 | `getCynicAccountant()` | Get CynicAccountant singleton |
@@ -217,6 +233,11 @@ const instance = createIdentity();
 | `getHumanAdvisor()` | Get HumanAdvisor singleton |
 | `getHumanLearning()` | Get HumanLearning singleton |
 | `getHumanEmergence()` | Get HumanEmergence singleton |
+| `getSolanaJudge()` | Get SolanaJudge singleton |
+| `getSolanaDecider()` | Get SolanaDecider singleton |
+| `getSolanaLearner()` | Get SolanaLearner singleton |
+| `getSolanaAccountant()` | Get SolanaAccountant singleton |
+| `getSolanaEmergence()` | Get SolanaEmergence singleton |
 
 ### Constants
 
@@ -224,7 +245,7 @@ const instance = createIdentity();
 
 ### Functions
 
-`importIdentity`, `exportIdentity`, `calculateCompositeEScore`, `updateEScoreState`, `dimensionRegistry`, `resetLearningScheduler`, `serialize`, `deserialize`, `isValidMessage`, `initializeQLearning` + 30 more
+`importIdentity`, `exportIdentity`, `calculateCompositeEScore`, `updateEScoreState`, `dimensionRegistry`, `resetLearningScheduler`, `serialize`, `deserialize`, `isValidMessage`, `initializeQLearning` + 39 more
 
 ## Dependencies
 
@@ -233,10 +254,10 @@ const instance = createIdentity();
 
 ## Stats
 
-- **Source files**: 199
+- **Source files**: 208
 - **Test files**: 52
-- **Test ratio**: 26%
-- **Exports**: 248 named
+- **Test ratio**: 25%
+- **Exports**: 278 named
 
 ## Fractal Structure
 
@@ -246,10 +267,10 @@ const instance = createIdentity();
 ## Dimensions (4 Axioms)
 
 ```
-[███░░░░░░░] 26% φ (Confidence)
+[███░░░░░░░] 25% φ (Confidence)
 [█████░░░░░] 50% Verify
 [█████░░░░░] 50% Culture
-[██████░░░░] 58% Burn (Simplicity)
+[██████░░░░] 55% Burn (Simplicity)
 [██████░░░░] 62% Emergence
 ```
 

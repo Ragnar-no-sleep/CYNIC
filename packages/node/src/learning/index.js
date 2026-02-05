@@ -62,6 +62,25 @@ export {
   getMetaCognition,
 } from './meta-cognition.js';
 
+// UNIFIED SIGNAL - Single type for storage & processing
+// "Une seule vérité, un seul type" - κυνικός
+export {
+  UnifiedSignal,
+  UnifiedSignalStore,
+  SignalSource,
+  SignalOutcome,
+  getUnifiedSignalStore,
+  resetUnifiedSignalStore,
+} from './unified-signal.js';
+
+// UNIFIED BRIDGE - Connects Judge events to UnifiedSignal
+// "Tous les chemins mènent à l'apprentissage" - κυνικός
+export {
+  UnifiedBridge,
+  getUnifiedBridge,
+  resetUnifiedBridge,
+} from './unified-bridge.js';
+
 // Re-export from sona for convenience
 import { SONA, createSONA, SONA_CONFIG } from './sona.js';
 import {

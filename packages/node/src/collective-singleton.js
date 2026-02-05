@@ -30,6 +30,7 @@ import { getQLearningService } from './orchestration/learning-service.js';
 import { createReasoningBank, TrajectoryType } from './learning/reasoning-bank.js';
 import { getDogStateEmitter } from './perception/dog-state-emitter.js';
 import { getLearningScheduler } from './judge/learning-scheduler.js';
+import { getUnifiedBridge } from './learning/unified-bridge.js';
 
 const log = createLogger('CollectiveSingleton');
 
@@ -146,6 +147,14 @@ let _dogStateEmitter = null;
  * @type {LearningScheduler|null}
  */
 let _learningScheduler = null;
+
+/**
+ * The global UnifiedBridge instance
+ * Connects Judge events to UnifiedSignal for unified learning pipeline
+ * "Tous les chemins mènent à l'apprentissage"
+ * @type {UnifiedBridge|null}
+ */
+let _unifiedBridge = null;
 
 /**
  * Initialization promise to prevent race conditions
@@ -275,6 +284,22 @@ export function getLearningSchedulerSingleton() {
 }
 
 /**
+ * Get the UnifiedBridge singleton
+ *
+ * UnifiedBridge connects JUDGMENT_CREATED events to UnifiedSignalStore.
+ * This enables unified learning from all judgment outputs.
+ * "Tous les chemins mènent à l'apprentissage" - κυνικός
+ *
+ * @returns {UnifiedBridge} The singleton UnifiedBridge instance
+ */
+export function getUnifiedBridgeSingleton() {
+  if (!_unifiedBridge) {
+    _unifiedBridge = getUnifiedBridge();
+  }
+  return _unifiedBridge;
+}
+
+/**
  * Get the CollectivePack singleton (SYNC version)
  *
  * ⚠️ WARNING: This is the SYNC version. Persistence state may NOT be loaded.
@@ -331,6 +356,12 @@ export function getCollectivePack(options = {}) {
     // Will be started in background by getCollectivePackAsync
     _learningScheduler = getLearningScheduler();
     log.debug('LearningScheduler singleton created (not started yet)');
+
+    // Wire UnifiedBridge for unified learning pipeline
+    // Connects JUDGMENT_CREATED events to UnifiedSignalStore
+    _unifiedBridge = getUnifiedBridge();
+    _unifiedBridge.start();
+    log.debug('UnifiedBridge wired and started');
 
     // FIX O3: Schedule background persistence initialization
     // "φ persiste" - persistence should be loaded even for sync calls
