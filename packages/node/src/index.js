@@ -439,3 +439,20 @@ export {
   // Unified Perception
   createPerceptionLayer,
 } from './perception/index.js';
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Accounting Layer - 7×7 Fractal Matrix ACCOUNT Column (C*.6)
+// "Le chien compte ce qui compte" - Economic tracking for CODE and CYNIC
+// ═══════════════════════════════════════════════════════════════════════════════
+export {
+  // C1.6: CODE × ACCOUNT
+  CodeAccountant,
+  RiskLevel,
+  getCodeAccountant,
+  resetCodeAccountant,
+  // C6.6: CYNIC × ACCOUNT
+  CynicAccountant,
+  OperationType,
+  getCynicAccountant,
+  resetCynicAccountant,
+} from './accounting/index.js';

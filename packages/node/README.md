@@ -121,6 +121,7 @@ const instance = createIdentity();
 | `TaskStatus` | TaskStatus implementation |
 | `FilesystemEventType` | FilesystemEventType implementation |
 | `SolanaEventType` | SolanaEventType implementation |
+| `OperationType` | OperationType implementation |
 
 ### Factory Functions
 
@@ -195,6 +196,8 @@ const instance = createIdentity();
 | `getCostOptimizer()` | Get CostOptimizer singleton |
 | `getLLMRouter()` | Get LLMRouter singleton |
 | `getWorkerPool()` | Get WorkerPool singleton |
+| `getCodeAccountant()` | Get CodeAccountant singleton |
+| `getCynicAccountant()` | Get CynicAccountant singleton |
 
 ### Constants
 
@@ -202,7 +205,7 @@ const instance = createIdentity();
 
 ### Functions
 
-`importIdentity`, `exportIdentity`, `calculateCompositeEScore`, `updateEScoreState`, `dimensionRegistry`, `serialize`, `deserialize`, `isValidMessage`, `initializeQLearning`, `awakenCynic` + 20 more
+`importIdentity`, `exportIdentity`, `calculateCompositeEScore`, `updateEScoreState`, `dimensionRegistry`, `serialize`, `deserialize`, `isValidMessage`, `initializeQLearning`, `awakenCynic` + 22 more
 
 ## Dependencies
 
@@ -211,10 +214,10 @@ const instance = createIdentity();
 
 ## Stats
 
-- **Source files**: 182
+- **Source files**: 191
 - **Test files**: 52
-- **Test ratio**: 29%
-- **Exports**: 216 named
+- **Test ratio**: 27%
+- **Exports**: 221 named
 
 ## Fractal Structure
 
@@ -224,10 +227,10 @@ const instance = createIdentity();
 ## Dimensions (4 Axioms)
 
 ```
-[███░░░░░░░] 29% φ (Confidence)
+[███░░░░░░░] 27% φ (Confidence)
 [█████░░░░░] 50% Verify
 [█████░░░░░] 50% Culture
-[██████░░░░] 60% Burn (Simplicity)
+[██████░░░░] 61% Burn (Simplicity)
 [██████░░░░] 62% Emergence
 ```
 
