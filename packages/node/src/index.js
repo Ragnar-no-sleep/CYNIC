@@ -447,7 +447,7 @@ export {
 export {
   // C1.6: CODE × ACCOUNT
   CodeAccountant,
-  RiskLevel,
+  RiskLevel as CodeRiskLevel, // Aliased - RiskLevel already exported from agents
   getCodeAccountant,
   resetCodeAccountant,
   // C6.6: CYNIC × ACCOUNT
@@ -456,3 +456,27 @@ export {
   getCynicAccountant,
   resetCynicAccountant,
 } from './accounting/index.js';
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Code Emergence - 7×7 Fractal Matrix EMERGE Column (C1.7)
+// "Le code révèle ses patterns cachés" - Cross-session pattern detection
+// ═══════════════════════════════════════════════════════════════════════════════
+export {
+  CodeEmergence,
+  CodePatternType,
+  getCodeEmergence,
+  resetCodeEmergence,
+} from './emergence/index.js';
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Symbiosis Layer - Human-CYNIC Interface (C5.*)
+// "Le chien amplifie l'humain, l'humain guide le chien"
+// ═══════════════════════════════════════════════════════════════════════════════
+export {
+  // C5.3: HUMAN × DECIDE
+  HumanAdvisor,
+  InterventionType,
+  UrgencyLevel,
+  getHumanAdvisor,
+  resetHumanAdvisor,
+} from './symbiosis/index.js';

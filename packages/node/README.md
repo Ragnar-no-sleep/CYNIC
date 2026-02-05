@@ -122,6 +122,10 @@ const instance = createIdentity();
 | `FilesystemEventType` | FilesystemEventType implementation |
 | `SolanaEventType` | SolanaEventType implementation |
 | `OperationType` | OperationType implementation |
+| `CodeEmergence` | CodeEmergence implementation |
+| `CodePatternType` | CodePatternType implementation |
+| `InterventionType` | InterventionType implementation |
+| `UrgencyLevel` | UrgencyLevel implementation |
 
 ### Factory Functions
 
@@ -196,8 +200,9 @@ const instance = createIdentity();
 | `getCostOptimizer()` | Get CostOptimizer singleton |
 | `getLLMRouter()` | Get LLMRouter singleton |
 | `getWorkerPool()` | Get WorkerPool singleton |
-| `getCodeAccountant()` | Get CodeAccountant singleton |
 | `getCynicAccountant()` | Get CynicAccountant singleton |
+| `getCodeEmergence()` | Get CodeEmergence singleton |
+| `getHumanAdvisor()` | Get HumanAdvisor singleton |
 
 ### Constants
 
@@ -205,7 +210,7 @@ const instance = createIdentity();
 
 ### Functions
 
-`importIdentity`, `exportIdentity`, `calculateCompositeEScore`, `updateEScoreState`, `dimensionRegistry`, `serialize`, `deserialize`, `isValidMessage`, `initializeQLearning`, `awakenCynic` + 22 more
+`importIdentity`, `exportIdentity`, `calculateCompositeEScore`, `updateEScoreState`, `dimensionRegistry`, `serialize`, `deserialize`, `isValidMessage`, `initializeQLearning`, `awakenCynic` + 24 more
 
 ## Dependencies
 
@@ -214,10 +219,10 @@ const instance = createIdentity();
 
 ## Stats
 
-- **Source files**: 191
+- **Source files**: 194
 - **Test files**: 52
 - **Test ratio**: 27%
-- **Exports**: 221 named
+- **Exports**: 228 named
 
 ## Fractal Structure
 

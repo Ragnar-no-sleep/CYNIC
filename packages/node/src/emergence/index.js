@@ -2,6 +2,7 @@
  * Node Emergence Integration
  *
  * Exports the EmergenceLayer for CYNICNode integration.
+ * Includes CodeEmergence for C1.7 (CODE × EMERGE) pattern detection.
  *
  * @module @cynic/node/emergence
  */
@@ -12,6 +13,14 @@ export {
   EmergenceLayer,
   createEmergenceLayer,
 } from './layer.js';
+
+// C1.7: CODE × EMERGE
+export {
+  CodeEmergence,
+  CodePatternType,
+  getCodeEmergence,
+  resetCodeEmergence,
+} from './code-emergence.js';
 
 // Re-export types from @cynic/emergence
 export {
