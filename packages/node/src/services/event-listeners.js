@@ -10,6 +10,10 @@
  * - JUDGMENT_CREATED: Now persisted to judgments table
  * - feedback:processed: Now creates feedback record + increments session counter
  * - SESSION_ENDED: Now consolidates SharedMemory
+ * - DOG_EVENT: Now persisted to dog_events table (AXE 2+)
+ * - CONSENSUS_COMPLETED: Now persisted to consensus_votes table (AXE 2+)
+ * - DogSignal.*: Now persisted to dog_signals table (AXE 2+)
+ * - CYNIC_STATE: Now sampled to collective_snapshots table (AXE 2+)
  *
  * @module @cynic/node/services/event-listeners
  */
@@ -17,6 +21,7 @@
 'use strict';
 
 import { createLogger, globalEventBus, EventType } from '@cynic/core';
+import { DogSignal } from '../agents/collective/ambient-consensus.js';
 
 const log = createLogger('EventListeners');
 
@@ -46,8 +51,19 @@ const _stats = {
   feedbackFailed: 0,
   sessionCountersIncremented: 0,
   sessionEndConsolidations: 0,
+  dogEventsPersisted: 0,
+  dogEventsFailed: 0,
+  consensusPersisted: 0,
+  consensusFailed: 0,
+  dogSignalsPersisted: 0,
+  dogSignalsFailed: 0,
+  snapshotsPersisted: 0,
+  snapshotsFailed: 0,
   startedAt: null,
 };
+
+/** @type {number} Counter for sampling CYNIC_STATE emissions */
+let _cynicStateCounter = 0;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // RETRY UTILITY
@@ -323,6 +339,118 @@ async function handleSessionEnded(event, dependencies) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// DOG EVENT PERSISTENCE (AXE 2+)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Handle DOG_EVENT - individual dog invocations, blocks, warnings
+ * Persists to dog_events table
+ */
+async function handleDogEvent(event, persistence, context) {
+  const { dog, eventType, stats, health, details } = event.payload || {};
+  if (!dog || !eventType) return;
+
+  try {
+    await withRetry(async () => {
+      await persistence.query(
+        `INSERT INTO dog_events (dog_name, event_type, stats, health, details, session_id)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [dog, eventType, JSON.stringify(stats || {}), health, JSON.stringify(details || {}), context.sessionId]
+      );
+    }, `Persist dog event ${dog}:${eventType}`);
+    _stats.dogEventsPersisted++;
+  } catch (err) {
+    _stats.dogEventsFailed++;
+    globalEventBus.publish(EventType.COMPONENT_ERROR, {
+      component: 'EventListeners',
+      operation: 'handleDogEvent',
+      error: err.message,
+    });
+  }
+}
+
+/**
+ * Handle CONSENSUS_COMPLETED - consensus results with vote breakdown
+ * Persists to consensus_votes table
+ */
+async function handleConsensusCompleted(event, persistence, context) {
+  const { consensusId, topic, approved, agreement, guardianVeto, votes, stats: voteStats, reason } = event.payload || {};
+  if (!consensusId) return;
+
+  try {
+    await withRetry(async () => {
+      await persistence.query(
+        `INSERT INTO consensus_votes (consensus_id, topic, approved, agreement, guardian_veto, votes, stats, reason, session_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [consensusId, topic, approved, agreement, guardianVeto || false, JSON.stringify(votes || {}), JSON.stringify(voteStats || {}), reason, context.sessionId]
+      );
+    }, `Persist consensus ${consensusId}`);
+    _stats.consensusPersisted++;
+  } catch (err) {
+    _stats.consensusFailed++;
+    globalEventBus.publish(EventType.COMPONENT_ERROR, {
+      component: 'EventListeners',
+      operation: 'handleConsensusCompleted',
+      error: err.message,
+    });
+  }
+}
+
+/**
+ * Handle DogSignal events - inter-dog communication
+ * Persists to dog_signals table
+ */
+async function handleDogSignal(event, persistence, context) {
+  const signalType = event.type;
+  const { source, ...payload } = event.payload || {};
+
+  try {
+    await withRetry(async () => {
+      await persistence.query(
+        `INSERT INTO dog_signals (signal_type, source_dog, payload, session_id)
+         VALUES ($1, $2, $3, $4)`,
+        [signalType, source || null, JSON.stringify(payload), context.sessionId]
+      );
+    }, `Persist dog signal ${signalType}`);
+    _stats.dogSignalsPersisted++;
+  } catch (err) {
+    _stats.dogSignalsFailed++;
+    // Non-critical, don't emit error event for high-frequency signals
+    log.debug('Dog signal persistence failed', { signalType, error: err.message });
+  }
+}
+
+/**
+ * Handle CYNIC_STATE - periodic collective health snapshots
+ * Sampled: only persists every 5th emission to avoid table bloat
+ */
+async function handleCynicState(event, persistence, context) {
+  _cynicStateCounter++;
+  if (_cynicStateCounter % 5 !== 0) return; // Sample every 5th
+
+  const { collective, memory } = event.payload || {};
+  if (!collective) return;
+
+  try {
+    await withRetry(async () => {
+      await persistence.query(
+        `INSERT INTO collective_snapshots (active_dogs, dog_count, average_health, health_rating, pattern_count, memory_load, memory_freshness, snapshot_data, session_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [
+          collective.activeDogs, collective.dogCount, collective.averageHealth,
+          collective.healthRating, memory?.patternCount || 0, memory?.load || 0,
+          memory?.freshness || 0, JSON.stringify(event.payload), context.sessionId,
+        ]
+      );
+    }, 'Persist collective snapshot');
+    _stats.snapshotsPersisted++;
+  } catch (err) {
+    _stats.snapshotsFailed++;
+    log.debug('Snapshot persistence failed', { error: err.message });
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // PUBLIC API
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -435,6 +563,64 @@ export function startEventListeners(options = {}) {
   );
   _unsubscribers.push(unsubUserFeedback);
 
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Subscribe to DOG_EVENT (AXE 2+)
+  // ─────────────────────────────────────────────────────────────────────────────
+  if (persistence?.query) {
+    const unsubDogEvent = globalEventBus.subscribe(
+      EventType.DOG_EVENT,
+      (event) => {
+        handleDogEvent(event, persistence, context).catch((err) => {
+          log.error('Dog event handler threw unexpectedly', { error: err.message });
+        });
+      }
+    );
+    _unsubscribers.push(unsubDogEvent);
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Subscribe to CONSENSUS_COMPLETED (AXE 2+)
+    // ─────────────────────────────────────────────────────────────────────────────
+    const unsubConsensus = globalEventBus.subscribe(
+      EventType.CONSENSUS_COMPLETED,
+      (event) => {
+        handleConsensusCompleted(event, persistence, context).catch((err) => {
+          log.error('Consensus handler threw unexpectedly', { error: err.message });
+        });
+      }
+    );
+    _unsubscribers.push(unsubConsensus);
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Subscribe to DogSignal events (AXE 2+)
+    // ─────────────────────────────────────────────────────────────────────────────
+    for (const signalType of Object.values(DogSignal)) {
+      const unsubSignal = globalEventBus.subscribe(
+        signalType,
+        (event) => {
+          handleDogSignal(event, persistence, context).catch((err) => {
+            log.debug('Dog signal handler error', { error: err.message });
+          });
+        }
+      );
+      _unsubscribers.push(unsubSignal);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Subscribe to CYNIC_STATE (AXE 2+ - sampled every 5th)
+    // ─────────────────────────────────────────────────────────────────────────────
+    const unsubCynicState = globalEventBus.subscribe(
+      EventType.CYNIC_STATE,
+      (event) => {
+        handleCynicState(event, persistence, context).catch((err) => {
+          log.debug('CYNIC state handler error', { error: err.message });
+        });
+      }
+    );
+    _unsubscribers.push(unsubCynicState);
+
+    log.info('Dog collective event listeners wired (AXE 2+)');
+  }
+
   _started = true;
   _stats.startedAt = Date.now();
 
@@ -443,6 +629,7 @@ export function startEventListeners(options = {}) {
     hasFeedbackRepo: !!repositories.feedback,
     hasSessionsRepo: !!repositories.sessions,
     hasSharedMemory: !!sharedMemory,
+    hasPersistence: !!persistence?.query,
   });
 
   /**

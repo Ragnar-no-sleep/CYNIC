@@ -13,7 +13,7 @@
 
 'use strict';
 
-import { createLogger, PHI_INV, PHI_INV_2 } from '@cynic/core';
+import { createLogger, PHI_INV, PHI_INV_2, globalEventBus, EventType as CoreEventType } from '@cynic/core';
 import { EventType, getEventBus } from '../../services/event-bus.js';
 
 const log = createLogger('AmbientConsensus');
@@ -358,8 +358,17 @@ export class AmbientConsensus {
       stats: result.stats,
     });
 
-    // Emit consensus result
+    // Emit consensus result (local bus)
     this.eventBus.publish('consensus:completed', result);
+
+    // Also publish to globalEventBus for persistence
+    try {
+      globalEventBus.publish(CoreEventType.CONSENSUS_COMPLETED, result, {
+        source: 'AmbientConsensus',
+      });
+    } catch (e) {
+      // Non-critical - don't break consensus flow
+    }
 
     return result;
   }

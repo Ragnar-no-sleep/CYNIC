@@ -445,27 +445,60 @@ Confidence: [██████░░░░] 62% ← MAX (φ⁻¹)
 
 ---
 
-## CURRENT PROJECT STATE (2026-02-02)
+## CURRENT PROJECT STATE (2026-02-05)
 
-### Completed (AXE 1: WIRE)
-- ✅ CollectivePack Singleton created (`collective-singleton.js`)
-- ✅ All components wired to singleton (MCP, Hooks, Node)
-- ✅ Dogs no longer mocked - real execution
-- ✅ Score: 72.5% (was 69.2%)
+### Completed Axes
 
-### Next Steps (AXE 2: PERSIST)
-- [ ] Persist Q-Table to PostgreSQL
-- [ ] Persist SharedMemory patterns
-- [ ] Persist EWC++ Fisher scores
+**AXE 1: WIRE** (done)
+- ✅ CollectivePack Singleton (`collective-singleton.js`)
+- ✅ All components wired (MCP, Hooks, Node)
+- ✅ Dogs real execution, no mocks
+
+**AXE 2: PERSIST** (done)
+- ✅ Q-Table → PostgreSQL (migration 026)
+- ✅ SharedMemory patterns → PostgreSQL (migration 022)
+- ✅ EWC++ Fisher scores → PostgreSQL (migration 021)
+- ✅ DPO preference pairs → PostgreSQL (migration 028)
+
+**AXE 2+: CLOSE DATA LOOPS** (done)
+- ✅ Fixed silent bug: `EventType.CYNIC_STATE`, `DOG_EVENT`, `CONSENSUS_COMPLETED` added to core enum
+- ✅ Dog events persisted → `dog_events` table (migration 029)
+- ✅ Consensus votes persisted → `consensus_votes` table (migration 029)
+- ✅ Inter-dog signals persisted → `dog_signals` table (migration 029)
+- ✅ Collective snapshots persisted → `collective_snapshots` table (sampled, migration 029)
+- ✅ AmbientConsensus publishes to globalEventBus
+- ✅ ThompsonSampler extracted → `thompson-sampler.js` (BURN)
+- ✅ TemporalPatternAnalyzer extracted → `temporal-pattern-analyzer.js` (BURN)
+
+### Data Flow (Events → Tables)
+
+| Event | Table | Source |
+|-------|-------|--------|
+| `JUDGMENT_CREATED` | `judgments` | Judge |
+| `USER_FEEDBACK` | `feedback` | Hooks |
+| `SESSION_ENDED` | SharedMemory consolidation | Session |
+| `DOG_EVENT` | `dog_events` | DogStateEmitter |
+| `CONSENSUS_COMPLETED` | `consensus_votes` | AmbientConsensus |
+| `DogSignal.*` (7 types) | `dog_signals` | AmbientConsensus |
+| `CYNIC_STATE` | `collective_snapshots` (sampled 1:5) | DogStateEmitter |
+
+### Next Steps
+- [ ] **AXE 3: BURN server.js** - Extract from 2000+ line monolith (high risk, own AXE)
+- [ ] Wire persistence to `startEventListeners()` in production startup
+- [ ] Add cleanup cron for dog_events/snapshots tables
 
 ### Key Files
 ```
-SINGLETON:     packages/node/src/collective-singleton.js
-ORCHESTRATOR:  packages/node/src/orchestration/unified-orchestrator.js
-MCP SERVER:    packages/mcp/src/server.js
-HOOKS:         scripts/hooks/awaken.js, pre-tool.js, observe.js
-ROADMAP:       .claude/plans/integration-roadmap.md
-AUDIT:         scripts/tikkun/architecture-audit.json
+SINGLETON:        packages/node/src/collective-singleton.js
+ORCHESTRATOR:     packages/node/src/orchestration/unified-orchestrator.js
+EVENT LISTENERS:  packages/node/src/services/event-listeners.js
+EVENT BUS:        packages/core/src/bus/event-bus.js
+CONSENSUS:        packages/node/src/agents/collective/ambient-consensus.js
+DOG STATE:        packages/node/src/perception/dog-state-emitter.js
+MCP SERVER:       packages/mcp/src/server.js
+HOOKS:            scripts/hooks/awaken.js, pre-tool.js, observe.js
+MIGRATIONS:       packages/persistence/src/postgres/migrations/
+ROADMAP:          .claude/plans/integration-roadmap.md
 ```
 
 ### How CYNIC Controls Claude Code
@@ -473,6 +506,7 @@ AUDIT:         scripts/tikkun/architecture-audit.json
 2. **MCP Tools** (brain_*) provide 90 tools for Claude to call
 3. **CollectivePack** (11 Dogs) makes collective decisions
 4. **Guardian** can BLOCK dangerous commands
+5. **Event Listeners** persist all dog/consensus events to PostgreSQL
 
 **Read `.claude/plans/integration-roadmap.md` for full context.**
 

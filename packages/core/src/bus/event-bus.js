@@ -61,6 +61,11 @@ export const EventType = {
   SYNC_REQUESTED: 'sync:requested',
   SYNC_COMPLETED: 'sync:completed',
   STATE_CHANGED: 'state:changed',
+
+  // Dog collective events
+  CYNIC_STATE: 'cynic:state',
+  DOG_EVENT: 'dog:event',
+  CONSENSUS_COMPLETED: 'consensus:completed',
 };
 
 /**
