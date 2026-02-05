@@ -722,6 +722,86 @@ export class TriggerEngine {
   }
 
   /**
+   * Get current engine state (for debugging/monitoring)
+   * @returns {Object} Current trigger engine state
+   */
+  getState() {
+    const now = Date.now();
+    return {
+      enabled: this.enabled,
+      votingThreshold: this.votingThreshold,
+      context: { ...engineState.context },
+      cooldowns: Object.entries(engineState.cooldowns).reduce((acc, [type, lastFired]) => {
+        const trigger = TRIGGER_TYPES[type];
+        const remaining = trigger ? Math.max(0, (lastFired + trigger.cooldown) - now) : 0;
+        acc[type] = {
+          lastFired: new Date(lastFired).toISOString(),
+          remainingMs: remaining,
+          canFire: remaining === 0,
+        };
+        return acc;
+      }, {}),
+      pendingSuggestions: engineState.pendingSuggestions.length,
+      outcomesRecorded: engineState.outcomes.length,
+      triggers: Object.entries(TRIGGER_TYPES).map(([name, def]) => ({
+        name,
+        action: def.action,
+        urgency: def.urgency,
+        cooldownMs: def.cooldown,
+        threshold: def.threshold,
+      })),
+    };
+  }
+
+  /**
+   * Force fire a trigger (for testing/debugging)
+   * Clears cooldown and forces the trigger to fire regardless of conditions
+   * @param {string} triggerName - Trigger type name
+   * @param {Object} [overrideContext] - Context overrides to force condition
+   * @returns {Object|null} Generated suggestion or null
+   */
+  forceFire(triggerName, overrideContext = {}) {
+    const trigger = TRIGGER_TYPES[triggerName];
+    if (!trigger) {
+      return { error: `Unknown trigger: ${triggerName}` };
+    }
+
+    // Clear cooldown for this trigger
+    delete engineState.cooldowns[triggerName];
+
+    // Override context to force condition to be met
+    const savedContext = { ...engineState.context };
+
+    // Apply overrides based on trigger type
+    if (triggerName === 'BURNOUT_RISK') {
+      engineState.context.userEnergy = 0.2; // Below 38.2%
+    } else if (triggerName === 'ERROR_PATTERN') {
+      // antiPatternState is external, can't easily force
+      // Return a simulated suggestion
+      return {
+        id: `sug_force_${Date.now()}`,
+        trigger: triggerName,
+        action: trigger.action,
+        urgency: trigger.urgency,
+        message: `[FORCED] Same error 3+ times detected. Consider: check the error message, try a different approach.`,
+        data: overrideContext,
+        forced: true,
+      };
+    }
+
+    // Apply custom overrides
+    Object.assign(engineState.context, overrideContext);
+
+    // Evaluate the specific trigger
+    const suggestion = this.evaluate(triggerName);
+
+    // Restore context
+    engineState.context = savedContext;
+
+    return suggestion || { error: `Trigger ${triggerName} did not fire even with forced context` };
+  }
+
+  /**
    * Reset engine state (for testing)
    */
   reset() {
