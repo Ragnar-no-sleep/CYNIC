@@ -150,6 +150,8 @@ const instance = createIdentity();
 | `SolanaSignificance` | SolanaSignificance implementation |
 | `HypothesisSet` | HypothesisSet implementation |
 | `BeliefNetwork` | BeliefNetwork implementation |
+| `PoissonProcess` | PoissonProcess implementation |
+| `EventRateTracker` | EventRateTracker implementation |
 
 ### Factory Functions
 
@@ -198,6 +200,8 @@ const instance = createIdentity();
 | `createBetaTracker()` | Create BetaTracker instance |
 | `createClassifier()` | Create Classifier instance |
 | `createBeliefNetwork()` | Create BeliefNetwork instance |
+| `createPoissonProcess()` | Create PoissonProcess instance |
+| `createEventTracker()` | Create EventTracker instance |
 
 ### Singletons
 
@@ -251,11 +255,11 @@ const instance = createIdentity();
 
 ### Constants
 
-`SKEPTIC_CONSTANTS`, `CONTEXT_DOMAIN_MAP`, `COLLECTIVE_CONSTANTS`, `CYNIC_CONSTANTS`, `ANCHOR_CONSTANTS`, `DEFAULT_CONFIG`, `BURN_ADDRESSES`, `AWARENESS_THRESHOLDS`, `MAX_CONFIDENCE`, `SIGNIFICANCE_THRESHOLDS` + 18 more
+`SKEPTIC_CONSTANTS`, `CONTEXT_DOMAIN_MAP`, `COLLECTIVE_CONSTANTS`, `CYNIC_CONSTANTS`, `ANCHOR_CONSTANTS`, `DEFAULT_CONFIG`, `BURN_ADDRESSES`, `AWARENESS_THRESHOLDS`, `MAX_CONFIDENCE`, `SIGNIFICANCE_THRESHOLDS` + 19 more
 
 ### Functions
 
-`importIdentity`, `exportIdentity`, `calculateCompositeEScore`, `updateEScoreState`, `dimensionRegistry`, `resetLearningScheduler`, `serialize`, `deserialize`, `isValidMessage`, `initializeQLearning` + 48 more
+`importIdentity`, `exportIdentity`, `calculateCompositeEScore`, `updateEScoreState`, `dimensionRegistry`, `resetLearningScheduler`, `serialize`, `deserialize`, `isValidMessage`, `initializeQLearning` + 63 more
 
 ## Dependencies
 
@@ -264,10 +268,10 @@ const instance = createIdentity();
 
 ## Stats
 
-- **Source files**: 218
-- **Test files**: 59
+- **Source files**: 219
+- **Test files**: 60
 - **Test ratio**: 27%
-- **Exports**: 297 named
+- **Exports**: 317 named
 
 ## Fractal Structure
 
@@ -280,7 +284,7 @@ const instance = createIdentity();
 [███░░░░░░░] 27% φ (Confidence)
 [█████░░░░░] 50% Verify
 [█████░░░░░] 50% Culture
-[█████░░░░░] 55% Burn (Simplicity)
+[█████░░░░░] 52% Burn (Simplicity)
 [██████░░░░] 62% Emergence
 ```
 

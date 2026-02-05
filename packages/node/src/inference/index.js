@@ -45,3 +45,41 @@ export {
   // Config
   BAYES_CONFIG,
 } from './bayes.js';
+
+// Poisson Distribution for Rare Events
+export {
+  // Core functions
+  factorial,
+  logFactorial,
+  poissonPMF,
+  poissonCDF,
+  poissonSurvival,
+  poissonQuantile,
+  poissonMean,
+  poissonVariance,
+  poissonStdDev,
+
+  // Rate estimation
+  estimateRate,
+  rateConfidenceInterval,
+
+  // Anomaly detection
+  detectAnomaly,
+  anomalyScore,
+
+  // Process classes
+  PoissonProcess,
+  EventRateTracker,
+
+  // Utilities
+  poissonGoodnessOfFit,
+  waitingTimeCDF,
+  timeToNEvents,
+
+  // Factories
+  createPoissonProcess,
+  createEventTracker,
+
+  // Config
+  POISSON_CONFIG,
+} from './poisson.js';
