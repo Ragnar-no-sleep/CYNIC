@@ -14,6 +14,20 @@ import { PHI_INV, PHI_INV_2, createLogger } from '@cynic/core';
 
 const log = createLogger('Learner');
 
+// Lazy-load UnifiedSignalStore to avoid circular deps
+let _signalStore = null;
+async function getSignalStore() {
+  if (_signalStore) return _signalStore;
+  try {
+    const { getUnifiedSignalStore } = await import('@cynic/node');
+    _signalStore = getUnifiedSignalStore();
+    return _signalStore;
+  } catch (e) {
+    log.debug('UnifiedSignalStore not available', { error: e.message });
+    return null;
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // Configuration
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -350,11 +364,18 @@ export class Learner extends EventEmitter {
    * @private
    */
   async _persistSignal(signal) {
-    // In production, would call:
-    // const store = getUnifiedSignalStore();
-    // await store.record(signal);
+    try {
+      const store = await getSignalStore();
+      if (!store) {
+        log.debug('Signal store not available, skipping persistence', { id: signal.id });
+        return;
+      }
 
-    log.debug('Signal would be persisted', { id: signal.id });
+      await store.record(signal);
+      log.debug('Signal persisted to UnifiedSignalStore', { id: signal.id });
+    } catch (e) {
+      log.warn('Failed to persist signal', { id: signal.id, error: e.message });
+    }
   }
 
   /**

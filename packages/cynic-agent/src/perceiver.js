@@ -12,9 +12,17 @@
 
 import { EventEmitter } from 'eventemitter3';
 import { createSolanaRpc, address } from '@solana/kit';
-import { PHI_INV, PHI_INV_2, createLogger } from '@cynic/core';
+import { PHI_INV, PHI_INV_2, createLogger, globalEventBus } from '@cynic/core';
 
 const log = createLogger('Perceiver');
+
+// Dynamic import of SolanaWatcher (handle if not available)
+let SolanaWatcherModule = null;
+try {
+  SolanaWatcherModule = await import('@cynic/node/perception/solana-watcher.js');
+} catch (e) {
+  log.debug('SolanaWatcher not available - API-only mode');
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // API Endpoints
@@ -46,6 +54,10 @@ const DEFAULT_CONFIG = {
   priceChangeThreshold: 0.03, // 3% price change triggers signal
   liquidityThreshold: 10000, // Minimum liquidity in USD
   useRealAPIs: true, // Toggle for real vs synthetic
+  // SolanaWatcher config
+  useSolanaWatcher: true, // Enable WebSocket monitoring
+  cluster: process.env.SOLANA_CLUSTER || 'mainnet',
+  whaleThreshold: 100, // SOL amount to consider "whale"
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -60,6 +72,9 @@ export const SignalType = {
   NEW_TOKEN: 'new_token',
   LIQUIDITY_ADDED: 'liquidity_added',
   LIQUIDITY_REMOVED: 'liquidity_removed',
+  // SolanaWatcher signals
+  SWAP_DETECTED: 'swap_detected',
+  ACCOUNT_CHANGE: 'account_change',
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -93,7 +108,12 @@ export class Perceiver extends EventEmitter {
       signalsDetected: 0,
       opportunitiesFound: 0,
       errors: 0,
+      solanaEvents: 0, // SolanaWatcher events
     };
+
+    // SolanaWatcher state
+    this.solanaWatcher = null;
+    this._watcherSubscriptions = [];
   }
 
   /**
@@ -107,13 +127,21 @@ export class Perceiver extends EventEmitter {
     this.rpc = createSolanaRpc(this.config.rpcUrl);
     this.isRunning = true;
 
+    // Initialize SolanaWatcher for WebSocket monitoring
+    if (this.config.useSolanaWatcher && SolanaWatcherModule) {
+      await this._initSolanaWatcher();
+    }
+
     // Initial poll
     await this._poll();
 
     // Start polling loop
     this.pollTimer = setInterval(() => this._poll(), this.config.pollInterval);
 
-    log.info('Perceiver started');
+    log.info('Perceiver started', {
+      polling: true,
+      solanaWatcher: !!this.solanaWatcher,
+    });
   }
 
   /**
@@ -127,8 +155,142 @@ export class Perceiver extends EventEmitter {
       this.pollTimer = null;
     }
 
+    // Stop SolanaWatcher
+    if (this.solanaWatcher) {
+      try {
+        await this.solanaWatcher.stop();
+        this.solanaWatcher = null;
+        this._watcherSubscriptions = [];
+      } catch (e) {
+        log.warn('Error stopping SolanaWatcher', { error: e.message });
+      }
+    }
+
     this.isRunning = false;
     log.info('Perceiver stopped');
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // SolanaWatcher Integration
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Initialize SolanaWatcher for WebSocket-based monitoring
+   * @private
+   */
+  async _initSolanaWatcher() {
+    try {
+      const { SolanaWatcher } = SolanaWatcherModule;
+
+      this.solanaWatcher = new SolanaWatcher({
+        rpcUrl: this.config.rpcUrl,
+        cluster: this.config.cluster,
+      });
+
+      await this.solanaWatcher.start();
+
+      // Watch major swap programs
+      const swapPrograms = [
+        'JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4', // Jupiter v6
+        '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8', // Raydium AMM
+        'whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc', // Orca Whirlpool
+      ];
+
+      for (const program of swapPrograms) {
+        try {
+          const subId = await this.solanaWatcher.watchLogs(program);
+          this._watcherSubscriptions.push(subId);
+        } catch (e) {
+          log.debug('Could not watch program', { program, error: e.message });
+        }
+      }
+
+      // Wire event handlers
+      this.solanaWatcher.on('log', (event) => this._handleSwapLog(event));
+      this.solanaWatcher.on('account_change', (event) => this._handleAccountChange(event));
+
+      log.info('SolanaWatcher initialized', {
+        subscriptions: this._watcherSubscriptions.length,
+        cluster: this.config.cluster,
+      });
+    } catch (error) {
+      log.warn('SolanaWatcher init failed - continuing with API-only mode', {
+        error: error.message,
+      });
+      this.solanaWatcher = null;
+    }
+  }
+
+  /**
+   * Handle swap logs from SolanaWatcher
+   * @private
+   */
+  _handleSwapLog(event) {
+    this.metrics.solanaEvents++;
+
+    const logs = event.logs || [];
+    const isSwap = logs.some(log =>
+      log.includes('Swap') || log.includes('swap') || log.includes('Instruction: Route')
+    );
+
+    if (isSwap) {
+      const signal = {
+        type: SignalType.SWAP_DETECTED,
+        token: 'Unknown', // Would need parsing from logs
+        mint: null,
+        data: {
+          signature: event.signature,
+          slot: event.slot,
+          logs: logs.slice(0, 5), // First 5 logs for context
+        },
+        timestamp: event.timestamp || Date.now(),
+        source: 'solana_watcher',
+        confidence: PHI_INV_2, // 38.2% - low confidence until verified
+      };
+
+      this._recordSignal(signal);
+
+      // Emit as potential opportunity
+      if (this._isOpportunity(signal)) {
+        this.metrics.opportunitiesFound++;
+        this.emit('opportunity', this._signalToOpportunity(signal));
+      }
+    }
+  }
+
+  /**
+   * Handle account changes (whale movements)
+   * @private
+   */
+  _handleAccountChange(event) {
+    this.metrics.solanaEvents++;
+
+    const solChange = (event.lamports || 0) / 1e9;
+    const absChange = Math.abs(solChange);
+
+    // Only signal for whale movements
+    if (absChange >= this.config.whaleThreshold) {
+      const signal = {
+        type: SignalType.WHALE_MOVEMENT,
+        token: 'SOL',
+        mint: KNOWN_TOKENS.SOL,
+        data: {
+          pubkey: event.pubkey,
+          solChange,
+          slot: event.slot,
+          direction: solChange > 0 ? 'inflow' : 'outflow',
+        },
+        timestamp: event.timestamp || Date.now(),
+        source: 'solana_watcher',
+        confidence: PHI_INV, // 61.8% - high confidence for on-chain data
+      };
+
+      this._recordSignal(signal);
+
+      // Whale movements are always interesting
+      this.metrics.opportunitiesFound++;
+      this.emit('opportunity', this._signalToOpportunity(signal));
+    }
   }
 
   /**
