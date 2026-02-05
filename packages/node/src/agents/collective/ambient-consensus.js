@@ -13,8 +13,14 @@
 
 'use strict';
 
-import { createLogger, PHI_INV, PHI_INV_2, globalEventBus, EventType as CoreEventType } from '@cynic/core';
+import { createLogger, PHI_INV, PHI_INV_2, PHI_INV_3, globalEventBus, EventType as CoreEventType } from '@cynic/core';
 import { EventType, getEventBus } from '../../services/event-bus.js';
+
+// Math modules for intelligent consensus
+import { BetaDistribution } from '../../inference/bayes.js';
+import { createMarkovChain } from '../../inference/markov.js';
+import { computeStats, zScore } from '../../inference/gaussian.js';
+import { entropyConfidence, normalizedEntropy } from '../../inference/entropy.js';
 
 const log = createLogger('AmbientConsensus');
 
@@ -60,6 +66,25 @@ export class AmbientConsensus {
     this._running = false;
     this._consensusCount = 0;
     this._lastConsensus = null;
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // MATH MODULE INTEGRATION
+    // ═══════════════════════════════════════════════════════════════════════
+
+    // Markov chain for predicting consensus outcomes by topic type
+    // States: approved, rejected, insufficient
+    this.outcomeChain = createMarkovChain(['approved', 'rejected', 'insufficient']);
+
+    // Bayesian track records per dog (Beta distribution)
+    // α = correct votes, β = incorrect votes
+    // Prior: α=1, β=1 → uniform (no bias)
+    this.dogTrackRecords = {};
+
+    // Vote history for anomaly detection (per dog)
+    this.dogVoteHistory = {};
+
+    // Consensus history for entropy analysis
+    this.consensusHistory = [];
 
     // Bind methods
     this._onPreToolUse = this._onPreToolUse.bind(this);
@@ -251,6 +276,219 @@ export class AmbientConsensus {
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MATH MODULE METHODS (Bayes, Markov, Gaussian, Entropy)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Initialize or get track record for a dog
+   * @private
+   * @param {string} dogName - Dog name
+   * @returns {BetaDistribution} Track record
+   */
+  _getDogTrackRecord(dogName) {
+    if (!this.dogTrackRecords[dogName]) {
+      // Prior: uniform (α=1, β=1)
+      this.dogTrackRecords[dogName] = new BetaDistribution(1, 1);
+    }
+    return this.dogTrackRecords[dogName];
+  }
+
+  /**
+   * Calculate weighted vote based on dog's track record
+   * Dogs with better accuracy get higher weight (φ-bounded)
+   * @private
+   * @param {string} dogName - Dog name
+   * @param {string} vote - approve/reject/abstain
+   * @returns {Object} {weight, confidence}
+   */
+  _calculateVoteWeight(dogName, vote) {
+    if (vote === 'abstain') {
+      return { weight: 0, confidence: 0 };
+    }
+
+    const trackRecord = this._getDogTrackRecord(dogName);
+    const accuracy = trackRecord.getMean();
+    const strength = trackRecord.getStrength();
+
+    // Weight increases with accuracy, φ-bounded
+    // More observations → higher confidence in the weight
+    const rawWeight = accuracy;
+    const confidence = Math.min(PHI_INV, strength / 20); // 20 votes = max raw confidence
+
+    return {
+      weight: Math.min(PHI_INV, rawWeight), // Never exceed φ⁻¹
+      confidence,
+      accuracy,
+      strength,
+    };
+  }
+
+  /**
+   * Update dog's track record based on consensus outcome
+   * @private
+   * @param {string} dogName - Dog name
+   * @param {string} vote - Dog's vote
+   * @param {boolean} consensusApproved - Final outcome
+   */
+  _updateDogTrackRecord(dogName, vote, consensusApproved) {
+    if (vote === 'abstain') return;
+
+    const trackRecord = this._getDogTrackRecord(dogName);
+    const votedCorrectly =
+      (vote === 'approve' && consensusApproved) ||
+      (vote === 'reject' && !consensusApproved);
+
+    if (votedCorrectly) {
+      trackRecord.recordSuccess();
+    } else {
+      trackRecord.recordFailure();
+    }
+  }
+
+  /**
+   * Record vote for anomaly detection
+   * @private
+   * @param {string} dogName - Dog name
+   * @param {number} voteValue - 1 (approve), 0 (abstain), -1 (reject)
+   */
+  _recordVoteForAnomaly(dogName, voteValue) {
+    if (!this.dogVoteHistory[dogName]) {
+      this.dogVoteHistory[dogName] = [];
+    }
+    this.dogVoteHistory[dogName].push(voteValue);
+
+    // Keep bounded at Fib(8) = 21
+    while (this.dogVoteHistory[dogName].length > 21) {
+      this.dogVoteHistory[dogName].shift();
+    }
+  }
+
+  /**
+   * Detect if a vote is anomalous for this dog
+   * @private
+   * @param {string} dogName - Dog name
+   * @param {number} voteValue - Vote value
+   * @returns {Object} {isAnomaly, zScore, severity}
+   */
+  _detectVoteAnomaly(dogName, voteValue) {
+    const history = this.dogVoteHistory[dogName] || [];
+
+    if (history.length < 5) {
+      return { isAnomaly: false, zScore: 0, severity: 'none' };
+    }
+
+    // Compute stats from history (exclude current)
+    const prevHistory = history.slice(0, -1);
+    const stats = computeStats(prevHistory);
+    const z = zScore(voteValue, stats.mean, stats.stdDev);
+
+    // Classify severity using φ thresholds
+    let severity = 'none';
+    let isAnomaly = false;
+
+    if (Math.abs(z) > 2.5) {
+      severity = 'significant';
+      isAnomaly = true;
+    } else if (Math.abs(z) > 1.5) {
+      severity = 'minor';
+    }
+
+    return {
+      isAnomaly,
+      zScore: Math.round(z * 100) / 100,
+      severity,
+    };
+  }
+
+  /**
+   * Predict consensus outcome using Markov chain
+   * @private
+   * @param {string} topic - Consensus topic
+   * @returns {Object} Prediction
+   */
+  _predictOutcome(topic) {
+    // Map last outcome to prediction
+    const lastOutcome = this._lastConsensus?.reason === 'consensus_reached' ? 'approved' :
+      this._lastConsensus?.reason === 'insufficient_voters' ? 'insufficient' : 'rejected';
+
+    const prediction = this.outcomeChain.predict(lastOutcome);
+
+    return {
+      predictedOutcome: prediction.state || 'approved',
+      probability: prediction.probability,
+      confidence: prediction.confidence,
+      basedOn: lastOutcome,
+    };
+  }
+
+  /**
+   * Record outcome for Markov learning
+   * @private
+   * @param {string} outcome - Outcome state
+   */
+  _recordOutcome(outcome) {
+    const lastOutcome = this._lastConsensus?.reason === 'consensus_reached' ? 'approved' :
+      this._lastConsensus?.reason === 'insufficient_voters' ? 'insufficient' : 'rejected';
+
+    // Only record if we have a previous outcome
+    if (this._consensusCount > 1) {
+      this.outcomeChain.observe(lastOutcome, outcome);
+    }
+  }
+
+  /**
+   * Calculate voting entropy (division measure)
+   * @private
+   * @param {number} approveCount - Approve votes
+   * @param {number} rejectCount - Reject votes
+   * @param {number} abstainCount - Abstain votes
+   * @returns {Object} {entropy, normalized, division}
+   */
+  _calculateVotingEntropy(approveCount, rejectCount, abstainCount) {
+    const counts = [approveCount, rejectCount, abstainCount].filter(c => c > 0);
+
+    if (counts.length <= 1) {
+      return { entropy: 0, normalized: 0, division: 'unanimous' };
+    }
+
+    const analysis = entropyConfidence(counts);
+
+    // Classify division level
+    let division = 'unanimous';
+    if (analysis.normalized > PHI_INV) {
+      division = 'deeply_divided';
+    } else if (analysis.normalized > PHI_INV_2) {
+      division = 'divided';
+    } else if (analysis.normalized > PHI_INV_3) {
+      division = 'slight_disagreement';
+    }
+
+    return {
+      entropy: analysis.entropy,
+      normalized: analysis.normalized,
+      division,
+      confidence: analysis.confidence,
+    };
+  }
+
+  /**
+   * Get dog track record statistics
+   * @returns {Object} Track records by dog
+   */
+  getDogStats() {
+    const stats = {};
+    for (const [dogName, record] of Object.entries(this.dogTrackRecords)) {
+      stats[dogName] = {
+        accuracy: record.getMean(),
+        strength: record.getStrength(),
+        alpha: record.alpha,
+        beta: record.beta,
+      };
+    }
+    return stats;
+  }
+
   /**
    * Trigger consensus vote across all Dogs
    *
@@ -265,6 +503,10 @@ export class AmbientConsensus {
     const consensusId = `consensus_${this._consensusCount}_${Date.now()}`;
 
     log.info('Triggering consensus', { consensusId, topic, reason });
+
+    // Predict outcome using Markov chain (before voting)
+    const prediction = this._predictOutcome(topic);
+    log.debug('Outcome prediction', prediction);
 
     // Collect votes from all Dogs with voteOnConsensus method
     const voters = [];
@@ -297,22 +539,59 @@ export class AmbientConsensus {
     // Wait for all votes
     const voteResults = await Promise.all(votePromises);
 
-    // Tally votes
+    // Tally votes with weighted voting and anomaly detection
     const votes = {};
     let approveCount = 0;
     let rejectCount = 0;
     let abstainCount = 0;
+    let weightedApprove = 0;
+    let weightedReject = 0;
+    let totalWeight = 0;
     let guardianVeto = false;
+    const anomalies = [];
 
     for (let i = 0; i < voters.length; i++) {
       const dogName = voters[i];
       const voteResult = voteResults[i];
 
-      votes[dogName] = voteResult;
+      // Calculate vote weight based on track record
+      const voteWeight = this._calculateVoteWeight(dogName, voteResult.vote);
 
-      if (voteResult.vote === 'approve') approveCount++;
-      else if (voteResult.vote === 'reject') rejectCount++;
-      else abstainCount++;
+      // Convert vote to numeric for anomaly detection
+      const voteValue = voteResult.vote === 'approve' ? 1 :
+        voteResult.vote === 'reject' ? -1 : 0;
+
+      // Record for anomaly history
+      this._recordVoteForAnomaly(dogName, voteValue);
+
+      // Detect anomaly
+      const anomaly = this._detectVoteAnomaly(dogName, voteValue);
+      if (anomaly.isAnomaly) {
+        anomalies.push({ dog: dogName, vote: voteResult.vote, ...anomaly });
+      }
+
+      // Store enriched vote
+      votes[dogName] = {
+        ...voteResult,
+        weight: voteWeight.weight,
+        trackRecord: voteWeight.accuracy,
+        anomaly: anomaly.isAnomaly ? anomaly : null,
+      };
+
+      // Tally simple counts
+      if (voteResult.vote === 'approve') {
+        approveCount++;
+        weightedApprove += voteWeight.weight;
+      } else if (voteResult.vote === 'reject') {
+        rejectCount++;
+        weightedReject += voteWeight.weight;
+      } else {
+        abstainCount++;
+      }
+
+      if (voteResult.vote !== 'abstain') {
+        totalWeight += voteWeight.weight;
+      }
 
       // Guardian veto on safety topics
       if (dogName === 'guardian' && voteResult.vote === 'reject' && topic.includes('safety')) {
@@ -320,14 +599,29 @@ export class AmbientConsensus {
       }
     }
 
-    // Calculate agreement
+    // Calculate voting entropy (division measure)
+    const votingEntropy = this._calculateVotingEntropy(approveCount, rejectCount, abstainCount);
+
+    // Calculate agreement (both simple and weighted)
     const totalVoters = voters.length - abstainCount;
-    const agreement = totalVoters > 0 ? approveCount / totalVoters : 0;
+    const simpleAgreement = totalVoters > 0 ? approveCount / totalVoters : 0;
+    const weightedAgreement = totalWeight > 0 ? weightedApprove / totalWeight : 0;
+
+    // Use weighted agreement for decision (blended with simple)
+    // 70% weighted + 30% simple to respect track records while not ignoring any dog
+    const agreement = weightedAgreement * 0.7 + simpleAgreement * 0.3;
 
     // Determine approval
     const approved = !guardianVeto &&
       totalVoters >= CONSENSUS_THRESHOLDS.MIN_VOTERS &&
       agreement >= CONSENSUS_THRESHOLDS.AGREEMENT_THRESHOLD;
+
+    // Determine outcome for Markov
+    const outcome = approved ? 'approved' :
+      totalVoters < CONSENSUS_THRESHOLDS.MIN_VOTERS ? 'insufficient' : 'rejected';
+
+    // Record outcome for Markov learning
+    this._recordOutcome(outcome);
 
     const result = {
       consensusId,
@@ -346,7 +640,36 @@ export class AmbientConsensus {
         guardianVeto ? 'guardian_veto' :
         totalVoters < CONSENSUS_THRESHOLDS.MIN_VOTERS ? 'insufficient_voters' :
         'consensus_not_reached',
+      // New: Math enrichments
+      inference: {
+        prediction,
+        predictionCorrect: prediction.predictedOutcome === outcome,
+        weightedAgreement,
+        simpleAgreement,
+        votingEntropy,
+        anomalies,
+        hasAnomalies: anomalies.length > 0,
+      },
     };
+
+    // Update dog track records based on outcome
+    for (const [dogName, voteData] of Object.entries(votes)) {
+      this._updateDogTrackRecord(dogName, voteData.vote, approved);
+    }
+
+    // Store in history for entropy analysis
+    this.consensusHistory.push({
+      timestamp: Date.now(),
+      topic,
+      outcome,
+      agreement,
+      entropy: votingEntropy.normalized,
+    });
+
+    // Keep history bounded at Fib(10) = 55
+    while (this.consensusHistory.length > 55) {
+      this.consensusHistory.shift();
+    }
 
     this._lastConsensus = result;
 
@@ -355,7 +678,10 @@ export class AmbientConsensus {
       topic,
       approved,
       agreement: `${(agreement * 100).toFixed(1)}%`,
+      weighted: `${(weightedAgreement * 100).toFixed(1)}%`,
       stats: result.stats,
+      division: votingEntropy.division,
+      predictionCorrect: result.inference.predictionCorrect,
     });
 
     // Emit consensus result (local bus)
@@ -374,15 +700,63 @@ export class AmbientConsensus {
   }
 
   /**
-   * Get consensus statistics
+   * Get consensus statistics (enriched with math)
    */
   getStats() {
+    // Calculate overall entropy trend
+    const recentEntropy = this.consensusHistory.slice(-10).map(h => h.entropy);
+    const entropyTrend = recentEntropy.length >= 3 ?
+      (recentEntropy[recentEntropy.length - 1] > recentEntropy[0] ? 'increasing' : 'decreasing') :
+      'unknown';
+
+    // Prediction accuracy
+    const predictions = this.consensusHistory.filter(h => h.predictionCorrect !== undefined);
+    const predictionAccuracy = predictions.length > 0 ?
+      predictions.filter(p => p.predictionCorrect).length / predictions.length : 0;
+
     return {
       running: this._running,
       consensusCount: this._consensusCount,
       lastConsensus: this._lastConsensus,
       thresholds: CONSENSUS_THRESHOLDS,
+      // New: Math enrichments
+      inference: {
+        dogStats: this.getDogStats(),
+        entropyTrend,
+        predictionAccuracy: Math.min(PHI_INV, predictionAccuracy), // φ-bounded
+        historySize: this.consensusHistory.length,
+        outcomeDistribution: this._getOutcomeDistribution(),
+      },
     };
+  }
+
+  /**
+   * Get outcome distribution from history
+   * @private
+   */
+  _getOutcomeDistribution() {
+    const counts = { approved: 0, rejected: 0, insufficient: 0 };
+    for (const h of this.consensusHistory) {
+      if (counts[h.outcome] !== undefined) {
+        counts[h.outcome]++;
+      }
+    }
+    const total = this.consensusHistory.length || 1;
+    return {
+      approved: counts.approved / total,
+      rejected: counts.rejected / total,
+      insufficient: counts.insufficient / total,
+    };
+  }
+
+  /**
+   * Reset math module state
+   */
+  resetInference() {
+    this.outcomeChain = createMarkovChain(['approved', 'rejected', 'insufficient']);
+    this.dogTrackRecords = {};
+    this.dogVoteHistory = {};
+    this.consensusHistory = [];
   }
 }
 

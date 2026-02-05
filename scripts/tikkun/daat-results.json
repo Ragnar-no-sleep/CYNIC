@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-02-05T19:53:01.846Z",
+  "timestamp": "2026-02-05T23:34:25.330Z",
   "version": "1.0.0",
   "categories": {
     "core": {
@@ -336,10 +336,10 @@
           "name": "Migrations exist",
           "ok": true,
           "details": {
-            "count": 27,
-            "latest": "028_dpo_learning.sql"
+            "count": 28,
+            "latest": "029_dog_collective_events.sql"
           },
-          "message": "27 migrations (latest: 028_dpo_learning.sql)"
+          "message": "28 migrations (latest: 029_dog_collective_events.sql)"
         },
         {
           "id": "embedder",
@@ -509,7 +509,7 @@
             },
             {
               "package": "node",
-              "count": 48
+              "count": 61
             },
             {
               "package": "persistence",
@@ -524,7 +524,7 @@
               "count": 1
             }
           ],
-          "message": "140 test files in 15 packages"
+          "message": "153 test files in 15 packages"
         },
         {
           "id": "benchmark-files",
