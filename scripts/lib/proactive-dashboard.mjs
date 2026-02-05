@@ -32,58 +32,126 @@ const ANSI = {
 
 const c = (color, text) => `${color}${text}${ANSI.reset}`;
 
-// φ constants
-const PHI_INV = 0.618033988749895;
-const PHI_INV_SQ = 0.381966011250105;
+// ═══════════════════════════════════════════════════════════════════════════
+// φ CONSTANTS - Import from @cynic/core (SINGLE SOURCE OF TRUTH)
+// ═══════════════════════════════════════════════════════════════════════════
 
-// Trigger definitions (copy from trigger-engine.js for display)
-const TRIGGER_TYPES = {
+let PHI, PHI_INV, PHI_INV_2, PROACTIVE, phiTime;
+
+try {
+  const core = await import('@cynic/core');
+  PHI = core.PHI;
+  PHI_INV = core.PHI_INV;
+  PHI_INV_2 = core.PHI_INV_2;
+  PROACTIVE = core.PROACTIVE;
+  phiTime = core.phiTime;
+} catch {
+  // Fallback
+  PHI = 1.618033988749895;
+  PHI_INV = 0.618033988749895;
+  PHI_INV_2 = 0.381966011250105;
+  phiTime = (n, base = 60000) => Math.round(base * Math.pow(PHI, n));
+  PROACTIVE = null;
+}
+
+// Trigger definitions - φ-derived from @cynic/core
+const TRIGGER_TYPES = PROACTIVE?.TRIGGERS ? {
   ERROR_PATTERN: {
     name: 'ERROR_PATTERN',
-    description: 'Same error type 3+ times → suggest fix',
+    description: 'Same error 3× (Fib₄) → suggest fix',
+    action: 'suggest_fix',
+    urgency: PROACTIVE.TRIGGERS.ERROR_PATTERN.urgency,
+    cooldown: PROACTIVE.TRIGGERS.ERROR_PATTERN.cooldown,
+    threshold: PROACTIVE.TRIGGERS.ERROR_PATTERN.threshold,
+  },
+  CONTEXT_DRIFT: {
+    name: 'CONTEXT_DRIFT',
+    description: `User strays ${Math.round(PHI_INV_2 * 100)}% → remind`,
+    action: 'remind_goal',
+    urgency: PROACTIVE.TRIGGERS.CONTEXT_DRIFT.urgency,
+    cooldown: PROACTIVE.TRIGGERS.CONTEXT_DRIFT.cooldown,
+    threshold: PROACTIVE.TRIGGERS.CONTEXT_DRIFT.threshold,
+  },
+  BURNOUT_RISK: {
+    name: 'BURNOUT_RISK',
+    description: `Energy < ${Math.round(PHI_INV_2 * 100)}% (φ⁻²) → break`,
+    action: 'suggest_break',
+    urgency: PROACTIVE.TRIGGERS.BURNOUT_RISK.urgency,
+    cooldown: PROACTIVE.TRIGGERS.BURNOUT_RISK.cooldown,
+    threshold: PROACTIVE.TRIGGERS.BURNOUT_RISK.threshold,
+  },
+  PATTERN_MATCH: {
+    name: 'PATTERN_MATCH',
+    description: `Similar >${Math.round(PHI_INV * 100)}% → suggest reuse`,
+    action: 'suggest_reuse',
+    urgency: PROACTIVE.TRIGGERS.PATTERN_MATCH.urgency,
+    cooldown: PROACTIVE.TRIGGERS.PATTERN_MATCH.cooldown,
+    threshold: PROACTIVE.TRIGGERS.PATTERN_MATCH.threshold,
+  },
+  DEADLINE_NEAR: {
+    name: 'DEADLINE_NEAR',
+    description: 'Deadline < φ⁵h → prioritize',
+    action: 'prioritize_goal',
+    urgency: PROACTIVE.TRIGGERS.DEADLINE_NEAR.urgency,
+    cooldown: PROACTIVE.TRIGGERS.DEADLINE_NEAR.cooldown,
+    threshold: PROACTIVE.TRIGGERS.DEADLINE_NEAR.threshold,
+  },
+  LEARNING_OPP: {
+    name: 'LEARNING_OPP',
+    description: 'New pattern 3× (Fib₄) → highlight',
+    action: 'highlight_pattern',
+    urgency: PROACTIVE.TRIGGERS.LEARNING_OPP.urgency,
+    cooldown: PROACTIVE.TRIGGERS.LEARNING_OPP.cooldown,
+    threshold: PROACTIVE.TRIGGERS.LEARNING_OPP.threshold,
+  },
+} : {
+  // Fallback with φ-derived values
+  ERROR_PATTERN: {
+    name: 'ERROR_PATTERN',
+    description: 'Same error 3× (Fib₄) → suggest fix',
     action: 'suggest_fix',
     urgency: 'ACTIVE',
-    cooldown: 5 * 60 * 1000,
+    cooldown: phiTime(3),   // φ³ = 4.2 min
     threshold: 3,
   },
   CONTEXT_DRIFT: {
     name: 'CONTEXT_DRIFT',
-    description: 'User strays from active goal → remind',
+    description: `User strays ${Math.round(PHI_INV_2 * 100)}% → remind`,
     action: 'remind_goal',
     urgency: 'SUBTLE',
-    cooldown: 10 * 60 * 1000,
-    threshold: 0.5,
+    cooldown: phiTime(4),   // φ⁴ = 6.9 min
+    threshold: PHI_INV_2,
   },
   BURNOUT_RISK: {
     name: 'BURNOUT_RISK',
-    description: 'Energy < 38.2% (φ⁻²) → suggest break',
+    description: `Energy < ${Math.round(PHI_INV_2 * 100)}% (φ⁻²) → break`,
     action: 'suggest_break',
     urgency: 'ACTIVE',
-    cooldown: 30 * 60 * 1000,
-    threshold: PHI_INV_SQ,
+    cooldown: phiTime(6),   // φ⁶ = 17.9 min
+    threshold: PHI_INV_2,
   },
   PATTERN_MATCH: {
     name: 'PATTERN_MATCH',
-    description: 'Similar past success found → suggest reuse',
+    description: `Similar >${Math.round(PHI_INV * 100)}% → suggest reuse`,
     action: 'suggest_reuse',
     urgency: 'SUBTLE',
-    cooldown: 2 * 60 * 1000,
+    cooldown: phiTime(1),   // φ¹ = 1.6 min
     threshold: PHI_INV,
   },
   DEADLINE_NEAR: {
     name: 'DEADLINE_NEAR',
-    description: 'Goal deadline approaching → prioritize',
+    description: 'Deadline < φ⁵h → prioritize',
     action: 'prioritize_goal',
     urgency: 'ACTIVE',
-    cooldown: 15 * 60 * 1000,
-    threshold: 24 * 60 * 60 * 1000,
+    cooldown: phiTime(5),   // φ⁵ = 11.1 min
+    threshold: phiTime(5) * 60,
   },
   LEARNING_OPP: {
     name: 'LEARNING_OPP',
-    description: 'New pattern emerges → highlight for learning',
+    description: 'New pattern 3× (Fib₄) → highlight',
     action: 'highlight_pattern',
     urgency: 'SUBTLE',
-    cooldown: 5 * 60 * 1000,
+    cooldown: phiTime(2),   // φ² = 2.6 min
     threshold: 3,
   },
 };
@@ -135,9 +203,9 @@ async function main() {
     const ctx = engineState.context;
 
     const energyPct = Math.round((ctx.userEnergy || 1) * 100);
-    const energyColor = energyPct < PHI_INV_SQ * 100 ? ANSI.red :
+    const energyColor = energyPct < PHI_INV_2 * 100 ? ANSI.red :
                        energyPct < PHI_INV * 100 ? ANSI.yellow : ANSI.green;
-    console.log(`   User Energy: ${c(energyColor, `${energyPct}%`)} ${energyPct < PHI_INV_SQ * 100 ? '⚠️ BURNOUT RISK' : ''}`);
+    console.log(`   User Energy: ${c(energyColor, `${energyPct}%`)} ${energyPct < PHI_INV_2 * 100 ? '⚠️ BURNOUT RISK' : ''}`);
 
     const focusPct = Math.round((ctx.userFocus || 1) * 100);
     console.log(`   User Focus: ${c(ANSI.cyan, `${focusPct}%`)}`);

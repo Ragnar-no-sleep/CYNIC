@@ -51,6 +51,102 @@ export const PHI_2 = 2.618033988749895;
  */
 export const PHI_3 = 4.236067977499790;
 
+/**
+ * φ⁴ - Phi to the 4th
+ */
+export const PHI_4 = 6.854101966249685;
+
+/**
+ * φ⁵ - Phi to the 5th
+ */
+export const PHI_5 = 11.090169943749475;
+
+/**
+ * φ⁶ - Phi to the 6th
+ */
+export const PHI_6 = 17.944271909999163;
+
+/**
+ * φ⁷ - Phi to the 7th
+ */
+export const PHI_7 = 29.034441853748634;
+
+/**
+ * φ⁻⁴ - Fourth inverse power
+ * Emergency threshold: 14.6%
+ */
+export const PHI_INV_4 = 0.145898033750315;
+
+/**
+ * φ⁻⁵ - Fifth inverse power
+ * Collapse threshold: 9.0%
+ */
+export const PHI_INV_5 = 0.090169943749474;
+
+// =============================================================================
+// φ SCALING FUNCTIONS - Derive all values from φ
+// =============================================================================
+
+/**
+ * Calculate φⁿ for any n (positive or negative)
+ * @param {number} n - Exponent (can be negative)
+ * @returns {number} φⁿ
+ */
+export function phiPower(n) {
+  return Math.pow(PHI, n);
+}
+
+/**
+ * Calculate time interval using φ scaling
+ * @param {number} n - φ exponent (0 = base, 1 = φ×base, -1 = base/φ, etc.)
+ * @param {number} [baseMs=60000] - Base time in milliseconds (default: 1 minute)
+ * @returns {number} Time in milliseconds
+ *
+ * @example
+ * phiTime(0)  // 60000ms = 1 minute (base)
+ * phiTime(1)  // 97082ms = 1.6 minutes
+ * phiTime(2)  // 157082ms = 2.6 minutes
+ * phiTime(3)  // 254164ms = 4.2 minutes
+ * phiTime(4)  // 411246ms = 6.9 minutes
+ * phiTime(5)  // 665410ms = 11.1 minutes
+ * phiTime(6)  // 1076656ms = 17.9 minutes
+ * phiTime(7)  // 1742066ms = 29 minutes
+ */
+export function phiTime(n, baseMs = 60000) {
+  return Math.round(baseMs * phiPower(n));
+}
+
+/**
+ * Calculate threshold using φ⁻ⁿ
+ * @param {number} n - Inverse power (1 = 61.8%, 2 = 38.2%, 3 = 23.6%, etc.)
+ * @returns {number} Threshold as decimal (0-1)
+ *
+ * @example
+ * phiThreshold(1)  // 0.618 = 61.8% (max confidence)
+ * phiThreshold(2)  // 0.382 = 38.2% (danger zone)
+ * phiThreshold(3)  // 0.236 = 23.6% (critical)
+ * phiThreshold(4)  // 0.146 = 14.6% (emergency)
+ * phiThreshold(5)  // 0.090 = 9.0% (collapse)
+ */
+export function phiThreshold(n) {
+  return Math.pow(PHI_INV, n);
+}
+
+/**
+ * Get Fibonacci number using Binet's formula
+ * More flexible than the array - works for any n
+ * @param {number} n - Index (0-indexed: fib(0)=0, fib(1)=1, fib(2)=1, fib(3)=2...)
+ * @returns {number} Fibonacci number
+ */
+export function fibonacci(n) {
+  if (n < 0) return 0;
+  if (n <= 1) return n;
+  // Binet's formula: Fib(n) = (φⁿ - ψⁿ) / √5, where ψ = -1/φ
+  const sqrt5 = Math.sqrt(5);
+  const psi = -PHI_INV;
+  return Math.round((Math.pow(PHI, n) - Math.pow(psi, n)) / sqrt5);
+}
+
 // =============================================================================
 // TIMING CONSTANTS (φ-HIERARCHICAL, BASE 100ms)
 // =============================================================================
@@ -212,6 +308,105 @@ export const EMERGENCE = {
 };
 
 // =============================================================================
+// PROACTIVE TRIGGERS (φ-DERIVED)
+// =============================================================================
+
+/**
+ * Proactive Trigger Engine constants
+ * "Le chien anticipe" - All timings and thresholds derived from φ
+ *
+ * Cooldowns use phiTime(n) where n indicates urgency:
+ *   Lower n = shorter cooldown = more reactive
+ *   Higher n = longer cooldown = less intrusive
+ *
+ * Thresholds use phiThreshold(n) or fibonacci(n):
+ *   phiThreshold for percentages
+ *   fibonacci for counts
+ */
+export const PROACTIVE = {
+  // Base time unit for triggers (1 minute)
+  BASE_MS: 60000,
+
+  // Cooldowns by urgency level (φⁿ × base)
+  COOLDOWNS: {
+    REACTIVE: phiTime(1),    // 1.6 min - fastest response
+    SHORT: phiTime(2),       // 2.6 min
+    MEDIUM: phiTime(3),      // 4.2 min
+    LONG: phiTime(4),        // 6.9 min
+    VERY_LONG: phiTime(5),   // 11.1 min
+    RARE: phiTime(6),        // 17.9 min - least intrusive
+    EXCEPTIONAL: phiTime(7), // 29 min - almost never
+  },
+
+  // Thresholds (φ⁻ⁿ for percentages, fibonacci for counts)
+  THRESHOLDS: {
+    // Percentage thresholds
+    MAX_CONFIDENCE: PHI_INV,      // 61.8% - action threshold
+    DANGER_ZONE: PHI_INV_2,       // 38.2% - warning threshold
+    CRITICAL: PHI_INV_3,          // 23.6% - urgent threshold
+    EMERGENCY: PHI_INV_4,         // 14.6% - crisis threshold
+    COLLAPSE: PHI_INV_5,          // 9.0% - system failure
+
+    // Count thresholds (Fibonacci)
+    MIN_OCCURRENCES: 3,           // Fib(4) - minimum to detect pattern
+    PATTERN_CONFIRM: 5,           // Fib(5) - confirmed pattern
+    STRONG_PATTERN: 8,            // Fib(6) - strong pattern
+    ESTABLISHED: 13,              // Fib(7) - established pattern
+  },
+
+  // Trigger-specific configurations
+  TRIGGERS: {
+    // ERROR_PATTERN: Same error 3+ times
+    ERROR_PATTERN: {
+      cooldown: phiTime(3),           // 4.2 min - MEDIUM (errors need attention)
+      threshold: 3,                   // Fib(4) - 3 occurrences
+      urgency: 'ACTIVE',
+    },
+
+    // CONTEXT_DRIFT: User strays from goal
+    CONTEXT_DRIFT: {
+      cooldown: phiTime(4),           // 6.9 min - LONG (don't nag)
+      threshold: PHI_INV_2,           // 38.2% drift = warning
+      urgency: 'SUBTLE',
+    },
+
+    // BURNOUT_RISK: Energy below danger zone
+    BURNOUT_RISK: {
+      cooldown: phiTime(6),           // 17.9 min - RARE (important but not spammy)
+      threshold: PHI_INV_2,           // 38.2% energy = danger
+      urgency: 'ACTIVE',
+    },
+
+    // PATTERN_MATCH: Similar past success found
+    PATTERN_MATCH: {
+      cooldown: phiTime(1),           // 1.6 min - REACTIVE (helpful hints)
+      threshold: PHI_INV,             // 61.8% confidence to suggest
+      urgency: 'SUBTLE',
+    },
+
+    // DEADLINE_NEAR: Goal deadline approaching
+    DEADLINE_NEAR: {
+      cooldown: phiTime(5),           // 11.1 min - VERY_LONG
+      threshold: phiTime(5) * 60,     // 11.1 hours (φ⁵ minutes × 60)
+      urgency: 'ACTIVE',
+    },
+
+    // LEARNING_OPP: New pattern emerging
+    LEARNING_OPP: {
+      cooldown: phiTime(2),           // 2.6 min - SHORT (learning is good)
+      threshold: 3,                   // Fib(4) - 3 occurrences
+      urgency: 'SUBTLE',
+    },
+  },
+
+  // Voting threshold for Dogs approval
+  VOTING_THRESHOLD: PHI_INV,          // 61.8% consensus required
+
+  // Suggestion TTL (time to act before expiring)
+  SUGGESTION_TTL: phiTime(3),         // 4.2 min to act on suggestion
+};
+
+// =============================================================================
 // HUMAN CONSTANTS (not φ-derived but named)
 // =============================================================================
 
@@ -268,13 +463,25 @@ export const AXIOMS = {
 // =============================================================================
 
 export default {
-  // PHI constants
+  // PHI constants (full spectrum)
   PHI,
   PHI_INV,
   PHI_INV_2,
   PHI_INV_3,
+  PHI_INV_4,
+  PHI_INV_5,
   PHI_2,
   PHI_3,
+  PHI_4,
+  PHI_5,
+  PHI_6,
+  PHI_7,
+
+  // φ scaling functions
+  phiPower,
+  phiTime,
+  phiThreshold,
+  fibonacci,
 
   // Timing
   TIMING_BASE_MS,
@@ -291,13 +498,14 @@ export default {
   MIN_PATTERN_SOURCES,
   GOVERNANCE_QUORUM,
 
-  // Helpers
+  // Helpers (legacy)
   FIBONACCI,
   fib,
 
   // Thresholds
   THRESHOLDS,
   EMERGENCE,
+  PROACTIVE,
 
   // Non-φ constants
   HUMAN,
