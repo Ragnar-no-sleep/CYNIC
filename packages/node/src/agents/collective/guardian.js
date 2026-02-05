@@ -44,6 +44,11 @@ import { DogAutonomousBehaviors } from './autonomous.js';
 import { detectVulnerabilities, SEVERITY } from './security-detector.js';
 import { getWorkflowTracker } from './workflow-tracker.js';
 
+// Math integration: Poisson for threat rate anomaly, Gaussian for z-scores
+import { detectAnomaly, estimateRate, EventRateTracker } from '../../inference/poisson.js';
+import { computeStats, zScore } from '../../inference/gaussian.js';
+import { recordError, updateHomeostasis } from '../../organism/index.js';
+
 /**
  * φ-aligned constants for Guardian
  */
@@ -245,6 +250,16 @@ export class CollectiveGuardian extends BaseAgent {
 
     // C1.3: Workflow Tracker for multi-step dangerous sequence detection
     this.workflowTracker = getWorkflowTracker();
+
+    // Math integration: Poisson-based threat rate tracker
+    this.threatRateTracker = new EventRateTracker({
+      windowSize: 21,  // Fib(8) - track last 21 events
+      expectedRate: 0.5,  // Expect ~0.5 threats per minute (low baseline)
+    });
+
+    // Track command frequency for Gaussian anomaly detection
+    this.commandFrequencyWindow = [];
+    this.maxFrequencyWindow = 55;  // Fib(10)
   }
 
   /**
@@ -609,6 +624,24 @@ export class CollectiveGuardian extends BaseAgent {
       }
     }
 
+    // Math integration: Check for statistical anomalies
+    const commandKey = this._getCommandKey(command);
+    const frequencyAnomaly = this._detectCommandFrequencyAnomaly(commandKey);
+
+    if (frequencyAnomaly?.isAnomaly) {
+      return {
+        blocked: false,
+        warning: true,
+        risk: RiskLevel.MEDIUM,
+        category: RiskCategory.UNKNOWN,
+        command,
+        message: frequencyAnomaly.message,
+        confidence: Math.min(PHI_INV, Math.abs(frequencyAnomaly.zScore) / 5),
+        escalation,
+        statisticalAnomaly: frequencyAnomaly,
+      };
+    }
+
     // No risk detected
     return {
       blocked: false,
@@ -691,12 +724,16 @@ export class CollectiveGuardian extends BaseAgent {
       this._recordOp('blocked', { command, risk, category, message });
       this._incrementEscalation(command);
 
+      // Math integration: Detect threat rate anomaly
+      const rateAnomaly = this._detectThreatRateAnomaly();
+
       this.recordPattern({
         type: 'blocked_command',
         command,
         risk: risk.label,
         category,
         learned,
+        rateAnomaly: rateAnomaly?.isAnomaly || false,
       });
 
       // Emit THREAT_BLOCKED event
@@ -707,10 +744,13 @@ export class CollectiveGuardian extends BaseAgent {
         action: true,
         risk,
         category,
-        message: `*GROWL* [BLOCKED] ${message}`,
+        message: rateAnomaly?.isAnomaly
+          ? `*GROWL* [BLOCKED] ${message} (⚠️ Threat rate spike detected!)`
+          : `*GROWL* [BLOCKED] ${message}`,
         command,
         profileLevel: this.profileLevel,
         escalation,
+        threatRateAnomaly: rateAnomaly,
       };
     }
 
@@ -835,6 +875,111 @@ export class CollectiveGuardian extends BaseAgent {
     this.eventBus.publish(request);
 
     return resultPromise;
+  }
+
+  /**
+   * Detect threat rate anomaly using Poisson distribution
+   * @private
+   * @returns {Object|null} Anomaly info if detected
+   */
+  _detectThreatRateAnomaly() {
+    try {
+      // Record this threat event
+      this.threatRateTracker.recordEvent();
+
+      // Get current rate and check for anomaly
+      const currentRate = this.threatRateTracker.getCurrentRate();
+      const anomaly = detectAnomaly(
+        Math.round(currentRate * 10),  // Scale to counts
+        this.threatRateTracker.expectedRate * 10,
+        PHI_INV  // φ-aligned threshold
+      );
+
+      if (anomaly.isAnomaly) {
+        // Record in organism for system health
+        recordError({
+          type: 'threat_rate_anomaly',
+          rate: currentRate,
+          expected: this.threatRateTracker.expectedRate,
+        });
+
+        return {
+          isAnomaly: true,
+          currentRate,
+          expectedRate: this.threatRateTracker.expectedRate,
+          pValue: anomaly.pValue,
+          message: `Threat rate anomaly: ${currentRate.toFixed(2)}/min vs expected ${this.threatRateTracker.expectedRate}/min`,
+        };
+      }
+    } catch (e) {
+      // Non-critical: don't break main flow
+    }
+    return null;
+  }
+
+  /**
+   * Detect command frequency anomaly using Gaussian z-scores
+   * @private
+   * @param {string} commandKey - Normalized command key
+   * @returns {Object|null} Anomaly info if detected
+   */
+  _detectCommandFrequencyAnomaly(commandKey) {
+    try {
+      // Add to frequency window
+      const now = Date.now();
+      this.commandFrequencyWindow.push({ key: commandKey, time: now });
+
+      // Keep window bounded
+      while (this.commandFrequencyWindow.length > this.maxFrequencyWindow) {
+        this.commandFrequencyWindow.shift();
+      }
+
+      // Need enough data
+      if (this.commandFrequencyWindow.length < 5) return null;
+
+      // Count frequency of this command type
+      const recentWindow = 60000;  // Last minute
+      const recentCommands = this.commandFrequencyWindow.filter(
+        c => now - c.time < recentWindow
+      );
+      const thisCommandCount = recentCommands.filter(
+        c => c.key === commandKey
+      ).length;
+
+      // Get all command counts
+      const commandCounts = {};
+      for (const cmd of recentCommands) {
+        commandCounts[cmd.key] = (commandCounts[cmd.key] || 0) + 1;
+      }
+
+      // Compute stats across all command types
+      const counts = Object.values(commandCounts);
+      if (counts.length < 2) return null;
+
+      const stats = computeStats(counts);
+      const z = zScore(thisCommandCount, stats.mean, stats.stdDev);
+
+      // φ-aligned: flag if z > φ (≈1.618 standard deviations)
+      if (Math.abs(z) > PHI) {
+        updateHomeostasis('command_frequency', {
+          value: thisCommandCount,
+          baseline: stats.mean,
+        });
+
+        return {
+          isAnomaly: true,
+          command: commandKey,
+          count: thisCommandCount,
+          mean: stats.mean,
+          stdDev: stats.stdDev,
+          zScore: z,
+          message: `Unusual command frequency: "${commandKey}" (z=${z.toFixed(2)})`,
+        };
+      }
+    } catch (e) {
+      // Non-critical: don't break main flow
+    }
+    return null;
   }
 
   /**

@@ -49,6 +49,11 @@ import { createRealScorer } from './scorers.js';
 import { DimensionRegistry, globalDimensionRegistry } from './dimension-registry.js';
 import { judgmentEntropy, optimalConfidence, ENTROPY_THRESHOLDS } from './entropy.js';
 
+// Bayesian inference for confidence calculation
+import { updateBelief, BetaDistribution } from '../inference/bayes.js';
+// Organism metrics for tracking
+import { recordSuccess, recordError, updateHomeostasis } from '../organism/index.js';
+
 /**
  * CYNIC Judge - The judgment engine
  */
@@ -438,6 +443,9 @@ export class CYNICJudge {
 
     // Update stats
     this._updateStats(judgment);
+
+    // Update organism metrics based on judgment quality
+    this._updateOrganismMetrics(judgment);
 
     // Task #57: Emit JUDGMENT_CREATED for SONA real-time adaptation
     // This allows SONA to observe judgment patterns and correlate with outcomes
@@ -876,24 +884,78 @@ export class CYNICJudge {
     const scores = Object.values(dimensionScores);
     if (scores.length === 0) return PHI_INV_2;
 
-    // Calculate entropy-based confidence
+    // Calculate entropy-based confidence (uncertainty measure)
     const entropyAnalysis = judgmentEntropy(dimensionScores);
+
+    // Calculate Bayesian posterior (belief strength)
+    // Use dimension agreement as evidence
+    const bayesianConfidence = this._calculateBayesianConfidence(scores, context);
 
     // Store entropy in context for later use
     if (context) {
       context._entropy = entropyAnalysis;
+      context._bayesian = bayesianConfidence;
     }
 
     // Log if chaotic (high uncertainty)
     if (entropyAnalysis.category === 'CHAOTIC') {
       log.debug('High entropy judgment', {
         normalizedEntropy: entropyAnalysis.normalizedEntropy.toFixed(3),
+        bayesianPosterior: bayesianConfidence.posterior.toFixed(3),
         shouldTriggerConsensus: entropyAnalysis.shouldTriggerConsensus,
       });
     }
 
-    // Return entropy-adjusted confidence (already φ-bounded)
-    return entropyAnalysis.confidence;
+    // Blend entropy confidence (60%) with Bayesian posterior (40%)
+    // Entropy measures uncertainty, Bayesian measures belief strength
+    const blendedConfidence = entropyAnalysis.confidence * 0.6 +
+                              bayesianConfidence.posterior * 0.4;
+
+    // φ-bound the final result
+    return Math.min(PHI_INV, blendedConfidence);
+  }
+
+  /**
+   * Calculate Bayesian confidence from dimension scores
+   * Uses dimension agreement as likelihood evidence
+   *
+   * @private
+   * @param {number[]} scores - Dimension score values
+   * @param {Object} context - Judgment context
+   * @returns {Object} {prior, likelihood, posterior}
+   */
+  _calculateBayesianConfidence(scores, context) {
+    // Prior: base rate of "good" judgments (start neutral)
+    const prior = context?.priorBelief || 0.5;
+
+    // Calculate likelihood from score distribution
+    // High agreement (low variance) → high likelihood
+    // Low agreement (high variance) → low likelihood
+    const mean = scores.reduce((a, b) => a + b, 0) / scores.length;
+    const variance = scores.reduce((sum, s) => sum + Math.pow(s - mean, 2), 0) / scores.length;
+    const stdDev = Math.sqrt(variance);
+
+    // Normalize std dev to [0, 1] (assuming scores are 0-100)
+    // Max expected std dev is ~30 for uniform distribution
+    const normalizedStd = Math.min(1, stdDev / 30);
+
+    // Likelihood: how likely are we to see this agreement if judgment is good?
+    // Low std = high agreement = high likelihood
+    const likelihood = Math.max(0.1, 1 - normalizedStd);
+
+    // Update belief using Bayes
+    const baserate = 0.5; // Base rate of good judgments in population
+    const posterior = updateBelief(prior, likelihood, baserate);
+
+    // φ-bound the posterior
+    const boundedPosterior = Math.min(PHI_INV, posterior);
+
+    return {
+      prior,
+      likelihood,
+      posterior: boundedPosterior,
+      agreement: 1 - normalizedStd,
+    };
   }
 
   /**
@@ -1036,6 +1098,42 @@ export class CYNICJudge {
     const n = this.stats.totalJudgments;
     this.stats.avgScore =
       (this.stats.avgScore * (n - 1) + judgment.global_score) / n;
+  }
+
+  /**
+   * Update organism metrics based on judgment quality
+   * Wires Judge → Organism for measurable life force
+   *
+   * @private
+   * @param {Object} judgment - Completed judgment
+   */
+  _updateOrganismMetrics(judgment) {
+    try {
+      const qScore = judgment.qScore || judgment.global_score || 0;
+      const verdict = judgment.verdict;
+
+      // Update homeostasis with Q-Score (tracks stability)
+      updateHomeostasis('qScore', qScore);
+
+      // Record thermodynamic event based on verdict
+      // HOWL/WAG = Success (Work), BARK = Error (Heat)
+      if (verdict === 'HOWL' || verdict === 'WAG') {
+        // Good judgment = useful work
+        recordSuccess(qScore / 100, { source: 'judge', verdict });
+      } else if (verdict === 'BARK') {
+        // Critical judgment = wasted energy (heat)
+        recordError(1, { source: 'judge', verdict, qScore });
+      }
+      // GROWL is neutral - neither success nor failure
+
+      // Update confidence metric for homeostasis
+      if (judgment.confidence) {
+        updateHomeostasis('confidence', judgment.confidence * 100);
+      }
+    } catch (err) {
+      // Don't let organism tracking break judgment flow
+      log.debug('Organism metrics update failed', { error: err.message });
+    }
   }
 
   /**

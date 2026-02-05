@@ -753,3 +753,14 @@ export {
   updateHomeostasis,
   markRecovered,
 } from './organism/index.js';
+
+// Registry - Auto-discovery and auto-wiring
+export {
+  ComponentRegistry,
+  ComponentCategory,
+  ComponentMetadata,
+  getRegistry,
+  createComponentMarker,
+  AutoWirer,
+  initAutoWiring,
+} from './registry/index.js';

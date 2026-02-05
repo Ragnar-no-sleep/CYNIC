@@ -27,7 +27,14 @@
 
 'use strict';
 
-import { PHI_INV, PHI_INV_2 } from '@cynic/core';
+import { PHI_INV, PHI_INV_2, PHI_INV_3 } from '@cynic/core';
+
+// Poisson for rare event detection (anomalies, error spikes)
+import { detectAnomaly, estimateRate, EventRateTracker } from '../../inference/poisson.js';
+// Gaussian for statistical thresholds
+import { computeStats, zScore } from '../../inference/gaussian.js';
+// Organism tracking
+import { recordGrowth, updateHomeostasis } from '../../organism/index.js';
 import {
   BaseAgent,
   AgentTrigger,
@@ -941,18 +948,13 @@ export class CollectiveAnalyst extends BaseAgent {
   _detectAnomalies(tool, input, output, context) {
     const anomalies = [];
 
-    // Rapid error anomaly
-    if (this.errorRate > 0.3) {
-      anomalies.push({
-        type: AnomalyType.RAPID_ERRORS,
-        severity: this.errorRate > 0.5 ? 'critical' : 'high',
-        confidence: Math.min(PHI_INV, this.errorRate),
-        description: `High error rate: ${Math.round(this.errorRate * 100)}%`,
-        context: { errorRate: this.errorRate, recentErrors: this.errorHistory.slice(-5) },
-      });
+    // Use Poisson to detect error rate anomaly (rare event spike)
+    const errorAnomaly = this._detectErrorAnomaly();
+    if (errorAnomaly) {
+      anomalies.push(errorAnomaly);
     }
 
-    // Unusual command detection (for bash)
+    // Unusual command detection (for bash) - use Gaussian z-score
     if (tool === 'Bash' || tool === 'bash') {
       const cmd = input.command || '';
       const unusualScore = this._scoreCommandUnusualness(cmd);
@@ -974,7 +976,82 @@ export class CollectiveAnalyst extends BaseAgent {
       anomalies.push(behaviorChange);
     }
 
+    // Track pattern discovery for organism growth
+    if (anomalies.length > 0) {
+      try {
+        recordGrowth('pattern', {
+          domain: 'analyst',
+          description: `Detected ${anomalies.length} anomalies`,
+          magnitude: anomalies.length,
+        });
+      } catch (e) {
+        // Don't break on organism tracking failure
+      }
+    }
+
     return anomalies;
+  }
+
+  /**
+   * Detect error rate anomaly using Poisson distribution
+   * Models errors as rare events and detects spikes
+   *
+   * @private
+   * @returns {Object|null} Anomaly or null
+   */
+  _detectErrorAnomaly() {
+    const recentErrors = this.errorHistory || [];
+
+    // Need at least some history
+    if (recentErrors.length < 3) {
+      // Fallback to simple threshold
+      if (this.errorRate > 0.3) {
+        return {
+          type: AnomalyType.RAPID_ERRORS,
+          severity: this.errorRate > 0.5 ? 'critical' : 'high',
+          confidence: Math.min(PHI_INV, this.errorRate),
+          description: `High error rate: ${Math.round(this.errorRate * 100)}%`,
+          context: { errorRate: this.errorRate, method: 'threshold' },
+        };
+      }
+      return null;
+    }
+
+    // Use Poisson to detect if recent error count is anomalous
+    // Expected rate based on session history
+    const windowMs = 60000; // 1 minute window
+    const now = Date.now();
+    const recentWindow = recentErrors.filter(e => (now - (e.timestamp || now)) < windowMs);
+    const historicalWindow = recentErrors.filter(e => (now - (e.timestamp || now)) >= windowMs);
+
+    // Estimate historical rate (errors per minute)
+    const historicalRate = historicalWindow.length > 0
+      ? estimateRate(historicalWindow.length, Math.max(1, (now - (historicalWindow[0]?.timestamp || now)) / 60000))
+      : 0.5; // Default expected rate
+
+    // Use detectAnomaly to check if recent count is unusual
+    const anomalyResult = detectAnomaly(recentWindow.length, historicalRate, 0.05);
+
+    if (anomalyResult.isAnomaly) {
+      const severity = anomalyResult.pValue < 0.01 ? 'critical'
+                     : anomalyResult.pValue < 0.05 ? 'high'
+                     : 'medium';
+
+      return {
+        type: AnomalyType.RAPID_ERRORS,
+        severity,
+        confidence: Math.min(PHI_INV, 1 - anomalyResult.pValue),
+        description: `Error spike detected: ${recentWindow.length} errors in last minute (expected: ${historicalRate.toFixed(1)})`,
+        context: {
+          observed: recentWindow.length,
+          expected: historicalRate,
+          pValue: anomalyResult.pValue,
+          method: 'poisson',
+        },
+      };
+    }
+
+    return null;
   }
 
   /**

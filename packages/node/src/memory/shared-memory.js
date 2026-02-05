@@ -11,7 +11,12 @@
 
 'use strict';
 
-import { PHI_INV } from '@cynic/core';
+import { PHI_INV, PHI_INV_2, PHI_INV_3 } from '@cynic/core';
+
+// Bayesian inference for pattern relevance
+import { updateBelief, likelihoodRatio } from '../inference/bayes.js';
+// Gaussian for pattern weight distribution analysis
+import { computeStats, zScore, GaussianDistribution } from '../inference/gaussian.js';
 
 /**
  * Fibonacci limits for memory stores
@@ -196,6 +201,23 @@ export class SharedMemory {
   }
 
   _calculatePatternRelevance(pattern, itemType, itemTags) {
+    // Calculate feature-based relevance (traditional scoring)
+    const featureRelevance = this._calculateFeatureRelevance(pattern, itemType, itemTags);
+
+    // Calculate Bayesian posterior (belief strength)
+    const bayesianRelevance = this._calculateBayesianRelevance(pattern);
+
+    // Blend: 60% feature-based + 40% Bayesian
+    const blendedRelevance = featureRelevance * 0.6 + bayesianRelevance * 0.4;
+
+    return Math.min(PHI_INV, blendedRelevance);
+  }
+
+  /**
+   * Traditional feature-based relevance calculation
+   * @private
+   */
+  _calculateFeatureRelevance(pattern, itemType, itemTags) {
     let relevance = 0;
 
     // Type match (35% weight - reduced to make room for path weight)
@@ -227,6 +249,52 @@ export class SharedMemory {
     relevance += Math.max(0, Math.min(REINFORCEMENT.WEIGHT_INFLUENCE, normalizedWeight * REINFORCEMENT.WEIGHT_INFLUENCE));
 
     return Math.min(relevance, 1);
+  }
+
+  /**
+   * Calculate Bayesian relevance based on pattern history
+   * P(relevant | evidence) = P(evidence | relevant) * P(relevant) / P(evidence)
+   *
+   * Evidence:
+   * - useCount: how many times pattern was used
+   * - successRate: fraction of successful applications
+   * - fisherImportance: EWC++ importance score
+   *
+   * @private
+   */
+  _calculateBayesianRelevance(pattern) {
+    // Prior: base rate of pattern relevance (start skeptical)
+    const prior = PHI_INV_2; // 38.2% - skeptical prior
+
+    // Calculate likelihood from evidence
+    // More uses = more confident the pattern is useful
+    const useCount = pattern.useCount || 0;
+    const useLikelihood = Math.min(1, useCount / 10); // Saturates at 10 uses
+
+    // Verified patterns are more likely relevant
+    const verifiedLikelihood = pattern.verified ? 0.9 : 0.5;
+
+    // Fisher importance indicates critical patterns (EWC++)
+    const fisherImportance = pattern.fisherImportance || 0;
+    const fisherLikelihood = Math.min(1, 0.5 + fisherImportance * 0.5);
+
+    // Weight indicates reinforcement history
+    const weight = pattern.weight || 1.0;
+    const weightLikelihood = Math.min(1, (weight - REINFORCEMENT.MIN_WEIGHT) /
+      (REINFORCEMENT.MAX_WEIGHT - REINFORCEMENT.MIN_WEIGHT));
+
+    // Combined likelihood (product rule)
+    const combinedLikelihood = (useLikelihood * 0.3 +
+                                verifiedLikelihood * 0.2 +
+                                fisherLikelihood * 0.3 +
+                                weightLikelihood * 0.2);
+
+    // Update belief using Bayes
+    const baserate = 0.5; // Base rate of relevant patterns in population
+    const posterior = updateBelief(prior, combinedLikelihood, baserate);
+
+    // φ-bound the result
+    return Math.min(PHI_INV, posterior);
   }
 
   _prunePatterns() {
@@ -347,6 +415,74 @@ export class SharedMemory {
     pattern.lockedAt = null;
 
     return true;
+  }
+
+  /**
+   * Get pattern weight distribution statistics using Gaussian analysis
+   * Useful for identifying outlier patterns and normalizing weights
+   * @returns {Object} Weight distribution stats with z-scores for extremes
+   */
+  getWeightDistribution() {
+    const patterns = Array.from(this._patterns.values());
+    if (patterns.length < 3) {
+      return { count: patterns.length, insufficient: true };
+    }
+
+    const weights = patterns.map(p => p.weight ?? 1.0);
+    const stats = computeStats(weights);
+
+    // Find outliers (|z| > 2)
+    const outliers = patterns
+      .map(p => ({
+        id: p.id,
+        weight: p.weight ?? 1.0,
+        zScore: zScore(p.weight ?? 1.0, stats.mean, stats.stdDev),
+      }))
+      .filter(o => Math.abs(o.zScore) > 2)
+      .sort((a, b) => Math.abs(b.zScore) - Math.abs(a.zScore));
+
+    // Create distribution model
+    const distribution = new GaussianDistribution(stats.mean, stats.stdDev);
+
+    return {
+      count: patterns.length,
+      mean: stats.mean,
+      stdDev: stats.stdDev,
+      min: stats.min,
+      max: stats.max,
+      // Confidence interval for "normal" weights (φ-bounded at 61.8%)
+      normalRange: distribution.confidenceInterval(PHI_INV),
+      outlierCount: outliers.length,
+      outliers: outliers.slice(0, 10), // Top 10 outliers
+    };
+  }
+
+  /**
+   * Identify patterns that need attention (anomalous weights)
+   * Uses Gaussian z-scores to find patterns deviating from norm
+   * @param {number} [threshold=1.618] - Z-score threshold (default: φ)
+   * @returns {Object[]} Patterns with anomalous weights
+   */
+  getAnomalousPatterns(threshold = 1.618) {
+    const patterns = Array.from(this._patterns.values());
+    if (patterns.length < 5) return [];
+
+    const weights = patterns.map(p => p.weight ?? 1.0);
+    const stats = computeStats(weights);
+
+    return patterns
+      .map(p => {
+        const weight = p.weight ?? 1.0;
+        const z = zScore(weight, stats.mean, stats.stdDev);
+        return {
+          ...p,
+          zScore: z,
+          isHigh: z > threshold,
+          isLow: z < -threshold,
+        };
+      })
+      .filter(p => Math.abs(p.zScore) > threshold)
+      .sort((a, b) => Math.abs(b.zScore) - Math.abs(a.zScore));
   }
 
   /**
@@ -539,6 +675,38 @@ export class SharedMemory {
     const intersection = [...setA].filter(x => setB.has(x)).length;
     const union = new Set([...setA, ...setB]).size;
     return union > 0 ? intersection / union : 0;
+  }
+
+  /**
+   * Calculate normalized similarity score using Gaussian z-score
+   * Compares raw Jaccard to distribution of all similarities
+   * @param {number} rawSimilarity - Raw Jaccard similarity
+   * @param {number[]} allSimilarities - Array of all computed similarities
+   * @returns {number} Normalized similarity (φ-bounded)
+   */
+  _normalizedSimilarity(rawSimilarity, allSimilarities) {
+    if (!allSimilarities || allSimilarities.length < 3) {
+      return Math.min(PHI_INV, rawSimilarity);
+    }
+
+    try {
+      const stats = computeStats(allSimilarities);
+      if (stats.stdDev < 0.001) {
+        // All similarities are the same, use raw
+        return Math.min(PHI_INV, rawSimilarity);
+      }
+
+      // Convert to z-score, then to probability
+      const z = zScore(rawSimilarity, stats.mean, stats.stdDev);
+
+      // Map z-score to 0-1 range using sigmoid-like transform
+      // z=0 → 0.5, z=2 → ~0.88, z=-2 → ~0.12
+      const normalized = 1 / (1 + Math.exp(-z));
+
+      return Math.min(PHI_INV, normalized);
+    } catch (e) {
+      return Math.min(PHI_INV, rawSimilarity);
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

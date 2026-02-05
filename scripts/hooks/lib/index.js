@@ -664,3 +664,20 @@ export function getHumanEmergence() {
     return null;
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// AUTO-WIRE SYSTEM (Auto-discovery and auto-wiring of components)
+// "Le chien connecte tout automatiquement" - κυνικός
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Auto-Wire utilities (ESM)
+export {
+  detectCategory,
+  isIndexFile,
+  generateWiringSuggestions,
+  looksLikeComponent,
+  analyzeForWiring,
+  formatWiringNotification,
+  COMPONENT_PATTERNS,
+  WIRING_SUGGESTIONS,
+} from './auto-wire.js';
