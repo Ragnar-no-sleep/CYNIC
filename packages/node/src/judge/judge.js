@@ -51,8 +51,15 @@ import { judgmentEntropy, optimalConfidence, ENTROPY_THRESHOLDS } from './entrop
 
 // Bayesian inference for confidence calculation
 import { updateBelief, BetaDistribution } from '../inference/bayes.js';
-// Information theory for entropy analysis
-import { entropyConfidence, klDivergence, scoresToProbabilities } from '../inference/entropy.js';
+// Information theory for entropy analysis (inference module)
+import {
+  entropyConfidence,
+  klDivergence,
+  jsDivergence,
+  scoresToProbabilities,
+  EntropyTracker,
+  getEntropyTracker,
+} from '../inference/entropy.js';
 // Organism metrics for tracking
 import { recordSuccess, recordError, updateHomeostasis } from '../organism/index.js';
 
@@ -108,6 +115,15 @@ export class CYNICJudge {
 
     // Anomaly buffer for ResidualDetector
     this.anomalyBuffer = [];
+
+    // Entropy tracking (inference module) for trend detection
+    this.entropyTracker = getEntropyTracker();
+
+    // Historical dimension distribution for drift detection
+    // Stores rolling average of dimension probabilities
+    this.historicalDistribution = null;
+    this.distributionWindow = options.distributionWindow || 21; // Fib(8)
+    this.distributionHistory = [];
   }
 
   /**
@@ -361,11 +377,33 @@ export class CYNICJudge {
 
     // Add Shannon entropy analysis (information-theoretic uncertainty)
     const entropyAnalysis = judgmentEntropy(dimensionScores);
+
+    // Dimension-level entropy analysis (inference module)
+    // Uses all 25 dimension scores for finer granularity
+    const dimScoreValues = Object.values(dimensionScores);
+    const dimensionEntropyAnalysis = entropyConfidence(dimScoreValues);
+
+    // Track entropy trend over time
+    this.entropyTracker.record(entropyAnalysis.normalizedEntropy);
+    const entropyTrend = this.entropyTracker.getTrend();
+
+    // Calculate drift from historical patterns using JS divergence
+    const driftAnalysis = this._calculateDistributionDrift(dimensionEntropyAnalysis.distribution);
+
     judgment.entropy = {
       H: entropyAnalysis.entropy,                    // Raw entropy (bits)
       normalized: entropyAnalysis.normalizedEntropy, // [0, 1]
       category: entropyAnalysis.category,            // DECISIVE/MODERATE/UNCERTAIN/CHAOTIC
       shouldTriggerConsensus: entropyAnalysis.shouldTriggerConsensus,
+      // New: dimension-level analysis from inference module
+      dimension: {
+        confidence: dimensionEntropyAnalysis.confidence, // φ-bounded
+        maxEntropy: dimensionEntropyAnalysis.maxEntropy,
+      },
+      // New: entropy trend detection
+      trend: entropyTrend, // 'increasing', 'decreasing', 'stable'
+      // New: drift from historical patterns
+      drift: driftAnalysis,
     };
 
     // Include Final score if K-Score was provided
@@ -1136,6 +1174,138 @@ export class CYNICJudge {
       // Don't let organism tracking break judgment flow
       log.debug('Organism metrics update failed', { error: err.message });
     }
+  }
+
+  /**
+   * Calculate distribution drift using Jensen-Shannon divergence
+   *
+   * Measures how much the current judgment's dimension distribution
+   * differs from the historical average. High drift = unusual judgment.
+   *
+   * @private
+   * @param {number[]} currentDistribution - Current dimension probabilities
+   * @returns {Object} Drift analysis {js, isSignificant, severity}
+   */
+  _calculateDistributionDrift(currentDistribution) {
+    if (!currentDistribution || currentDistribution.length === 0) {
+      return { js: 0, isSignificant: false, severity: 'none' };
+    }
+
+    // Update rolling history
+    this.distributionHistory.push(currentDistribution);
+    while (this.distributionHistory.length > this.distributionWindow) {
+      this.distributionHistory.shift();
+    }
+
+    // Need at least 3 observations for meaningful drift
+    if (this.distributionHistory.length < 3) {
+      this.historicalDistribution = currentDistribution;
+      return { js: 0, isSignificant: false, severity: 'none', observations: this.distributionHistory.length };
+    }
+
+    // Calculate historical average distribution
+    const histAvg = [];
+    for (let i = 0; i < currentDistribution.length; i++) {
+      let sum = 0;
+      for (const dist of this.distributionHistory.slice(0, -1)) { // Exclude current
+        sum += dist[i] || 0;
+      }
+      histAvg.push(sum / (this.distributionHistory.length - 1));
+    }
+    this.historicalDistribution = histAvg;
+
+    // Calculate JS divergence between current and historical
+    const js = jsDivergence(currentDistribution, histAvg);
+
+    // Classify drift severity using φ thresholds
+    let severity = 'none';
+    let isSignificant = false;
+
+    if (js > PHI_INV) {
+      severity = 'high';      // > 61.8% divergence
+      isSignificant = true;
+    } else if (js > PHI_INV_2) {
+      severity = 'moderate';  // > 38.2% divergence
+      isSignificant = true;
+    } else if (js > PHI_INV_2 * PHI_INV_2) {
+      severity = 'low';       // > ~14.6% divergence
+    }
+
+    return {
+      js: Math.round(js * 1000) / 1000,
+      isSignificant,
+      severity,
+      observations: this.distributionHistory.length,
+    };
+  }
+
+  /**
+   * Get entropy trend summary
+   * @returns {Object} Entropy tracker summary
+   */
+  getEntropyTrend() {
+    return this.entropyTracker.getSummary();
+  }
+
+  /**
+   * Get historical distribution for debugging
+   * @returns {number[]|null} Historical average distribution
+   */
+  getHistoricalDistribution() {
+    return this.historicalDistribution;
+  }
+
+  /**
+   * Compare two judgments using KL divergence
+   *
+   * Measures information loss when using judgment B to approximate judgment A.
+   * Useful for learning: compare predicted judgment vs actual outcome.
+   *
+   * @param {Object} judgmentA - Reference judgment (e.g., corrected/actual)
+   * @param {Object} judgmentB - Comparison judgment (e.g., predicted)
+   * @returns {Object} {kl, js, similar, summary}
+   */
+  compareJudgments(judgmentA, judgmentB) {
+    const scoresA = Object.values(judgmentA.dimensions || judgmentA.dimensionScores || {});
+    const scoresB = Object.values(judgmentB.dimensions || judgmentB.dimensionScores || {});
+
+    if (scoresA.length === 0 || scoresB.length === 0) {
+      return { kl: Infinity, js: 1, similar: false, summary: 'missing dimensions' };
+    }
+
+    // Pad shorter array with neutral scores
+    while (scoresA.length < scoresB.length) scoresA.push(50);
+    while (scoresB.length < scoresA.length) scoresB.push(50);
+
+    // Convert to probabilities
+    const probsA = scoresToProbabilities(scoresA);
+    const probsB = scoresToProbabilities(scoresB);
+
+    // Calculate divergences
+    const kl = klDivergence(probsA, probsB);
+    const js = jsDivergence(probsA, probsB);
+
+    // φ-based similarity thresholds
+    const similar = js < PHI_INV_2; // < 38.2% divergence = similar
+
+    let summary;
+    if (js < PHI_INV_2 * PHI_INV_2) {
+      summary = 'nearly identical';      // < ~14.6%
+    } else if (js < PHI_INV_2) {
+      summary = 'similar';               // < 38.2%
+    } else if (js < PHI_INV) {
+      summary = 'moderately different';  // < 61.8%
+    } else {
+      summary = 'very different';        // > 61.8%
+    }
+
+    return {
+      kl: isFinite(kl) ? Math.round(kl * 1000) / 1000 : Infinity,
+      js: Math.round(js * 1000) / 1000,
+      similar,
+      summary,
+      qScoreDiff: Math.abs((judgmentA.qScore || 0) - (judgmentB.qScore || 0)),
+    };
   }
 
   /**
