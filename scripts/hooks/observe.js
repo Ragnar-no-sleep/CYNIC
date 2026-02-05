@@ -2457,6 +2457,17 @@ async function main() {
         // Evaluate all triggers
         const suggestions = triggerEngine.evaluateAll();
 
+        // Debug: Log trigger engine activity (every 10 tool calls to avoid spam)
+        if (Math.random() < 0.1 || suggestions.length > 0) {
+          const state = triggerEngine.getState();
+          debugLog('observe', 'TriggerEngine active', {
+            enabled: state.enabled,
+            pendingSuggestions: state.pendingSuggestions,
+            contextEnergy: Math.round((state.context.userEnergy || 1) * 100),
+            triggered: suggestions.length,
+          });
+        }
+
         // Task #30: Dogs voting on suggestions (with timeout to stay non-blocking)
         const VOTE_TIMEOUT_MS = 100; // Fast timeout - voting is optional
         for (const suggestion of suggestions) {
