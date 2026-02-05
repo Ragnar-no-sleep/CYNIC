@@ -35,6 +35,7 @@ import { getHumanAdvisor } from './symbiosis/human-advisor.js';
 import { getHumanLearning } from './symbiosis/human-learning.js';
 import { getHumanAccountant } from './symbiosis/human-accountant.js';
 import { getHumanEmergence } from './symbiosis/human-emergence.js';
+import { wireAmbientConsensus } from './agents/collective/ambient-consensus.js';
 
 const log = createLogger('CollectiveSingleton');
 
@@ -471,6 +472,12 @@ export function getCollectivePack(options = {}) {
     // Connects JUDGMENT_CREATED events to UnifiedSignalStore
     _unifiedBridge = getUnifiedBridge();
     _unifiedBridge.start();
+
+    // AXE 3: Wire Ambient Consensus - Dogs vote automatically
+    // "Le pack décide ensemble" - triggers consensus on low confidence / danger
+    const ambientConsensus = wireAmbientConsensus(_globalPack);
+    _globalPack.ambientConsensus = ambientConsensus;
+    log.info('AmbientConsensus wired - Dogs vote automatically');
     log.debug('UnifiedBridge wired and started');
 
     // C5.*: Wire Symbiosis Layer (Human × CYNIC)

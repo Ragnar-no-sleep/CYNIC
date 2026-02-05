@@ -69,6 +69,12 @@ export const EventType = {
 
   // Error events
   ERROR: 'error',
+
+  // Hook events (from Claude Code hooks → internal system)
+  HOOK_PRE_TOOL: 'hook:pre_tool',
+  HOOK_POST_TOOL: 'hook:post_tool',
+  HOOK_SESSION_START: 'hook:session_start',
+  HOOK_SESSION_END: 'hook:session_end',
 };
 
 /**
