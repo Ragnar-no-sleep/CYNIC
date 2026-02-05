@@ -1056,13 +1056,16 @@ Actions:
           await saveState();
 
           // Persist feedback to PostgreSQL for training pipeline
-          if (persistence?.storeFeedback && params.judgmentId) {
+          // Now supports orphan feedback (no judgmentId required)
+          if (persistence?.storeFeedback) {
             try {
               await persistence.storeFeedback({
-                judgmentId: params.judgmentId,
+                judgmentId: params.judgmentId || null,
                 outcome: params.outcome,
                 reason: params.context?.reason || `Manual feedback: ${params.outcome}`,
                 actualScore: params.actualScore || null,
+                sourceType: 'manual',
+                sourceContext: params.context || {},
               });
             } catch (e) {
               // Best-effort — don't block on persistence failure
@@ -1140,15 +1143,23 @@ Actions:
           await saveState();
 
           // Persist test feedback to PostgreSQL for training pipeline
-          if (persistence?.storeFeedback && params.judgmentId) {
+          // Now supports orphan feedback (no judgmentId required)
+          if (persistence?.storeFeedback) {
             try {
               const outcome = params.passed ? 'correct' : 'incorrect';
               const passRate = (params.passCount || 0) / Math.max(1, (params.passCount || 0) + (params.failCount || 0));
               await persistence.storeFeedback({
-                judgmentId: params.judgmentId,
+                judgmentId: params.judgmentId || null,
                 outcome,
                 reason: `Test ${params.passed ? 'passed' : 'failed'}: ${params.passCount || 0}/${(params.passCount || 0) + (params.failCount || 0)} (${params.testSuite || 'unknown'})`,
                 actualScore: params.passed ? Math.round(passRate * 100) : Math.round(passRate * 50),
+                sourceType: 'test_result',
+                sourceContext: {
+                  testSuite: params.testSuite,
+                  passCount: params.passCount || 0,
+                  failCount: params.failCount || 0,
+                  passed: params.passed,
+                },
               });
             } catch (e) {
               // Best-effort
@@ -1193,13 +1204,20 @@ Actions:
           await saveState();
 
           // Persist commit feedback to PostgreSQL
-          if (persistence?.storeFeedback && params.judgmentId) {
+          // Now supports orphan feedback (no judgmentId required)
+          if (persistence?.storeFeedback) {
             try {
               await persistence.storeFeedback({
-                judgmentId: params.judgmentId,
+                judgmentId: params.judgmentId || null,
                 outcome: params.success ? 'correct' : 'incorrect',
                 reason: `Commit ${params.success ? 'succeeded' : 'failed'}${params.hooksPassed === false ? ' (hooks failed)' : ''}: ${params.commitHash || 'unknown'}`,
                 actualScore: params.success ? 75 : 25,
+                sourceType: 'commit',
+                sourceContext: {
+                  commitHash: params.commitHash,
+                  hooksPassed: params.hooksPassed,
+                  success: params.success,
+                },
               });
             } catch (e) { /* best-effort */ }
           }
@@ -1227,15 +1245,22 @@ Actions:
           await saveState();
 
           // Persist PR feedback to PostgreSQL
-          if (persistence?.storeFeedback && params.judgmentId) {
+          // Now supports orphan feedback (no judgmentId required)
+          if (persistence?.storeFeedback) {
             try {
               const outcome = params.status === 'merged' ? 'correct'
                 : params.status === 'rejected' ? 'incorrect' : 'partial';
               await persistence.storeFeedback({
-                judgmentId: params.judgmentId,
+                judgmentId: params.judgmentId || null,
                 outcome,
                 reason: `PR #${params.prNumber || '?'} ${params.status} (${params.approvalCount || 0} approvals)`,
                 actualScore: params.status === 'merged' ? 80 : params.status === 'rejected' ? 20 : 50,
+                sourceType: params.status === 'merged' ? 'pr_merged' : params.status === 'rejected' ? 'pr_rejected' : 'code_review',
+                sourceContext: {
+                  prNumber: params.prNumber,
+                  status: params.status,
+                  approvalCount: params.approvalCount || 0,
+                },
               });
             } catch (e) { /* best-effort */ }
           }
@@ -1263,13 +1288,20 @@ Actions:
           await saveState();
 
           // Persist build feedback to PostgreSQL
-          if (persistence?.storeFeedback && params.judgmentId) {
+          // Now supports orphan feedback (no judgmentId required)
+          if (persistence?.storeFeedback) {
             try {
               await persistence.storeFeedback({
-                judgmentId: params.judgmentId,
+                judgmentId: params.judgmentId || null,
                 outcome: params.success ? 'correct' : 'incorrect',
                 reason: `Build ${params.success ? 'succeeded' : 'failed'}${params.buildId ? ` (${params.buildId})` : ''}`,
                 actualScore: params.success ? 80 : 20,
+                sourceType: 'build',
+                sourceContext: {
+                  buildId: params.buildId,
+                  duration: params.duration,
+                  success: params.success,
+                },
               });
             } catch (e) { /* best-effort */ }
           }

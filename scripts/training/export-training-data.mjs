@@ -127,6 +127,10 @@ async function exportTrainingData() {
       warnings_issued: row.traj_warnings || [],
     } : null;
 
+    // Extract skepticism from context if present (D13: skepticism persistence)
+    const contextObj = row.context || {};
+    const skepticism = contextObj.skepticism || null;
+
     if (feedback) withFeedback++;
     if (trajectory) withTrajectory++;
     if (skepticism) withSkepticism++;
@@ -134,10 +138,6 @@ async function exportTrainingData() {
 
     const qScore = parseFloat(row.q_score);
     const confidence = parseFloat(row.confidence);
-
-    // Extract skepticism from context if present (D13: skepticism persistence)
-    const contextObj = row.context || {};
-    const skepticism = contextObj.skepticism || null;
 
     const record = {
       id: row.judgment_id,
@@ -165,10 +165,73 @@ async function exportTrainingData() {
     output.write(JSON.stringify(record) + '\n');
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Export orphan feedback (feedback without linked judgments)
+  // These provide training signal from tests/builds/commits without a prior judgment
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  const orphanQuery = `
+    SELECT
+      f.id,
+      f.outcome,
+      f.actual_score,
+      f.reason,
+      f.source_type,
+      f.source_context,
+      f.created_at
+    FROM feedback f
+    WHERE f.judgment_id IS NULL
+      AND f.created_at >= $1
+    ORDER BY f.created_at ASC
+  `;
+
+  let orphanCount = 0;
+  try {
+    const orphanResult = await pool.query(orphanQuery, [since]);
+    const orphanRows = orphanResult.rows;
+
+    console.error(`[export] Found ${orphanRows.length} orphan feedback records`);
+
+    for (const row of orphanRows) {
+      const sourceContext = typeof row.source_context === 'string'
+        ? JSON.parse(row.source_context)
+        : row.source_context || {};
+
+      const record = {
+        id: `orphan_${row.id}`,
+        input: {
+          item_type: row.source_type || 'unknown',
+          item_hash: null,
+          context: { type: 'orphan', source: row.source_type },
+        },
+        judgment: null,  // No linked judgment
+        skepticism: null,
+        feedback: {
+          outcome: row.outcome,
+          actual_score: row.actual_score ? parseFloat(row.actual_score) : null,
+          reason: row.reason,
+          source_type: row.source_type,
+          source_context: sourceContext,
+        },
+        trajectory: null,
+        reward: row.outcome === 'correct' ? 1.0 : row.outcome === 'incorrect' ? -1.0 : 0.0,
+      };
+
+      output.write(JSON.stringify(record) + '\n');
+      orphanCount++;
+    }
+  } catch (err) {
+    // source_type/source_context columns may not exist yet (pre-migration)
+    console.error(`[export] Orphan feedback query failed (may need migration): ${err.message}`);
+  }
+
   output.end();
 
+  const totalRecords = rows.length + orphanCount;
   console.error(`[export] Export complete:`);
   console.error(`  Total judgments:    ${rows.length}`);
+  console.error(`  Orphan feedback:    ${orphanCount}`);
+  console.error(`  Total records:      ${totalRecords}`);
   console.error(`  With feedback:      ${withFeedback} (${rows.length ? Math.round(withFeedback / rows.length * 100) : 0}%)`);
   console.error(`  With trajectory:    ${withTrajectory} (${rows.length ? Math.round(withTrajectory / rows.length * 100) : 0}%)`);
   console.error(`  With skepticism:    ${withSkepticism} (${rows.length ? Math.round(withSkepticism / rows.length * 100) : 0}%)`);

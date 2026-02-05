@@ -28,18 +28,29 @@ export class FeedbackRepository extends BaseRepository {
 
   /**
    * Create feedback for a judgment
+   * Supports orphan feedback (feedback without linked judgment)
+   * @param {Object} feedback - Feedback data
+   * @param {string} [feedback.judgmentId] - Optional judgment ID (nullable for orphan feedback)
+   * @param {string} [feedback.userId] - User ID
+   * @param {string} feedback.outcome - 'correct', 'incorrect', 'partial'
+   * @param {number} [feedback.actualScore] - Actual score (if known)
+   * @param {string} [feedback.reason] - Feedback reason
+   * @param {string} [feedback.sourceType] - Source type (manual, test_result, commit, build, etc.)
+   * @param {Object} [feedback.sourceContext] - Additional context from source
    */
   async create(feedback) {
     const { rows } = await this.db.query(`
-      INSERT INTO feedback (judgment_id, user_id, outcome, actual_score, reason)
-      VALUES ($1, $2, $3, $4, $5)
+      INSERT INTO feedback (judgment_id, user_id, outcome, actual_score, reason, source_type, source_context)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING *
     `, [
-      feedback.judgmentId,
+      feedback.judgmentId || null,  // Now nullable for orphan feedback
       feedback.userId || null,
       feedback.outcome,
       feedback.actualScore || null,
       feedback.reason || null,
+      feedback.sourceType || 'manual',
+      JSON.stringify(feedback.sourceContext || {}),
     ]);
     return rows[0];
   }
