@@ -86,6 +86,14 @@ import {
 // Import Kabbalistic Router (Phase 4: L'arbre vit)
 import { KabbalisticRouter } from '../../orchestration/kabbalistic-router.js';
 
+// Import Secure Dog Communication (Diffie-Hellman)
+import {
+  SecureDogChannel,
+  SecureChannelManager,
+  createSecureChannelManager,
+  DH_PARAMS,
+} from './secure-channel.js';
+
 // Import QLearningService for dog weight optimization (Task #54: Wire QLearning → Router)
 import { getQLearningService } from '../../orchestration/learning-service.js';
 
@@ -109,6 +117,14 @@ export {
   // Dog 0 (Phase 5: Training Pipeline)
   CollectiveLearner,
 };
+
+// Re-export Secure Channel
+export {
+  SecureDogChannel,
+  SecureChannelManager,
+  createSecureChannelManager,
+  DH_PARAMS,
+} from './secure-channel.js';
 
 // Re-export types
 export {
@@ -156,6 +172,11 @@ export {
   DogGoalTypes,
   createAutonomousCapabilities,
   DogAutonomousBehaviors,
+  // Secure Dog Communication (Diffie-Hellman)
+  SecureDogChannel,
+  SecureChannelManager,
+  createSecureChannelManager,
+  DH_PARAMS,
 };
 
 /**
