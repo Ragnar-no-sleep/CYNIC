@@ -142,3 +142,24 @@ export {
   GAUSSIAN_CONSTANTS,
   GAUSSIAN_CONFIG,
 } from './gaussian.js';
+
+// Entropy and Information Theory
+export {
+  // Shannon entropy
+  shannonEntropy,
+  normalizedEntropy,
+
+  // Divergences
+  crossEntropy,
+  klDivergence,
+  jsDivergence,
+
+  // Utilities
+  scoresToProbabilities,
+  entropyConfidence,
+
+  // Tracker
+  EntropyTracker,
+  getEntropyTracker,
+  resetEntropyTracker,
+} from './entropy.js';

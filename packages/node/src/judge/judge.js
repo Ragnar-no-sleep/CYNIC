@@ -51,6 +51,8 @@ import { judgmentEntropy, optimalConfidence, ENTROPY_THRESHOLDS } from './entrop
 
 // Bayesian inference for confidence calculation
 import { updateBelief, BetaDistribution } from '../inference/bayes.js';
+// Information theory for entropy analysis
+import { entropyConfidence, klDivergence, scoresToProbabilities } from '../inference/entropy.js';
 // Organism metrics for tracking
 import { recordSuccess, recordError, updateHomeostasis } from '../organism/index.js';
 
