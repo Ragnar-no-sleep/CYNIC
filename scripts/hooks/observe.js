@@ -67,6 +67,19 @@ import {
   SEFIROT_CHANNELS,
   // Task #84: Q-Learning with persistence
   getQLearningServiceWithPersistence,
+  // BURN extractions from observe.js
+  antiPatternState,
+  calculateRealReward,
+  detectAntiPatterns,
+  getActiveDog,
+  formatActiveDog,
+  generateInlineStatus,
+  COLLECTIVE_DOGS,
+  // Phase 2 BURN extractions
+  extractFacts,
+  storeFacts,
+  processTriggerEvent,
+  extractCommitMessage,
 } from './lib/index.js';
 
 // =============================================================================
@@ -133,159 +146,69 @@ if (harmonicFeedback && harmonicFeedback.setLearningCallback) {
 }
 
 // =============================================================================
-// ANTI-PATTERN DETECTOR - Error loops & bad workflows
-// "Le chien détecte les mauvaises habitudes"
+// ANTI-PATTERN DETECTOR - Now imported from ./lib/anti-pattern-detector.js
+// antiPatternState, calculateRealReward, detectAntiPatterns are now imported
 // =============================================================================
 
-// Session-scoped state for pattern detection
-const antiPatternState = {
-  // Error tracking (detect loops)
-  recentErrors: [],           // Last N errors: { type, file, timestamp }
-  errorLoopThreshold: 3,      // Same error 3x = loop
-  errorWindowMs: 5 * 60000,   // 5 minute window
+// =============================================================================
+// COLLECTIVE DOGS (SEFIROT) - Now imported from ./lib/active-dog.js
+// COLLECTIVE_DOGS, getActiveDog, formatActiveDog, generateInlineStatus are imported
+// =============================================================================
 
-  // Tool sequence tracking (detect anti-patterns)
-  recentTools: [],            // Last N tools: { name, file, timestamp }
-  filesRead: new Set(),       // Files that have been Read
-  filesEdited: new Set(),     // Files that have been Edited
-
-  // Test tracking
-  lastTestRun: 0,             // Timestamp of last test
-  commitsSinceTest: 0,        // Commits without testing
-
-  // Judgment ID tracking (for feedback → training pipeline linkage)
-  // Captures judgment_id from brain_judge results so test/commit/build
-  // feedback can be linked to specific judgments for supervised learning
-  lastJudgmentId: null,       // Most recent judgment_id from brain_judge
-  lastJudgmentAt: 0,          // Timestamp of last judgment
-  judgmentIdTTL: 10 * 60000,  // 10 minute TTL — feedback older than this won't link
+// =============================================================================
+// SYMBIOSIS CACHE: Last routing/judgment data for visibility (Task #4 + #5)
+// "L'humain VOIT ce que CYNIC pense" - Human sees CYNIC's reasoning
+// =============================================================================
+const symbiosisCache = {
+  lastJudgment: null,      // Last Q-Score, verdict, etc.
+  lastConsensus: null,     // Last Dog votes/consensus
+  lastRouting: null,       // Last Kabbalistic routing decision
+  updatedAt: null,
 };
 
 /**
- * Detect anti-patterns in tool usage
- * Returns warnings if anti-patterns detected
+ * Update symbiosis cache (called by async handlers)
+ * @param {string} type - 'judgment' | 'consensus' | 'routing'
+ * @param {Object} data - The data to cache
  */
-function detectAntiPatterns(toolName, toolInput, isError, toolOutput) {
-  const warnings = [];
-  const now = Date.now();
-  const filePath = toolInput?.file_path || toolInput?.filePath || '';
-  const command = toolInput?.command || '';
-
-  // === ERROR LOOP DETECTION ===
-  if (isError) {
-    const errorText = typeof toolOutput === 'string' ? toolOutput :
-                      toolOutput?.error || toolOutput?.message || '';
-    const errorType = detectErrorType(errorText);
-
-    // Add to recent errors
-    antiPatternState.recentErrors.push({
-      type: errorType,
-      file: filePath || command.slice(0, 50),
-      timestamp: now,
-    });
-
-    // Prune old errors
-    antiPatternState.recentErrors = antiPatternState.recentErrors.filter(
-      e => now - e.timestamp < antiPatternState.errorWindowMs
-    );
-
-    // Check for error loop (same error type 3+ times)
-    const sameTypeErrors = antiPatternState.recentErrors.filter(e => e.type === errorType);
-    if (sameTypeErrors.length >= antiPatternState.errorLoopThreshold) {
-      warnings.push({
-        type: 'error_loop',
-        severity: 'high',
-        message: `*GROWL* Tu tournes en rond - "${errorType}" ${sameTypeErrors.length}x en ${Math.round(antiPatternState.errorWindowMs/60000)} min`,
-        suggestion: 'Prends du recul. Le problème est peut-être ailleurs.',
-        data: { errorType, count: sameTypeErrors.length },
-      });
-      // Reset to avoid spamming
-      antiPatternState.recentErrors = antiPatternState.recentErrors.filter(e => e.type !== errorType);
-    }
-
-    // Check for file hotspot (same file causing errors)
-    if (filePath) {
-      const sameFileErrors = antiPatternState.recentErrors.filter(e => e.file === filePath);
-      if (sameFileErrors.length >= 3) {
-        warnings.push({
-          type: 'file_hotspot',
-          severity: 'medium',
-          message: `*sniff* Ce fichier pose problème: ${path.basename(filePath)} (${sameFileErrors.length} erreurs)`,
-          suggestion: 'Peut-être revoir l\'approche sur ce fichier?',
-          data: { file: filePath, count: sameFileErrors.length },
-        });
-      }
-    }
+function updateSymbiosisCache(type, data) {
+  if (type === 'judgment' && data) {
+    symbiosisCache.lastJudgment = {
+      qScore: data.qScore ?? data.Q ?? data.score,
+      verdict: data.verdict,
+      confidence: data.confidence,
+      axiomScores: data.axiomScores || data.breakdown,
+      refined: data.refined,
+    };
+    symbiosisCache.updatedAt = Date.now();
+  } else if (type === 'consensus' && data) {
+    symbiosisCache.lastConsensus = {
+      votes: data.agentResults || data.votes || [],
+      leader: data.leader || data.dominantDog,
+      consultations: data.consultations || [],
+      blocked: data.blocked || false,
+    };
+    symbiosisCache.updatedAt = Date.now();
+  } else if (type === 'routing' && data) {
+    symbiosisCache.lastRouting = {
+      path: data.path || [],
+      entrySefirah: data.entrySefirah,
+      decisions: data.decisions || [],
+      escalations: data.escalations || [],
+      blocked: data.blocked || false,
+    };
+    symbiosisCache.updatedAt = Date.now();
   }
-
-  // === TOOL SEQUENCE ANTI-PATTERNS ===
-
-  // Track tool usage
-  antiPatternState.recentTools.push({ name: toolName, file: filePath, timestamp: now });
-  if (antiPatternState.recentTools.length > 20) {
-    antiPatternState.recentTools.shift();
-  }
-
-  // Edit without Read anti-pattern
-  if ((toolName === 'Edit' || toolName === 'Write') && filePath) {
-    if (!antiPatternState.filesRead.has(filePath)) {
-      warnings.push({
-        type: 'edit_without_read',
-        severity: 'low',
-        message: `*ears perk* Edit sans Read: ${path.basename(filePath)}`,
-        suggestion: 'Lire avant d\'écrire évite les erreurs.',
-        data: { file: filePath },
-      });
-    }
-    antiPatternState.filesEdited.add(filePath);
-  }
-
-  // Track reads
-  if (toolName === 'Read' && filePath) {
-    antiPatternState.filesRead.add(filePath);
-  }
-
-  // === COMMIT WITHOUT TEST ===
-
-  // Track test runs
-  if (toolName === 'Bash' && command.match(/npm\s+(run\s+)?test|jest|vitest|mocha|pytest/i)) {
-    antiPatternState.lastTestRun = now;
-    antiPatternState.commitsSinceTest = 0;
-  }
-
-  // Track commits
-  if (toolName === 'Bash' && command.startsWith('git commit')) {
-    antiPatternState.commitsSinceTest++;
-
-    // Warn if multiple commits without testing
-    if (antiPatternState.commitsSinceTest >= 2) {
-      warnings.push({
-        type: 'commit_without_test',
-        severity: 'medium',
-        message: `*sniff* ${antiPatternState.commitsSinceTest} commits sans test`,
-        suggestion: 'npm test avant de continuer?',
-        data: { commits: antiPatternState.commitsSinceTest },
-      });
-    }
-  }
-
-  return warnings;
 }
-
-// =============================================================================
-// COLLECTIVE DOGS (SEFIROT) - Load from shared module
-// =============================================================================
 
 import { createRequire } from 'module';
 const requireCJS = createRequire(import.meta.url);
 
-let collectiveDogsModule = null;
-let COLLECTIVE_DOGS = {};
+// Load colors module (still needed for other parts of observe.js)
 let colors = null;
 let ANSI = null;
 let DOG_COLORS = null;
 
-// Load colors module
 try {
   colors = requireCJS('../lib/colors.cjs');
   ANSI = colors.ANSI;
@@ -304,30 +227,6 @@ try {
 // Helper for colorizing
 const c = (color, text) => color ? `${color}${text}${ANSI.reset}` : text;
 
-try {
-  collectiveDogsModule = requireCJS('../lib/collective-dogs.cjs');
-  COLLECTIVE_DOGS = collectiveDogsModule.COLLECTIVE_DOGS;
-  // Use DOG_COLORS from collective-dogs if colors module didn't load
-  if (!colors && collectiveDogsModule.DOG_COLORS) {
-    DOG_COLORS = collectiveDogsModule.DOG_COLORS;
-  }
-} catch (e) {
-  // Fallback to inline definitions if module not available
-  COLLECTIVE_DOGS = {
-    CYNIC:        { icon: '🧠', name: 'CYNIC', sefirah: 'Keter', domain: 'orchestration' },
-    SCOUT:        { icon: '🔍', name: 'Scout', sefirah: 'Netzach', domain: 'exploration' },
-    GUARDIAN:     { icon: '🛡️', name: 'Guardian', sefirah: 'Gevurah', domain: 'protection' },
-    DEPLOYER:     { icon: '🚀', name: 'Deployer', sefirah: 'Hod', domain: 'deployment' },
-    ARCHITECT:    { icon: '🏗️', name: 'Architect', sefirah: 'Chesed', domain: 'building' },
-    JANITOR:      { icon: '🧹', name: 'Janitor', sefirah: 'Yesod', domain: 'cleanup' },
-    ORACLE:       { icon: '🔮', name: 'Oracle', sefirah: 'Tiferet', domain: 'insight' },
-    ANALYST:      { icon: '📊', name: 'Analyst', sefirah: 'Binah', domain: 'analysis' },
-    SAGE:         { icon: '🦉', name: 'Sage', sefirah: 'Chochmah', domain: 'wisdom' },
-    SCHOLAR:      { icon: '📚', name: 'Scholar', sefirah: 'Daat', domain: 'knowledge' },
-    CARTOGRAPHER: { icon: '🗺️', name: 'Cartographer', sefirah: 'Malkhut', domain: 'mapping' },
-  };
-}
-
 // Self-Judge module for meta-awareness
 let selfJudge = null;
 try {
@@ -338,452 +237,21 @@ try {
 }
 
 // =============================================================================
-// INLINE STATUS BAR - Make CYNIC's thinking visible
-// "Da'at = Union through shared knowledge"
+// INLINE STATUS BAR - Now imported from ./lib/active-dog.js
+// generateInlineStatus, getActiveDog, formatActiveDog are now imported
 // =============================================================================
 
 const PHI_INV = 0.618;
 
-/**
- * Generate compact inline status bar showing CYNIC's internal state
- * Target format (CLAUDE.md): [🔥{temp}° η:{eta}% │ 🛡️ {dog} │ ⚡{state} │ 📊 {patterns}]
- *
- * This is the first step toward symbiosis: making the invisible visible.
- * Da'at = Union through shared knowledge
- */
-function generateInlineStatus(activeDog, options = {}) {
-  const parts = [];
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // 1. THERMODYNAMICS - 🔥 Heat & η Efficiency (Task #86: Visibility)
-  // "The human SEES what CYNIC's cognitive engine is doing"
-  // ═══════════════════════════════════════════════════════════════════════════
-  if (thermodynamics) {
-    try {
-      const thermoState = thermodynamics.getState();
-      if (thermoState) {
-        // Temperature: Color by φ thresholds (61.8%, 38.2%)
-        const temp = Math.round(thermoState.heat || 0);
-        const tempColor = temp > 50 ? ANSI.brightRed :
-                         temp > 30 ? ANSI.yellow : ANSI.brightGreen;
-        parts.push(c(tempColor, `🔥${temp}°`));
-
-        // Efficiency: Cap display at φ⁻¹ (61.8%)
-        const eta = Math.min(Math.round(thermoState.efficiency || 0), 62);
-        const etaColor = eta > 50 ? ANSI.brightGreen :
-                        eta > 30 ? ANSI.yellow : ANSI.brightRed;
-        parts.push(c(etaColor, `η:${eta}%`));
-      }
-    } catch { /* continue without */ }
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // 2. ACTIVE DOG - Which Sefirot is responding
-  // ═══════════════════════════════════════════════════════════════════════════
-  if (activeDog) {
-    const dogName = activeDog.name || 'CYNIC';
-    parts.push(`${activeDog.icon} ${dogName}`);
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // 3. PSYCHOLOGY STATE - Complete cognitive state (Task #88: Visibility)
-  // Format: ⚡ E:60% F:70% L:3 or ⚡ flow/burnout/friction
-  // ═══════════════════════════════════════════════════════════════════════════
-  if (psychology && options.showPsychology !== false) {
-    try {
-      const summary = psychology.getSummary?.();
-      if (summary) {
-        // Composite states take priority (special alerts)
-        if (summary.composites?.flow) {
-          parts.push(c(ANSI.brightGreen, '⚡ flow'));
-        } else if (summary.composites?.burnoutRisk) {
-          parts.push(c(ANSI.brightRed, '⚡ burnout'));
-        } else if (summary.frustration?.value > 0.5) {
-          parts.push(c(ANSI.yellow, '⚡ friction'));
-        } else {
-          // Task #88: Show complete state E%, F%, L instead of just energy
-          const energy = Math.round((summary.energy?.value || 0.5) * 100);
-          const focus = Math.round((summary.focus?.value || 0.5) * 100);
-          const load = Math.round(summary.cognitiveLoad?.value || 0);
-
-          // Color by lowest metric (weakest link)
-          const minMetric = Math.min(energy, focus);
-          const stateColor = minMetric > 60 ? ANSI.brightGreen :
-                            minMetric > 40 ? ANSI.yellow : ANSI.brightRed;
-
-          parts.push(c(stateColor, `⚡E:${energy}% F:${focus}%${load > 0 ? ` L:${load}` : ''}`));
-        }
-      }
-    } catch { /* continue without */ }
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // 4. THOMPSON COHERENCE + PATTERNS - 📊 Learning state (Task #86: Visibility)
-  // ═══════════════════════════════════════════════════════════════════════════
-  if (harmonicFeedback) {
-    try {
-      const state = harmonicFeedback.getState?.();
-      const stats = harmonicFeedback.thompsonSampler?.getStats?.();
-
-      if (state || stats) {
-        const coherence = state ? Math.round((state.coherence || 0.5) * 100) : null;
-        const patterns = stats?.armCount || 0;
-
-        // Combine coherence and patterns in one segment
-        let patternText = '';
-        if (coherence !== null && patterns > 0) {
-          patternText = `📊 ${coherence}%/${patterns}p`;
-        } else if (patterns > 0) {
-          patternText = `📊 ${patterns}p`;
-        } else if (coherence !== null) {
-          patternText = `📊 ${coherence}%`;
-        }
-
-        if (patternText) {
-          const patternColor = coherence && coherence > 50 ? ANSI.cyan : ANSI.white;
-          parts.push(c(patternColor, patternText));
-        }
-      }
-    } catch { /* continue without */ }
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // 5. MULTI-LLM CONSENSUS - 🧠 (When LLMRouter is wired - Task #90-92)
-  // TODO: Add when LLMRouter is wired
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  if (parts.length === 0) {
-    return null;
-  }
-
-  // Format: [🔥{temp}° η:{eta}% │ 🛡️ {dog} │ ⚡{state} │ 📊 {patterns}]
-  return `${c(ANSI.dim, '[')}${parts.join(c(ANSI.dim, ' │ '))}${c(ANSI.dim, ']')}`;
-}
-
-/**
- * Determine which Dog is most relevant for the current action
- * "Le Collectif observe - un Chien répond"
- */
-function getActiveDog(toolName, toolInput, isError) {
-  const command = toolInput?.command || '';
-  const filePath = toolInput?.file_path || toolInput?.filePath || '';
-
-  // Errors activate the Guardian
-  if (isError) {
-    return COLLECTIVE_DOGS.GUARDIAN;
-  }
-
-  // Tool-specific mappings
-  switch (toolName) {
-    // Exploration tools → Scout
-    case 'Read':
-    case 'Glob':
-    case 'Grep':
-    case 'LS':
-      return COLLECTIVE_DOGS.SCOUT;
-
-    // Building tools → Architect
-    case 'Write':
-    case 'Edit':
-    case 'NotebookEdit':
-      // Unless it's cleanup/deletion
-      if (toolInput?.new_string === '' || toolInput?.content?.length < (toolInput?.old_string?.length || 0)) {
-        return COLLECTIVE_DOGS.JANITOR;
-      }
-      return COLLECTIVE_DOGS.ARCHITECT;
-
-    // Task/Agent dispatch → CYNIC (orchestration)
-    case 'Task':
-      return COLLECTIVE_DOGS.CYNIC;
-
-    // Web research → Scholar
-    case 'WebFetch':
-    case 'WebSearch':
-      return COLLECTIVE_DOGS.SCHOLAR;
-
-    // Bash commands need deeper analysis
-    case 'Bash':
-      // Git operations
-      if (command.startsWith('git ')) {
-        const gitCmd = command.split(' ')[1];
-        if (['push', 'deploy', 'publish'].includes(gitCmd)) {
-          return COLLECTIVE_DOGS.DEPLOYER;
-        }
-        if (['log', 'diff', 'show', 'blame'].includes(gitCmd)) {
-          return COLLECTIVE_DOGS.ANALYST;
-        }
-        if (['clean', 'gc', 'prune'].includes(gitCmd)) {
-          return COLLECTIVE_DOGS.JANITOR;
-        }
-        return COLLECTIVE_DOGS.CARTOGRAPHER; // git status, branch, etc.
-      }
-      // Test commands → Guardian (verification)
-      if (command.match(/test|jest|vitest|mocha|pytest|cargo\s+test/i)) {
-        return COLLECTIVE_DOGS.GUARDIAN;
-      }
-      // Build/compile → Architect
-      if (command.match(/build|compile|tsc|webpack|vite/i)) {
-        return COLLECTIVE_DOGS.ARCHITECT;
-      }
-      // Deploy commands → Deployer
-      if (command.match(/deploy|publish|release/i)) {
-        return COLLECTIVE_DOGS.DEPLOYER;
-      }
-      // Cleanup → Janitor
-      if (command.match(/clean|rm\s|del\s|remove/i)) {
-        return COLLECTIVE_DOGS.JANITOR;
-      }
-      // Default bash → Cartographer (mapping/exploration)
-      return COLLECTIVE_DOGS.CARTOGRAPHER;
-
-    // MCP tools → depends on the tool
-    default:
-      // MCP brain tools
-      if (toolName.startsWith('mcp__')) {
-        if (toolName.includes('search') || toolName.includes('query')) {
-          return COLLECTIVE_DOGS.SCOUT;
-        }
-        if (toolName.includes('memory') || toolName.includes('learn')) {
-          return COLLECTIVE_DOGS.SCHOLAR;
-        }
-        if (toolName.includes('judge') || toolName.includes('refine')) {
-          return COLLECTIVE_DOGS.ORACLE;
-        }
-        if (toolName.includes('pattern')) {
-          return COLLECTIVE_DOGS.ANALYST;
-        }
-      }
-      // Default → Scout (exploration)
-      return COLLECTIVE_DOGS.SCOUT;
-  }
-}
-
-/**
- * Format the active Dog display
- */
-function formatActiveDog(dog, action = '') {
-  const actionText = action ? ` - ${action}` : '';
-  return `${dog.icon} ${dog.name} (${dog.sefirah})${actionText}`;
-}
-
 // =============================================================================
-// P0.2: FACT EXTRACTION (MoltBrain-style)
-// "Le chien extrait les faits" - Extract factual knowledge from tool outputs
+// P0.2: FACT EXTRACTION - Now imported from ./lib/fact-extractor-local.js
+// extractFacts, storeFacts are now imported
 // =============================================================================
 
-/**
- * Extract facts from tool outputs for semantic memory
- * Facts are discrete pieces of knowledge that can be retrieved later
- * @returns {Array<{type: string, content: string, confidence: number, context: object}>}
- */
-function extractFacts(toolName, toolInput, toolOutput, isError) {
-  const facts = [];
-  const outputStr = typeof toolOutput === 'string' ? toolOutput : JSON.stringify(toolOutput || {});
-  const filePath = toolInput?.file_path || toolInput?.filePath || '';
-
-  // Don't extract facts from errors (they're handled separately)
-  if (isError) return facts;
-
-  // 1. File structure facts from Read/Glob
-  if (toolName === 'Read' && filePath) {
-    const ext = path.extname(filePath).toLowerCase();
-
-    // Extract function/class definitions from code files
-    if (['.js', '.ts', '.tsx', '.jsx', '.py', '.rs', '.go'].includes(ext)) {
-      // JavaScript/TypeScript functions
-      const funcMatches = outputStr.match(/(?:function|const|let|var)\s+(\w+)\s*(?:=\s*(?:async\s*)?\(|[\(<])/g);
-      if (funcMatches && funcMatches.length > 0) {
-        const funcNames = funcMatches.slice(0, 5).map(m => m.match(/(?:function|const|let|var)\s+(\w+)/)?.[1]).filter(Boolean);
-        if (funcNames.length > 0) {
-          facts.push({
-            type: 'file_structure',
-            content: `File ${path.basename(filePath)} contains functions: ${funcNames.join(', ')}`,
-            confidence: 0.8,
-            context: { file: filePath, functions: funcNames },
-          });
-        }
-      }
-
-      // Class definitions
-      const classMatches = outputStr.match(/class\s+(\w+)/g);
-      if (classMatches && classMatches.length > 0) {
-        const classNames = classMatches.map(m => m.match(/class\s+(\w+)/)?.[1]).filter(Boolean);
-        facts.push({
-          type: 'file_structure',
-          content: `File ${path.basename(filePath)} defines classes: ${classNames.join(', ')}`,
-          confidence: 0.9,
-          context: { file: filePath, classes: classNames },
-        });
-      }
-
-      // Export facts
-      const exportMatches = outputStr.match(/export\s+(?:default\s+)?(?:const|function|class|let|var)?\s*(\w+)/g);
-      if (exportMatches && exportMatches.length > 0) {
-        const exports = exportMatches.slice(0, 10).map(m => m.match(/(\w+)$/)?.[1]).filter(Boolean);
-        facts.push({
-          type: 'module_exports',
-          content: `${path.basename(filePath)} exports: ${exports.join(', ')}`,
-          confidence: 0.9,
-          context: { file: filePath, exports },
-        });
-      }
-    }
-
-    // Extract API endpoints from code
-    const apiMatches = outputStr.match(/['"`](\/api\/[^'"`]+)['"`]|router\.(get|post|put|delete)\s*\(\s*['"`]([^'"`]+)['"`]/gi);
-    if (apiMatches && apiMatches.length > 0) {
-      const endpoints = [...new Set(apiMatches.map(m => m.match(/['"`]([^'"`]+)['"`]/)?.[1]).filter(Boolean))];
-      if (endpoints.length > 0) {
-        facts.push({
-          type: 'api_endpoint',
-          content: `API endpoints in ${path.basename(filePath)}: ${endpoints.join(', ')}`,
-          confidence: 0.85,
-          context: { file: filePath, endpoints },
-        });
-      }
-    }
-
-    // Extract environment variable references
-    const envMatches = outputStr.match(/process\.env\.(\w+)|import\.meta\.env\.(\w+)|\$\{(\w+)\}/g);
-    if (envMatches && envMatches.length > 0) {
-      const envVars = [...new Set(envMatches.map(m => m.match(/\.(\w+)|\{(\w+)\}/)?.[1] || m.match(/\.(\w+)|\{(\w+)\}/)?.[2]).filter(Boolean))];
-      if (envVars.length > 0) {
-        facts.push({
-          type: 'env_dependency',
-          content: `${path.basename(filePath)} uses env vars: ${envVars.slice(0, 10).join(', ')}`,
-          confidence: 0.9,
-          context: { file: filePath, envVars },
-        });
-      }
-    }
-  }
-
-  // 2. Git facts from Bash git commands
-  if (toolName === 'Bash' && toolInput.command?.startsWith('git ')) {
-    const command = toolInput.command;
-
-    // Branch facts
-    if (command.includes('git branch') && outputStr) {
-      const currentBranch = outputStr.match(/\*\s+(\S+)/)?.[1];
-      if (currentBranch) {
-        facts.push({
-          type: 'git_state',
-          content: `Current branch: ${currentBranch}`,
-          confidence: 1.0,
-          context: { branch: currentBranch },
-        });
-      }
-    }
-
-    // Commit facts
-    if (command.startsWith('git log') && outputStr) {
-      const commitMatches = outputStr.match(/commit\s+([a-f0-9]+)/gi);
-      if (commitMatches && commitMatches.length > 0) {
-        const recentCommit = commitMatches[0].match(/([a-f0-9]+)/)?.[1];
-        facts.push({
-          type: 'git_state',
-          content: `Recent commit: ${recentCommit?.substring(0, 7)}`,
-          confidence: 1.0,
-          context: { commit: recentCommit },
-        });
-      }
-    }
-  }
-
-  // 3. Test facts from test outputs
-  if (toolName === 'Bash' && toolInput.command?.match(/npm\s+(run\s+)?test|jest|vitest|pytest/i)) {
-    // Extract test count
-    const passMatch = outputStr.match(/(\d+)\s*(?:tests?\s+)?pass(?:ed|ing)?/i);
-    const failMatch = outputStr.match(/(\d+)\s*(?:tests?\s+)?fail(?:ed|ing)?/i);
-    if (passMatch || failMatch) {
-      const passed = parseInt(passMatch?.[1] || '0', 10);
-      const failed = parseInt(failMatch?.[1] || '0', 10);
-      facts.push({
-        type: 'test_state',
-        content: `Test results: ${passed} passed, ${failed} failed`,
-        confidence: 0.95,
-        context: { passed, failed, total: passed + failed },
-      });
-    }
-
-    // Extract failing test names
-    const failingTests = outputStr.match(/(?:FAIL|✕|×)\s+(.+?)(?:\n|$)/gi);
-    if (failingTests && failingTests.length > 0) {
-      const testNames = failingTests.slice(0, 5).map(t => t.replace(/(?:FAIL|✕|×)\s+/, '').trim());
-      facts.push({
-        type: 'test_failure',
-        content: `Failing tests: ${testNames.join(', ')}`,
-        confidence: 0.9,
-        context: { failingTests: testNames },
-      });
-    }
-  }
-
-  // 4. Dependency facts from package.json reads
-  if (toolName === 'Read' && filePath.endsWith('package.json')) {
-    try {
-      const pkg = JSON.parse(outputStr);
-      if (pkg.dependencies) {
-        const deps = Object.keys(pkg.dependencies).slice(0, 10);
-        facts.push({
-          type: 'dependency',
-          content: `Project dependencies: ${deps.join(', ')}${Object.keys(pkg.dependencies).length > 10 ? '...' : ''}`,
-          confidence: 1.0,
-          context: { dependencies: Object.keys(pkg.dependencies) },
-        });
-      }
-      if (pkg.scripts) {
-        facts.push({
-          type: 'npm_scripts',
-          content: `Available scripts: ${Object.keys(pkg.scripts).join(', ')}`,
-          confidence: 1.0,
-          context: { scripts: Object.keys(pkg.scripts) },
-        });
-      }
-    } catch (e) {
-      // Not valid JSON - ignore
-    }
-  }
-
-  // 5. Write/Edit facts - what was changed
-  if ((toolName === 'Write' || toolName === 'Edit') && filePath) {
-    facts.push({
-      type: 'file_modified',
-      content: `Modified: ${path.basename(filePath)}`,
-      confidence: 1.0,
-      context: { file: filePath, action: toolName.toLowerCase() },
-    });
-  }
-
-  return facts;
-}
-
-/**
- * Store extracted facts to brain memory for semantic retrieval
- */
-async function storeFacts(facts, context = {}) {
-  if (!facts || facts.length === 0) return;
-
-  for (const fact of facts) {
-    try {
-      // Store to brain memory with embedding for semantic search
-      await callBrainTool('brain_memory_store', {
-        type: fact.type,
-        content: fact.content,
-        confidence: fact.confidence,
-        context: {
-          ...fact.context,
-          ...context,
-          extractedAt: Date.now(),
-        },
-        // Flag as extracted fact (vs observed pattern)
-        metadata: { source: 'fact_extraction', version: 'p0.2' },
-      });
-    } catch (e) {
-      // Storage failed - continue with other facts
-    }
-  }
-}
+// =============================================================================
+// TRIGGER PROCESSOR - Now imported from ./lib/trigger-processor.js
+// processTriggerEvent, extractCommitMessage are now imported
+// =============================================================================
 
 // =============================================================================
 // PATTERN DETECTION
@@ -899,196 +367,10 @@ function updateUserToolStats(profile, toolName, isError) {
 }
 
 // =============================================================================
-// AUTO-JUDGMENT TRIGGERS INTEGRATION
+// AUTO-JUDGMENT TRIGGERS - Now imported from ./lib/trigger-processor.js
+// processTriggerEvent, parseTestOutput, extractCommitHash, extractCommitMessage,
+// extractErrorSummary are now imported
 // =============================================================================
-
-/**
- * Map tool names and outcomes to trigger event types
- */
-function mapToTriggerEventType(toolName, isError, toolInput) {
-  // Error events
-  if (isError) {
-    return 'TOOL_ERROR';
-  }
-
-  // Git events via Bash
-  if (toolName === 'Bash') {
-    const command = toolInput.command || '';
-    if (command.startsWith('git commit')) return 'COMMIT';
-    if (command.startsWith('git push')) return 'PUSH';
-    if (command.startsWith('git merge')) return 'MERGE';
-  }
-
-  // Code change events
-  if (toolName === 'Write' || toolName === 'Edit') {
-    return 'CODE_CHANGE';
-  }
-
-  // Default: generic tool use
-  return 'TOOL_USE';
-}
-
-/**
- * Process tool event through the Trigger system
- * Non-blocking - fires async request
- */
-function processTriggerEvent(toolName, toolInput, toolOutput, isError) {
-  const eventType = mapToTriggerEventType(toolName, isError, toolInput);
-
-  const event = {
-    type: eventType,
-    source: toolName,
-    data: {
-      tool: toolName,
-      success: !isError,
-      inputSize: JSON.stringify(toolInput).length,
-      // Include relevant context based on event type
-      ...(eventType === 'COMMIT' && { message: extractCommitMessage(toolInput.command) }),
-      ...(eventType === 'CODE_CHANGE' && { file: toolInput.file_path || toolInput.filePath }),
-      ...(isError && { error: extractErrorSummary(toolOutput) }),
-    },
-    timestamp: Date.now(),
-  };
-
-  // Fire async request to process triggers (non-blocking)
-  callBrainTool('brain_triggers', {
-    action: 'process',
-    event,
-  }).catch(() => {
-    // Silently ignore errors - triggers should never block hooks
-  });
-
-  // Record pattern to brain memory (non-blocking)
-  callBrainTool('brain_patterns', {
-    action: 'record',
-    pattern: {
-      type: eventType.toLowerCase(),
-      tool: toolName,
-      success: !isError,
-      timestamp: Date.now(),
-    },
-  }).catch(() => {
-    // Silently ignore - pattern recording is optional
-  });
-
-  // ==========================================================================
-  // LEARNING FEEDBACK - External validation (Ralph-inspired)
-  // Links feedback to most recent judgment for training pipeline persistence.
-  // Without judgmentId, feedback goes to LearningService (memory) but NOT to
-  // PostgreSQL feedback table (which requires judgment_id NOT NULL).
-  // ==========================================================================
-
-  // Get the most recent judgment ID (if fresh enough)
-  const recentJudgmentId = (
-    antiPatternState.lastJudgmentId &&
-    (Date.now() - antiPatternState.lastJudgmentAt) < antiPatternState.judgmentIdTTL
-  ) ? antiPatternState.lastJudgmentId : null;
-
-  // Send learning feedback for test results
-  if (toolName === 'Bash' && toolInput.command) {
-    const cmd = toolInput.command;
-    const output = typeof toolOutput === 'string' ? toolOutput : '';
-
-    // Detect test commands
-    if (cmd.match(/npm\s+(run\s+)?test|jest|vitest|mocha|pytest|cargo\s+test|go\s+test/i)) {
-      const testResult = parseTestOutput(output, isError);
-      testResult.judgmentId = testResult.judgmentId || recentJudgmentId;
-      sendTestFeedback(testResult).catch(() => {});
-    }
-
-    // Detect successful commits
-    if (cmd.startsWith('git commit') && !isError) {
-      const commitHash = extractCommitHash(output);
-      sendCommitFeedback({
-        success: true,
-        commitHash,
-        hooksPassed: true,
-        message: extractCommitMessage(cmd),
-        judgmentId: recentJudgmentId,
-      }).catch(() => {});
-    }
-
-    // Detect build commands
-    if (cmd.match(/npm\s+run\s+build|tsc|webpack|vite\s+build|cargo\s+build|go\s+build/i)) {
-      sendBuildFeedback({
-        success: !isError,
-        duration: null,
-        judgmentId: recentJudgmentId,
-      }).catch(() => {});
-    }
-  }
-}
-
-/**
- * Parse test output to extract pass/fail counts
- */
-function parseTestOutput(output, isError) {
-  let passed = !isError;
-  let passCount = 0;
-  let failCount = 0;
-  let testSuite = 'unknown';
-
-  // Jest/Vitest format
-  const jestMatch = output.match(/Tests?:\s*(\d+)\s*passed(?:,\s*(\d+)\s*failed)?/i);
-  if (jestMatch) {
-    passCount = parseInt(jestMatch[1], 10) || 0;
-    failCount = parseInt(jestMatch[2], 10) || 0;
-    testSuite = output.includes('vitest') ? 'vitest' : 'jest';
-    passed = failCount === 0;
-    return { passed, passCount, failCount, testSuite };
-  }
-
-  // Mocha format
-  const mochaMatch = output.match(/(\d+)\s*passing(?:.*?(\d+)\s*failing)?/i);
-  if (mochaMatch) {
-    passCount = parseInt(mochaMatch[1], 10) || 0;
-    failCount = parseInt(mochaMatch[2], 10) || 0;
-    testSuite = 'mocha';
-    passed = failCount === 0;
-    return { passed, passCount, failCount, testSuite };
-  }
-
-  // Fallback based on error state
-  if (isError) {
-    failCount = 1;
-    passed = false;
-  } else if (output.includes('PASS') || output.includes('passed') || output.includes('ok')) {
-    passCount = 1;
-    passed = true;
-  }
-
-  return { passed, passCount, failCount, testSuite };
-}
-
-/**
- * Extract commit hash from git output
- */
-function extractCommitHash(output) {
-  if (!output) return null;
-  // Match: [branch abc1234] or abc1234
-  const match = output.match(/\[[\w\-/]+\s+([a-f0-9]{7,})\]|^([a-f0-9]{40})$/im);
-  return match ? (match[1] || match[2]) : null;
-}
-
-/**
- * Extract commit message from git commit command
- */
-function extractCommitMessage(command) {
-  if (!command) return '';
-  const match = command.match(/-m\s+["']([^"']+)["']/);
-  return match ? match[1] : '';
-}
-
-/**
- * Extract error summary from tool output
- */
-function extractErrorSummary(output) {
-  if (typeof output === 'string') {
-    // First 200 chars of error
-    return output.slice(0, 200);
-  }
-  return output?.error || output?.message || 'Unknown error';
-}
 
 // Note: detectErrorType is now imported from ./lib/index.js (pattern-detector.js)
 
@@ -1218,6 +500,12 @@ async function main() {
         // Judge the self-modification
         const selfJudgment = selfJudge.judgeSelfModification(selfItem);
 
+        // ═══════════════════════════════════════════════════════════════════
+        // FIX (Task #20): Store Q-Score for real reward calculation
+        // This feeds into Q-Learning so CYNIC learns from self-modifications
+        // ═══════════════════════════════════════════════════════════════════
+        antiPatternState.lastSelfModScore = selfJudgment.qScore;
+
         // Output formatted judgment to stderr (visible to developer)
         const outputLines = selfJudge.formatJudgmentOutput(selfJudgment);
         console.error(outputLines.join('\n'));
@@ -1284,6 +572,26 @@ async function main() {
           });
         }
 
+        // ═══════════════════════════════════════════════════════════════════
+        // PHASE B1 (Task #21): Feed non-commutative evaluator
+        // Track dimension evaluation order to detect order-dependent effects
+        // ═══════════════════════════════════════════════════════════════════
+        if (harmonicFeedback?.nonCommutativeEvaluator && selfJudgment.axiomScores) {
+          try {
+            // Get dimension names from axiom scores
+            const dimensionOrder = Object.keys(selfJudgment.axiomScores);
+            const dimensionScores = selfJudgment.axiomScores;
+
+            // Record evaluation for non-commutativity tracking
+            harmonicFeedback.recordDimensionEvaluation({
+              order: dimensionOrder,
+              scores: dimensionScores,
+              finalScore: selfJudgment.qScore,
+              context: `self_mod_${selfItem.component.name}`,
+            });
+          } catch { /* best-effort non-commutative tracking */ }
+        }
+
       } catch (selfJudgeErr) {
         // Self-judge failed — fall back to simple detection
         if (process.env.CYNIC_DEBUG) {
@@ -1343,6 +651,13 @@ async function main() {
       if (result?.decisionId) {
         process.env.CYNIC_LAST_DECISION_ID = result.decisionId;
       }
+      // SYMBIOSIS: Cache routing and judgment data for visibility (Task #4 + #5)
+      if (result?.routing) {
+        updateSymbiosisCache('routing', result.routing);
+      }
+      if (result?.judgment) {
+        updateSymbiosisCache('judgment', result.judgment);
+      }
     }).catch(() => {
       // Silently ignore - observation is best-effort
     });
@@ -1367,13 +682,28 @@ async function main() {
           console.error(`[${anomaly.agent}] ${anomaly.type}: ${anomaly.message}`);
         }
       }
+      // SYMBIOSIS: Cache consensus data for visibility (Task #5)
+      // AgentResults contain individual Dog responses
+      if (result?.agentResults || result?.anomalies) {
+        updateSymbiosisCache('consensus', {
+          agentResults: result.agentResults || [],
+          votes: result.agentResults?.map(r => ({
+            dog: r.agent,
+            vote: r.response,
+            support: r.confidence || 0.5,
+          })) || [],
+          anomalies: result.anomalies || [],
+          leader: result.leader || (result.agentResults?.[0]?.agent),
+        });
+      }
     }).catch(() => {
       // Best-effort - don't fail the hook
     });
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // Q-LEARNING: Record episode for learning pipeline (Task #84)
+    // Q-LEARNING: Record episode for learning pipeline (Task #84 + Task #20)
     // "Le chien apprend qui appeler" - Q-Learning feeds weight optimization
+    // FIX: Now uses REAL rewards from self-judge, execution time, and outcomes
     // ═══════════════════════════════════════════════════════════════════════════
     const qlearning = getQLearningServiceWithPersistence();
     if (qlearning) {
@@ -1407,12 +737,39 @@ async function main() {
           });
         }
 
-        // End episode with outcome
+        // ═══════════════════════════════════════════════════════════════════
+        // REAL REWARD CALCULATION (Task #20)
+        // φ-aligned: Combines multiple signals into a nuanced score
+        // ═══════════════════════════════════════════════════════════════════
+        const realRewardScore = calculateRealReward({
+          isError,
+          toolName,
+          toolInput,
+          toolOutput,
+          // Self-judge score if this was a self-modification
+          selfJudgeScore: antiPatternState.lastSelfModScore || null,
+          // Execution duration if tracked
+          durationMs: toolOutput?.duration_ms || antiPatternState.lastToolDuration || null,
+          // Pattern match bonus
+          patternMatch: antiPatternState.matchedPattern || null,
+          // Blocked by Guardian = positive reward
+          wasBlocked: antiPatternState.blockedByGuardian || false,
+        });
+
+        // End episode with REAL outcome score (not just success/failure)
         qlearning.endEpisode({
           success: !isError,
           type: isError ? 'failure' : 'success',
           tool: toolName,
+          score: realRewardScore, // FIX: Pass real score (0-100), converted by learning-service
         });
+
+        // Clear transient state
+        antiPatternState.lastSelfModScore = null;
+        antiPatternState.lastToolDuration = null;
+        antiPatternState.matchedPattern = null;
+        antiPatternState.blockedByGuardian = false;
+
       } catch (e) {
         // Q-Learning recording failed - continue without
         if (process.env.CYNIC_DEBUG) {
@@ -1797,6 +1154,78 @@ async function main() {
             });
           }
         }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // PHASE B1 (Task #21): Feed mathematical systems for 95% feedback loop
+        // FFT temporal + Antifragility + Girsanov + Non-commutative
+        // ═══════════════════════════════════════════════════════════════════════
+
+        // 8. Feed Antifragility tracker with volatility signals
+        // Volatility = combination of recent errors, tool complexity, model uncertainty
+        if (harmonicFeedback.antifragilityTracker) {
+          const errorRate = antiPatternState.recentErrors.length > 0
+            ? antiPatternState.recentErrors.filter(e => Date.now() - e.timestamp < 5 * 60000).length / 10
+            : 0;
+          const toolComplexity = ['Bash', 'Write', 'Edit'].includes(toolName) ? 0.7 : 0.3;
+          const uncertainty = harmonicFeedback.thompsonSampler?.getUncertainty?.(`tool_${toolName.toLowerCase()}`) * 4 || 0.5;
+
+          harmonicFeedback.antifragilityTracker.record(
+            isError ? 0 : 1,  // Performance: 1 = success, 0 = failure
+            { errorRate, complexity: toolComplexity, uncertainty }
+          );
+        }
+
+        // 9. Get Girsanov adaptive confidence for context-aware decisions
+        // Use risk-averse measure for dangerous tools
+        if (harmonicFeedback.girsanovTransformer) {
+          const isDangerous = ['Bash', 'Write', 'Edit'].includes(toolName);
+          const rawConfidence = harmonicFeedback.thompsonSampler?.getExpectedValue?.(`tool_${toolName.toLowerCase()}`) || 0.5;
+          const adaptiveConf = harmonicFeedback.getAdaptiveConfidence?.(rawConfidence, { isDangerous });
+
+          // Store for telemetry
+          if (telemetry && adaptiveConf !== undefined) {
+            recordMetric('girsanov_adaptive_confidence', adaptiveConf, { tool: toolName, isDangerous });
+          }
+        }
+
+        // 10. Check temporal patterns and optimal timing
+        if (harmonicFeedback.temporalAnalyzer?.analysisCount > 0) {
+          const timing = harmonicFeedback.getOptimalTiming?.();
+          if (timing?.recommendation === 'rest_recommended' && !isError) {
+            // User is working during low energy - note for future suggestions
+            if (sessionState.isInitialized()) {
+              sessionState.recordPattern({
+                type: 'timing_insight',
+                signature: 'working_during_low_energy',
+                description: 'User active during predicted low energy period',
+                context: timing,
+              });
+            }
+          }
+        }
+
+        // 11. Antifragility insights for consciousness
+        if (harmonicFeedback.antifragilityTracker?.metrics?.trend && consciousness) {
+          const afMetrics = harmonicFeedback.antifragilityTracker.metrics;
+          if (afMetrics.trend === 'antifragile' && afMetrics.index > 0.2) {
+            consciousness.recordInsight({
+              type: 'antifragility',
+              title: 'System becoming antifragile',
+              message: `Antifragility index: ${afMetrics.index.toFixed(3)} - gaining from stress`,
+              data: afMetrics,
+              priority: 'low',
+            });
+          } else if (afMetrics.trend === 'fragile' && afMetrics.index < -0.2) {
+            consciousness.recordInsight({
+              type: 'fragility_warning',
+              title: 'System showing fragility',
+              message: `Fragility index: ${afMetrics.index.toFixed(3)} - consider reducing stress`,
+              data: afMetrics,
+              priority: 'medium',
+            });
+          }
+        }
+
       } catch (e) {
         // Harmonic feedback failed - continue without
         if (process.env.CYNIC_DEBUG) {
@@ -2647,10 +2076,19 @@ async function main() {
 
     // ═══════════════════════════════════════════════════════════════════════════
     // INLINE STATUS BAR - Da'at: Making invisible visible
-    // Shows: [🛡️ Guardian │ 58% │ 12 patterns │ ✨ flow]
+    // Shows: [🛡️ Guardian │ 58% │ 12 patterns │ ✨ flow │ Q:75 │ 🗳️ 9/11]
+    // SYMBIOSIS: Now includes Q-Score and Dog consensus (Task #4 + #5)
     // ═══════════════════════════════════════════════════════════════════════════
     if (showDog && activeDog) {
-      const inlineStatus = generateInlineStatus(activeDog, { showPsychology: true });
+      const inlineStatus = generateInlineStatus(activeDog, {
+        showPsychology: true,
+        thermodynamics,
+        psychology,
+        harmonicFeedback,
+        // SYMBIOSIS: Pass cached judgment and consensus data
+        judgment: symbiosisCache.lastJudgment,
+        consensus: symbiosisCache.lastConsensus,
+      });
       if (inlineStatus) {
         outputParts.push(`\n${inlineStatus} `);
       } else {
@@ -2799,6 +2237,90 @@ async function main() {
               // Silently fail - learning is enhancement, not critical
             });
         }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // PHASE B1 (Task #21): Periodic mathematical system visibility
+        // Antifragility, Temporal, Girsanov insights (~2% chance)
+        // ═══════════════════════════════════════════════════════════════════════
+        if (Math.random() < 0.02) {
+          // Antifragility Index visibility
+          const afStats = harmonicFeedback.getAntifragilityStats?.();
+          if (afStats?.metrics?.trend && afStats.totalObservations > 10) {
+            const idx = afStats.metrics.index.toFixed(3);
+            const trend = afStats.metrics.trend;
+            const emoji = trend === 'antifragile' ? '💪' : trend === 'fragile' ? '⚠️' : '🛡️';
+            outputParts.push(`\n${c(ANSI.cyan, `${emoji} Antifragility:`)} ${idx} (${trend})\n`);
+          }
+
+          // Temporal patterns visibility
+          const timing = harmonicFeedback.getOptimalTiming?.();
+          if (timing?.recommendation && timing.recommendation !== 'no_pattern') {
+            const phase = timing.currentPhase || '?';
+            const energy = timing.energyLevel || 'UNKNOWN';
+            outputParts.push(`   ${c(ANSI.dim, 'Temporal:')} phase ${phase}, energy: ${energy}\n`);
+          }
+
+          // Girsanov best measure visibility
+          const gStats = harmonicFeedback.getGirsanovStats?.();
+          if (gStats?.totalObservations > 5) {
+            const best = gStats.bestMeasure || 'P';
+            const brier = gStats.measures?.[best]?.brierScore?.toFixed(3) || '?';
+            outputParts.push(`   ${c(ANSI.dim, 'Girsanov:')} best measure: ${best} (Brier: ${brier})\n`);
+          }
+
+          // Non-commutative pairs visibility
+          const ncStats = harmonicFeedback.getNonCommutativeStats?.();
+          if (ncStats?.metrics?.stronglyNonCommutative > 0) {
+            const count = ncStats.metrics.stronglyNonCommutative;
+            outputParts.push(`   ${c(ANSI.dim, 'Non-commutative:')} ${count} dimension pair(s) with order effects\n`);
+          }
+
+          // ═══════════════════════════════════════════════════════════════════
+          // BRIDGE A (Tasks #26-29): Export harmonic state for TUI consumption
+          // Writes to ~/.cynic/harmonic/state.json for psy-dashboard to read
+          // ═══════════════════════════════════════════════════════════════════
+          const exportState = async () => {
+            try {
+              const fs = await import('fs');
+              const os = await import('os');
+              const pathMod = await import('path');
+
+              const harmonicDir = pathMod.default.join(os.default.homedir(), '.cynic', 'harmonic');
+              const statePath = pathMod.default.join(harmonicDir, 'state.json');
+
+              // Ensure directory exists
+              await fs.promises.mkdir(harmonicDir, { recursive: true });
+
+              // Gather all mathematical system states
+              const state = {
+                timestamp: Date.now(),
+                // FFT Temporal (Task #26)
+                temporal: harmonicFeedback.getOptimalTiming?.() || {},
+                temporalAnalysis: harmonicFeedback.temporalAnalyzer?.lastAnalysis || null,
+                // Girsanov (Task #27)
+                girsanov: harmonicFeedback.getGirsanovStats?.() || {},
+                // Antifragility (Task #28)
+                antifragility: harmonicFeedback.getAntifragilityStats?.() || {},
+                // Non-commutative (Task #29)
+                nonCommutative: harmonicFeedback.getNonCommutativeStats?.() || {},
+                // Core harmonic state
+                harmonic: harmonicFeedback.getState?.() || {},
+                // Thompson sampling
+                thompson: harmonicFeedback.thompsonSampler?.getStats?.() || {},
+              };
+
+              await fs.promises.writeFile(statePath, JSON.stringify(state, null, 2));
+            } catch {
+              // Silent fail - state export is enhancement
+            }
+          };
+
+          // Export state with ~5% probability (every ~20 tool calls)
+          if (Math.random() < 0.05) {
+            exportState();
+          }
+        }
+
       } catch {
         // Learning visibility failed - continue without
       }

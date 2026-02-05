@@ -264,8 +264,9 @@ Actions:
         try {
           const core = await import('@cynic/core');
           triggerManager = new core.TriggerManager({
+            // FIX J1: Use judgeAsync for engine consultation
             judgeCallback: judge ? async (input) => {
-              return judge.judge(input);
+              return judge.judgeAsync(input, {}, { consultEngines: true, maxEngines: 3 });
             } : null,
             alertCallback: async (alert) => {
               log.info('CYNIC alert', alert);

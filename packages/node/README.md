@@ -119,6 +119,8 @@ const instance = createIdentity();
 | `WorkerPool` | WorkerPool implementation |
 | `WorkerTask` | WorkerTask implementation |
 | `TaskStatus` | TaskStatus implementation |
+| `FilesystemEventType` | FilesystemEventType implementation |
+| `SolanaEventType` | SolanaEventType implementation |
 
 ### Factory Functions
 
@@ -161,6 +163,8 @@ const instance = createIdentity();
 | `createTokenOptimizer()` | Create TokenOptimizer instance |
 | `createHyperbolicSpace()` | Create HyperbolicSpace instance |
 | `createWorkerPool()` | Create WorkerPool instance |
+| `createFilesystemWatcher()` | Create FilesystemWatcher instance |
+| `createSolanaWatcher()` | Create SolanaWatcher instance |
 
 ### Singletons
 
@@ -207,10 +211,10 @@ const instance = createIdentity();
 
 ## Stats
 
-- **Source files**: 176
-- **Test files**: 51
+- **Source files**: 182
+- **Test files**: 52
 - **Test ratio**: 29%
-- **Exports**: 212 named
+- **Exports**: 216 named
 
 ## Fractal Structure
 

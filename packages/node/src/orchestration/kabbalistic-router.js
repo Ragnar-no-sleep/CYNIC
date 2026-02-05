@@ -29,10 +29,118 @@ import { PHI_INV, PHI_INV_2 } from '@cynic/core';
 import { SEFIROT_TEMPLATE } from '../agents/collective/sefirot.js';
 import { RelationshipGraph } from '../agents/collective/relationship-graph.js';
 import { CONSULTATION_MATRIX, getConsultants, shouldConsult } from '@cynic/core/orchestration';
+import { readFileSync, existsSync } from 'fs';
+import { join } from 'path';
+import { homedir } from 'os';
 
 // Optional integrations (lazy loaded)
 let LearningService = null;
 let CostOptimizer = null;
+
+// =============================================================================
+// TEMPORAL AWARENESS (FFT → Router)
+// =============================================================================
+
+/**
+ * Load harmonic state from disk (written by observe.js)
+ * This bridges the FFT temporal analysis to routing decisions.
+ *
+ * @returns {Object|null} Harmonic state or null if unavailable/stale
+ */
+function loadHarmonicState() {
+  try {
+    const statePath = join(homedir(), '.cynic', 'harmonic', 'state.json');
+    if (!existsSync(statePath)) return null;
+
+    const state = JSON.parse(readFileSync(statePath, 'utf8'));
+
+    // Check freshness (5 minutes TTL)
+    if (Date.now() - state.timestamp > 5 * 60 * 1000) {
+      return null; // Stale
+    }
+
+    return state;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Temporal energy levels and their routing implications
+ */
+const TEMPORAL_ENERGY = {
+  HIGH: { multiplier: 1.0, allowComplex: true },
+  MEDIUM: { multiplier: 0.85, allowComplex: true },
+  LOW: { multiplier: 0.7, allowComplex: false },
+};
+
+/**
+ * Task types that require high cognitive load
+ * Should be suppressed or simplified during LOW energy
+ */
+const HIGH_COGNITIVE_LOAD_TASKS = ['design', 'deployment', 'security'];
+
+/**
+ * Task types classified by risk level
+ * B2: Girsanov → Router (risk-aware confidence)
+ */
+const TASK_RISK_LEVELS = {
+  // High risk → use Q_risk (risk-averse measure)
+  high: ['deployment', 'security', 'PreToolUse'],
+  // Medium risk → use P (neutral measure)
+  medium: ['design', 'analysis', 'PostToolUse'],
+  // Low risk → use Q_opt (optimistic measure)
+  low: ['exploration', 'mapping', 'SessionStart', 'SessionEnd'],
+};
+
+/**
+ * Simplified paths for LOW energy states
+ * Fewer agents = less complexity = less cognitive load
+ */
+const LOW_ENERGY_PATHS = {
+  design: ['guardian', 'analyst'], // Skip architect (complex decisions)
+  deployment: ['guardian', 'deployer'], // Skip architect, janitor (less verification)
+  security: ['guardian', 'oracle'], // Keep security tight but simpler
+};
+
+/**
+ * Antifragility behavior modifiers
+ * B3: Antifragility → Router (stress-aware behavior)
+ */
+const ANTIFRAGILITY_BEHAVIOR = {
+  // Antifragile (index > 0): System benefits from stress
+  antifragile: {
+    consultationBonus: 0.2,   // Allow more consultations (learning opportunity)
+    escalationPenalty: -0.1,  // Less eager to escalate (confident in handling)
+    pathExtension: true,      // Can use longer paths
+  },
+  // Robust (index ≈ 0): System unaffected by stress
+  robust: {
+    consultationBonus: 0,
+    escalationPenalty: 0,
+    pathExtension: false,
+  },
+  // Fragile (index < 0): System harmed by stress
+  fragile: {
+    consultationBonus: -0.2,  // Reduce consultations (avoid cascading)
+    escalationPenalty: 0.15,  // More eager to escalate (seek help)
+    pathExtension: false,     // Use shorter paths
+  },
+};
+
+/**
+ * Agent order sensitivity for non-commutative evaluation
+ * B4: Non-commutative → Router (order-optimized evaluation)
+ * Agents that should be evaluated early due to high commutator effects
+ */
+const ORDER_SENSITIVE_AGENTS = {
+  // These agents' decisions significantly affect later agents
+  highImpact: ['guardian', 'architect'],
+  // These agents benefit from seeing other decisions first
+  contextDependent: ['oracle', 'sage'],
+  // These agents are relatively order-independent
+  flexible: ['analyst', 'scout', 'deployer', 'janitor', 'cartographer', 'scholar'],
+};
 
 // =============================================================================
 // CONSTANTS
@@ -204,6 +312,27 @@ export class KabbalisticRouter {
 
     this.stats.routesProcessed++;
 
+    // =======================================================================
+    // TEMPORAL AWARENESS (B1: FFT → Router)
+    // =======================================================================
+    const harmonicState = loadHarmonicState();
+    const temporal = this._extractTemporalAwareness(harmonicState);
+
+    // If LOW energy and high cognitive load task, suggest deferral
+    if (temporal.energy === 'LOW' && HIGH_COGNITIVE_LOAD_TASKS.includes(taskType)) {
+      temporal.suggestion = `*sniff* Low energy detected (${temporal.phase}). Consider deferring ${taskType} tasks. ${temporal.recommendation}`;
+    }
+
+    // =======================================================================
+    // RISK-AWARE CONFIDENCE (B2: Girsanov → Router)
+    // =======================================================================
+    const girsanov = this._extractGirsanovAwareness(harmonicState, taskType);
+
+    // =======================================================================
+    // STRESS-AWARE BEHAVIOR (B3: Antifragility → Router)
+    // =======================================================================
+    const antifragility = this._extractAntifragilityAwareness(harmonicState);
+
     // 0. Cost optimization check (if enabled)
     let costOptimization = null;
     if (this.costOptimizer) {
@@ -252,8 +381,19 @@ export class KabbalisticRouter {
       });
     }
 
-    // 2. Determine entry point and path
-    const path = this.getPath(taskType);
+    // 2. Determine entry point and path (temporal-aware)
+    let path = this.getPath(taskType, temporal);
+
+    // =======================================================================
+    // ORDER-OPTIMIZED EVALUATION (B4: Non-commutative → Router)
+    // =======================================================================
+    const nonCommutative = this._extractNonCommutativeAwareness(harmonicState, path);
+
+    // If high order sensitivity, use optimized path
+    if (nonCommutative.reordered) {
+      path = nonCommutative.optimizedPath;
+    }
+
     const entrySefirah = path[0];
 
     // 3. Create context for path traversal
@@ -273,6 +413,12 @@ export class KabbalisticRouter {
       depth: 0,
       totalConsultations: 0,
       costOptimization,
+      // B2: Girsanov risk-aware thresholds
+      girsanov,
+      // B3: Antifragility stress-aware behavior
+      antifragility,
+      // B4: Non-commutative order awareness
+      nonCommutative,
     };
 
     // 4. Execute Lightning Flash traversal
@@ -330,6 +476,33 @@ export class KabbalisticRouter {
       // Cost tier (if optimized)
       tier: costOptimization?.tier,
       costOptimization,
+      // B1: Temporal awareness (FFT → Router)
+      temporal: {
+        energy: temporal.energy,
+        phase: temporal.phase,
+        cycle: temporal.cycle,
+        suggestion: temporal.suggestion || null,
+        pathSimplified: temporal.energy === 'LOW' && LOW_ENERGY_PATHS[taskType] !== undefined,
+      },
+      // B2: Risk-aware confidence (Girsanov → Router)
+      girsanov: {
+        measure: girsanov.measure,
+        riskLevel: girsanov.riskLevel,
+        brierScore: girsanov.brierScore,
+        adjustedEscalation: girsanov.adjustedEscalation,
+      },
+      // B3: Stress-aware behavior (Antifragility → Router)
+      antifragility: {
+        index: antifragility.index,
+        trend: antifragility.trend,
+        consultationLimit: antifragility.consultationLimit,
+      },
+      // B4: Order-optimized evaluation (Non-commutative → Router)
+      nonCommutative: {
+        orderSensitivity: nonCommutative.orderSensitivity,
+        topPair: nonCommutative.topPair,
+        reordered: nonCommutative.reordered,
+      },
       // Timing
       durationMs,
       // Error if any
@@ -373,12 +546,26 @@ export class KabbalisticRouter {
 
   /**
    * Get the Lightning Flash path for a task type
+   * Now temporal-aware: uses simplified paths during LOW energy states
    *
    * @param {string} taskType - Task type
+   * @param {Object} [temporalContext] - Temporal awareness context
    * @returns {string[]} Path of agent names
    */
-  getPath(taskType) {
-    return LIGHTNING_PATHS[taskType] || LIGHTNING_PATHS.default;
+  getPath(taskType, temporalContext = null) {
+    // Hardcoded fallback in case LIGHTNING_PATHS isn't loaded due to circular deps
+    const hardcodedDefault = ['guardian', 'analyst', 'oracle'];
+
+    // B1: If LOW energy and we have a simplified path, use it
+    if (temporalContext?.energy === 'LOW') {
+      const simplifiedPath = LOW_ENERGY_PATHS?.[taskType];
+      if (Array.isArray(simplifiedPath)) {
+        return simplifiedPath;
+      }
+    }
+
+    const path = LIGHTNING_PATHS?.[taskType] || LIGHTNING_PATHS?.default || hardcodedDefault;
+    return Array.isArray(path) ? path : hardcodedDefault;
   }
 
   /**
@@ -440,7 +627,9 @@ export class KabbalisticRouter {
       }
 
       // Handle low confidence → consultation
-      if (decision.confidence < THRESHOLDS.ESCALATION) {
+      // B2: Use Girsanov-adjusted threshold for risk-aware escalation
+      const escalationThreshold = context.girsanov?.adjustedEscalation || THRESHOLDS.ESCALATION;
+      if (decision.confidence < escalationThreshold) {
         await this.handleLowConfidence(agentName, taskType, decision, context);
       }
 
@@ -542,7 +731,9 @@ export class KabbalisticRouter {
     if (context.depth >= CIRCUIT_BREAKER.MAX_DEPTH) {
       return;
     }
-    if (context.totalConsultations >= CIRCUIT_BREAKER.MAX_CONSULTATIONS) {
+    // B3: Use antifragility-adjusted consultation limit
+    const maxConsultations = context.antifragility?.consultationLimit || CIRCUIT_BREAKER.MAX_CONSULTATIONS;
+    if (context.totalConsultations >= maxConsultations) {
       return;
     }
 
@@ -560,7 +751,8 @@ export class KabbalisticRouter {
 
     // Consult each recommended agent
     for (const consultantName of consultResult.consultants) {
-      if (context.totalConsultations >= CIRCUIT_BREAKER.MAX_CONSULTATIONS) {
+      // B3: Use antifragility-adjusted consultation limit
+      if (context.totalConsultations >= maxConsultations) {
         break;
       }
 
@@ -801,6 +993,203 @@ export class KabbalisticRouter {
   // ===========================================================================
   // HELPERS
   // ===========================================================================
+
+  /**
+   * Extract temporal awareness from harmonic state
+   * B1: FFT Temporal → Router
+   *
+   * @param {Object|null} harmonicState - Harmonic state from disk
+   * @returns {Object} Temporal context { energy, phase, cycle, recommendation }
+   */
+  _extractTemporalAwareness(harmonicState) {
+    // Default: assume MEDIUM energy if no data
+    const defaults = {
+      energy: 'MEDIUM',
+      phase: 'unknown',
+      cycle: null,
+      recommendation: '',
+    };
+
+    if (!harmonicState?.temporal) {
+      return defaults;
+    }
+
+    const { temporal } = harmonicState;
+
+    return {
+      energy: temporal.energy || defaults.energy,
+      phase: temporal.phase || defaults.phase,
+      cycle: temporal.cycle || defaults.cycle,
+      recommendation: temporal.recommendation || defaults.recommendation,
+    };
+  }
+
+  /**
+   * Extract Girsanov risk-aware confidence
+   * B2: Girsanov → Router (risk-aware confidence)
+   *
+   * @param {Object|null} harmonicState - Harmonic state from disk
+   * @param {string} taskType - Task type to determine risk level
+   * @returns {Object} { measure, brierScore, adjustedThreshold }
+   */
+  _extractGirsanovAwareness(harmonicState, taskType) {
+    // Determine risk level of task
+    let riskLevel = 'medium';
+    if (TASK_RISK_LEVELS.high.includes(taskType)) riskLevel = 'high';
+    else if (TASK_RISK_LEVELS.low.includes(taskType)) riskLevel = 'low';
+
+    // Select measure based on risk level
+    const measureMap = {
+      high: 'Q_risk',   // Risk-averse for dangerous tasks
+      medium: 'P',      // Neutral for standard tasks
+      low: 'Q_opt',     // Optimistic for exploration
+    };
+    const selectedMeasure = measureMap[riskLevel];
+
+    // Default thresholds
+    const defaults = {
+      measure: selectedMeasure,
+      riskLevel,
+      brierScore: 0.125, // Default neutral calibration
+      adjustedEscalation: THRESHOLDS.ESCALATION,
+      adjustedConsensus: THRESHOLDS.CONSENSUS,
+    };
+
+    if (!harmonicState?.girsanov?.measures) {
+      return defaults;
+    }
+
+    const { measures, bestMeasure } = harmonicState.girsanov;
+    const measureData = measures[selectedMeasure] || {};
+
+    // Adjust thresholds based on measure calibration
+    // Better calibration (lower Brier) = can trust thresholds more
+    const calibrationFactor = 1 - (measureData.brierScore || 0.125);
+
+    // For high-risk tasks, RAISE escalation threshold (more conservative)
+    // For low-risk tasks, LOWER it (more permissive)
+    let adjustedEscalation = THRESHOLDS.ESCALATION;
+    if (riskLevel === 'high') {
+      // More conservative: escalate more often
+      adjustedEscalation = THRESHOLDS.ESCALATION * (1 + (1 - calibrationFactor) * 0.2);
+    } else if (riskLevel === 'low') {
+      // More permissive: escalate less
+      adjustedEscalation = THRESHOLDS.ESCALATION * (1 - calibrationFactor * 0.15);
+    }
+
+    return {
+      measure: selectedMeasure,
+      riskLevel,
+      brierScore: measureData.brierScore || 0.125,
+      bestMeasure: bestMeasure || selectedMeasure,
+      adjustedEscalation: Math.min(adjustedEscalation, PHI_INV), // Cap at φ⁻¹
+      adjustedConsensus: THRESHOLDS.CONSENSUS, // Keep consensus threshold stable
+    };
+  }
+
+  /**
+   * Extract antifragility awareness
+   * B3: Antifragility → Router (stress-aware behavior)
+   *
+   * @param {Object|null} harmonicState - Harmonic state from disk
+   * @returns {Object} { index, trend, behavior, consultationLimit }
+   */
+  _extractAntifragilityAwareness(harmonicState) {
+    const defaults = {
+      index: 0,
+      trend: 'robust',
+      behavior: ANTIFRAGILITY_BEHAVIOR.robust,
+      consultationLimit: CIRCUIT_BREAKER.MAX_CONSULTATIONS,
+    };
+
+    if (!harmonicState?.antifragility) {
+      return defaults;
+    }
+
+    const { antifragility } = harmonicState;
+    const index = antifragility.index || 0;
+
+    // Determine trend from index (φ-bounded: -0.618 to +0.618)
+    let trend = 'robust';
+    if (index > 0.1) trend = 'antifragile';
+    else if (index < -0.1) trend = 'fragile';
+
+    const behavior = ANTIFRAGILITY_BEHAVIOR[trend];
+
+    // Adjust consultation limit based on antifragility
+    let consultationLimit = CIRCUIT_BREAKER.MAX_CONSULTATIONS;
+    if (trend === 'antifragile') {
+      // Can handle more consultations (opportunity for learning)
+      consultationLimit = Math.min(consultationLimit + 2, 7);
+    } else if (trend === 'fragile') {
+      // Reduce consultations to avoid cascading stress
+      consultationLimit = Math.max(consultationLimit - 2, 2);
+    }
+
+    return {
+      index,
+      trend,
+      behavior,
+      consultationLimit,
+      convexity: antifragility.convexity || 0,
+    };
+  }
+
+  /**
+   * Extract non-commutative evaluation order
+   * B4: Non-commutative → Router (order-optimized evaluation)
+   *
+   * @param {Object|null} harmonicState - Harmonic state from disk
+   * @param {string[]} originalPath - Original Lightning Flash path
+   * @returns {Object} { optimizedPath, orderSensitivity, topPair }
+   */
+  _extractNonCommutativeAwareness(harmonicState, originalPath) {
+    // Guard against undefined/null path - use hardcoded default if LIGHTNING_PATHS not yet loaded
+    const defaultPath = LIGHTNING_PATHS?.default || ['guardian', 'analyst', 'oracle'];
+    const safePath = Array.isArray(originalPath) ? originalPath : defaultPath;
+
+    const defaults = {
+      optimizedPath: safePath,
+      orderSensitivity: 0,
+      topPair: null,
+      reordered: false,
+    };
+
+    if (!harmonicState?.nonCommutative) {
+      return defaults;
+    }
+
+    const { nonCommutative } = harmonicState;
+    const orderSensitivity = nonCommutative.orderSensitivity || 0;
+
+    // Only reorder if order sensitivity is significant (> 0.2)
+    if (orderSensitivity < 0.2) {
+      return {
+        ...defaults,
+        orderSensitivity,
+        topPair: nonCommutative.topPair || null,
+      };
+    }
+
+    // Optimize path: high-impact agents first, context-dependent later
+    const optimizedPath = [...safePath].sort((a, b) => {
+      const aImpact = ORDER_SENSITIVE_AGENTS.highImpact.includes(a) ? 0 :
+                      ORDER_SENSITIVE_AGENTS.contextDependent.includes(a) ? 2 : 1;
+      const bImpact = ORDER_SENSITIVE_AGENTS.highImpact.includes(b) ? 0 :
+                      ORDER_SENSITIVE_AGENTS.contextDependent.includes(b) ? 2 : 1;
+      return aImpact - bImpact;
+    });
+
+    // Check if path was actually reordered
+    const reordered = safePath.some((agent, i) => agent !== optimizedPath[i]);
+
+    return {
+      optimizedPath,
+      orderSensitivity,
+      topPair: nonCommutative.topPair || null,
+      reordered,
+    };
+  }
 
   /**
    * Get agent from pack by name

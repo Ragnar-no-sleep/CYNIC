@@ -217,9 +217,14 @@ export function createJudgeTool(judge, persistence = null, sessionManager = null
       const enrichedItem = enrichItem(item, context);
 
       // Use graph integration if available, otherwise direct judge
+      // FIX J1: Use judgeAsync to enable 73 philosophy engines consultation
       const judgment = graphIntegration
         ? await graphIntegration.judgeWithGraph(enrichedItem, context)
-        : judge.judge(enrichedItem, context);
+        : await judge.judgeAsync(enrichedItem, context, {
+            consultEngines: true,
+            maxEngines: 5,
+            engineTimeout: 3000,
+          });
 
       // Generate fallback ID (used if persistence unavailable)
       let judgmentId = `jdg_${Date.now().toString(36)}`;

@@ -163,8 +163,8 @@ export class SharedMemory {
     this._patterns.set(id, {
       ...pattern,
       id,
-      addedAt: Date.now(),
-      useCount: 0,
+      addedAt: pattern.addedAt ?? Date.now(),
+      useCount: pattern.useCount ?? 0,  // FIX: Preserve useCount from migration
       weight: pattern.weight ?? 1.0,  // Path reinforcement weight
       verified: pattern.verified || false,
       // EWC++ fields (anti-forgetting)
@@ -295,8 +295,24 @@ export class SharedMemory {
 
     // Auto-lock if exceeds threshold AND has enough uses
     const useCount = pattern.useCount || 0;
-    if (newFisher >= EWC.LOCK_THRESHOLD && useCount >= EWC.MIN_USES_FOR_LOCK) {
+    const shouldLock = newFisher >= EWC.LOCK_THRESHOLD && useCount >= EWC.MIN_USES_FOR_LOCK;
+    if (shouldLock) {
       this._lockPattern(pattern);
+    }
+
+    // FIX P3: Sync Fisher score to PostgreSQL (async, non-blocking)
+    // "φ persists" - Knowledge must survive restarts
+    if (this.storage?.syncFisherScore) {
+      this.storage.syncFisherScore(pattern.id, newFisher, shouldLock).catch(() => {
+        // Silent fail - persistence is best-effort
+      });
+    } else if (this.swarm) {
+      // Emit event for external persistence listeners
+      this.swarm.emit?.('pattern:fisher_updated', {
+        id: pattern.id,
+        fisherImportance: newFisher,
+        consolidationLocked: shouldLock || pattern.consolidationLocked,
+      });
     }
   }
 
@@ -807,6 +823,64 @@ export class SharedMemory {
    */
   getRecentFeedback(count = 10) {
     return this._feedbackLog.slice(-count);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // POSTGRESQL SYNC (bidirectional persistence)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Get EWC-locked patterns for persistence
+   * These are high-importance patterns that should be saved to PostgreSQL
+   *
+   * @returns {Object[]} Locked patterns in PostgreSQL format
+   */
+  getLockedPatterns() {
+    return Array.from(this._patterns.values())
+      .filter(p => p.consolidationLocked || p.fisherImportance >= 0.618)
+      .map(this._toPostgresFormat.bind(this));
+  }
+
+  /**
+   * Get modified patterns since last save
+   * Useful for incremental sync
+   *
+   * @param {number} [since=0] - Timestamp to filter from
+   * @returns {Object[]} Modified patterns in PostgreSQL format
+   */
+  getModifiedPatterns(since = 0) {
+    return Array.from(this._patterns.values())
+      .filter(p => (p.lastReinforced || p.addedAt || 0) > since)
+      .map(this._toPostgresFormat.bind(this));
+  }
+
+  /**
+   * Convert SharedMemory pattern to PostgreSQL format
+   *
+   * @param {Object} smPattern - Pattern in SharedMemory format
+   * @returns {Object} Pattern in PostgreSQL format
+   * @private
+   */
+  _toPostgresFormat(smPattern) {
+    return {
+      patternId: smPattern.id,
+      category: smPattern.category || smPattern.applicableTo?.[0] || 'general',
+      name: smPattern.name || smPattern.id,
+      description: smPattern.description || '',
+      confidence: smPattern.fisherImportance || smPattern.weight || 0.5,
+      frequency: smPattern.useCount || 1,
+      tags: smPattern.tags || [],
+      data: {
+        weight: smPattern.weight,
+        fisherImportance: smPattern.fisherImportance,
+        consolidationLocked: smPattern.consolidationLocked,
+        verified: smPattern.verified,
+        applicableTo: smPattern.applicableTo,
+        ...smPattern.data,
+      },
+      sourceJudgments: smPattern.sourceJudgments || [],
+      sourceCount: smPattern.sourceCount || 0,
+    };
   }
 }
 

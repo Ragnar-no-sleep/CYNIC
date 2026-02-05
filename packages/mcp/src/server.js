@@ -25,8 +25,10 @@ import { ServiceInitializer } from './server/ServiceInitializer.js';
 // Get __dirname equivalent for ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = join(__filename, '..');
-import { CYNICJudge, LearningService, ResidualDetector, createEScoreCalculator, createEmergenceLayer, DogOrchestrator, createAutonomousDaemon, getCollectivePack, getCollectivePackAsync, getSharedMemory, saveCollectiveState, createHeartbeatService, createSLATracker, createConsciousnessBridge, createDefaultChecks, createEmergenceDetector } from '@cynic/node';
+import { CYNICJudge, LearningService, ResidualDetector, createEScoreCalculator, createEmergenceLayer, DogOrchestrator, createAutonomousDaemon, getCollectivePack, getCollectivePackAsync, getSharedMemory, saveCollectiveState, createHeartbeatService, createSLATracker, createConsciousnessBridge, createDefaultChecks, createEmergenceDetector, initializeQLearning } from '@cynic/node';
+import { createEngineIntegration } from '@cynic/node/judge/engine-integration.js';
 import { UnifiedOrchestrator } from '@cynic/node/orchestration/unified-orchestrator.js';
+import { KabbalisticRouter } from '@cynic/node/orchestration/kabbalistic-router.js';
 import { createPatternDetector } from '@cynic/emergence';
 import { createAllTools } from './tools/index.js';
 import { createThermodynamicsTracker } from './thermodynamics-tracker.js';
@@ -119,17 +121,27 @@ export class MCPServer {
       maxAnomalies: 1000,   // Bounded memory
     });
 
-    // Judge instance (required) - now wired with E-Score, Learning, AND ResidualDetector
+    // Engine Orchestrator for philosophical synthesis (73 engines)
+    // Created BEFORE Judge so we can wire it to EngineIntegration
+    this.engineOrchestrator = options.engineOrchestrator || new EngineOrchestrator(globalEngineRegistry, {
+      defaultStrategy: 'weighted-average',
+      timeout: 5000,
+    });
+
+    // FIX R3: Engine Integration - Connect 73 philosophy engines to judgment
+    // "The wisdom of the pack" - κυνικός
+    this.engineIntegration = options.engineIntegration || createEngineIntegration({
+      registry: globalEngineRegistry,
+      orchestrator: this.engineOrchestrator,
+    });
+
+    // Judge instance (required) - now wired with E-Score, Learning, ResidualDetector, AND EngineIntegration
     this.judge = options.judge || new CYNICJudge({
       eScoreProvider: this.eScoreCalculator,
       learningService: this.learningService,
       residualDetector: this.residualDetector,  // FIX #3: Wire THE_UNNAMEABLE
-    });
-
-    // Engine Orchestrator for philosophical synthesis (73 engines)
-    this.engineOrchestrator = options.engineOrchestrator || new EngineOrchestrator(globalEngineRegistry, {
-      defaultStrategy: 'weighted-average',
-      timeout: 5000,
+      engineIntegration: this.engineIntegration,  // FIX R3: Wire 73 philosophy engines
+      consultEngines: true,  // Enable engine consultation by default
     });
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -167,6 +179,16 @@ export class MCPServer {
     this.perceptionRouter = options.perceptionRouter || null;
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // FIX R1: KABBALISTIC ROUTER - Lightning Flash through the Tree of Life
+    // Routes decisions through Sefirot with consultations, escalations, and Q-Learning
+    // "L'arbre vit" - The tree lives
+    // ═══════════════════════════════════════════════════════════════════════════
+    this.kabbalisticRouter = options.kabbalisticRouter || new KabbalisticRouter({
+      collectivePack: this.collectivePack,
+      // Persistence wired later after initialization
+    });
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // UNIFIED ORCHESTRATOR - Single entry point for ALL orchestration
     // Coordinates: Dog voting, Engine synthesis, Skill invocation, Learning
     // "φ coordinates all" - κυνικός
@@ -174,6 +196,9 @@ export class MCPServer {
     this.unifiedOrchestrator = options.unifiedOrchestrator || new UnifiedOrchestrator({
       dogOrchestrator: this.dogOrchestrator,
       engineOrchestrator: this.engineOrchestrator,
+      kabbalisticRouter: this.kabbalisticRouter,  // FIX R1: Wire Kabbalistic routing
+      llmRouter: this.llmRouter,
+      perceptionRouter: this.perceptionRouter,
       persistence: null, // Set later after persistence is initialized
       eventBus: null, // Will use global event bus
     });
@@ -284,6 +309,9 @@ export class MCPServer {
     // Running flag
     this._running = false;
 
+    // FIX #2: Race condition guard
+    this._collectiveReady = false;
+
     // Tool registry (populated on start)
     this.tools = {};
   }
@@ -343,8 +371,10 @@ export class MCPServer {
           consensusThreshold: 0.618,
         });
         console.error('   CollectivePack: state restored from persistence');
+        this._collectiveReady = true;  // FIX #2: Collective ready
       } catch (e) {
         console.error(`   CollectivePack: persistence load failed (${e.message})`);
+        this._collectiveReady = true;  // FIX #2: Still ready, just without persistence
       }
 
       // Initialize LearningService from persistence
@@ -356,6 +386,9 @@ export class MCPServer {
           console.error(`   LearningService: init failed (${e.message})`);
         }
       }
+    } else {
+      // FIX #2: No persistence available, collective is ready immediately
+      this._collectiveReady = true;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -373,6 +406,59 @@ export class MCPServer {
         this.unifiedOrchestrator.psychologyProvider = this.persistence.psychology;
       }
       console.error('   UnifiedOrchestrator: wired with persistence');
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // FIX R1: WIRE KABBALISTIC ROUTER (now that all dependencies are available)
+    // "L'arbre vit" - The tree needs roots (persistence) and energy (learning)
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (this.kabbalisticRouter) {
+      // Wire persistence for Q-learning state retrieval
+      if (this.persistence) {
+        this.kabbalisticRouter.persistence = this.persistence;
+      }
+      // Wire CollectivePack if not already wired
+      if (this.collectivePack && !this.kabbalisticRouter.collectivePack) {
+        this.kabbalisticRouter.collectivePack = this.collectivePack;
+      }
+      // Wire learning service for Q-learning integration
+      if (this.learningService) {
+        this.kabbalisticRouter.setLearningService?.(this.learningService);
+      }
+      // Wire cost optimizer for tier selection
+      if (this.costOptimizer) {
+        this.kabbalisticRouter.setCostOptimizer?.(this.costOptimizer);
+      }
+      console.error('   KabbalisticRouter: wired (Lightning Flash active)');
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // FIX P1: Q-LEARNING INITIALIZATION - Load Q-Table from PostgreSQL
+    // "Le chien apprend" - Q-Table must persist across sessions
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (this.persistence) {
+      try {
+        const loaded = await initializeQLearning(this.persistence);
+        if (loaded) {
+          console.error('   Q-Learning: state loaded from PostgreSQL');
+        } else {
+          console.error('   Q-Learning: initialized (fresh state)');
+        }
+      } catch (e) {
+        console.error(`   Q-Learning: init failed (${e.message})`);
+      }
+
+      // FIX P4: Bridge LearningService to Q-Learning for routing optimization
+      if (this.learningService) {
+        try {
+          const { getQLearningServiceSingleton } = await import('@cynic/node');
+          const qService = getQLearningServiceSingleton();
+          this.learningService.setQLearningService?.(qService);
+          console.error('   Learning→Q-Learning bridge: active');
+        } catch (e) {
+          console.error(`   Learning→Q-Learning bridge: failed (${e.message})`);
+        }
+      }
     }
 
     // ═══════════════════════════════════════════════════════════════════════════

@@ -407,8 +407,8 @@ export function createXAnalyzeTool(localXStore, judge) {
           return { success: false, error: 'Tweet not found in local store' };
         }
 
-        // Run CYNIC judgment
-        const judgment = await judge.judge({
+        // Run CYNIC judgment (FIX J1: Use judgeAsync for engine consultation)
+        const judgment = await judge.judgeAsync({
           type: 'social_content',
           content: textToAnalyze,
           source: tweet ? `@${tweet.username}` : 'user_provided',
@@ -416,7 +416,7 @@ export function createXAnalyzeTool(localXStore, judge) {
             engagement: (tweet.like_count || 0) + (tweet.retweet_count || 0),
             isThread: includeReplies,
           } : {},
-        });
+        }, {}, { consultEngines: true, maxEngines: 3 });
 
         return {
           success: true,

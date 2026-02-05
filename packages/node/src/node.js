@@ -1219,11 +1219,16 @@ export class CYNICNode {
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // Create Judgment
+    // Create Judgment (FIX J1: Use judgeAsync to consult 73 philosophy engines)
+    // "The wisdom of the pack" - κυνικός
     // ═══════════════════════════════════════════════════════════════════════
 
-    // Create judgment
-    const judgment = this._judge.judge(item, context);
+    // Create judgment (async to enable engine consultation)
+    const judgment = await this._judge.judgeAsync(item, context, {
+      consultEngines: true,  // Enable 73 philosophy engines consultation
+      maxEngines: 5,         // Consult top 5 relevant engines per context
+      engineTimeout: 3000,   // 3s timeout for engine responses
+    });
 
     // Analyze for residuals
     const residualAnalysis = this.residualDetector.analyze(judgment, context);

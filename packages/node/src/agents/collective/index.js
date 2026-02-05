@@ -944,9 +944,9 @@ export class CollectivePack {
    * Record dog decisions to Q-Learning for collective learning
    * @private
    */
-  _recordDogDecisionsToQLearning(hookType, payload, agentResults, blocked) {
+  async _recordDogDecisionsToQLearning(hookType, payload, agentResults, blocked) {
     try {
-      const { getQLearningService } = require('../../orchestration/learning-service.js');
+      const { getQLearningService } = await import('../../orchestration/learning-service.js');
       const qlearning = getQLearningService();
       if (!qlearning || agentResults.length === 0) return;
 

@@ -358,12 +358,137 @@ export class UnifiedOrchestrator extends EventEmitter {
 
   /**
    * Route event through KETER logic
+   *
+   * FIX R1: Now uses KabbalisticRouter for full Lightning Flash routing
+   * instead of simple trigger matching. Falls back to simple routing
+   * only if KabbalisticRouter is not available.
+   *
    * @private
    */
   async _routeEvent(event) {
     const content = event.content.toLowerCase();
 
-    // Find matching sefirah
+    // ═══════════════════════════════════════════════════════════════════════════
+    // FIX R1: USE KABBALISTIC ROUTER FOR FULL ROUTING INTELLIGENCE
+    // "L'arbre vit" - The Lightning Flash flows through the Sefirot
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (this.kabbalisticRouter) {
+      try {
+        // Determine task type from event
+        const taskType = this._inferTaskType(event);
+
+        // Route through the Tree of Life
+        const routeResult = await this.kabbalisticRouter.route({
+          taskType,
+          payload: {
+            content: event.content,
+            input: event.content,
+            tool: event.context?.tool || null,
+            complexity: event.context?.complexity || 'medium',
+            risk: event.context?.risk || null,
+          },
+          userId: event.userContext?.userId || null,
+          sessionId: event.userContext?.sessionId || null,
+        });
+
+        // Extract risk from route result or detect locally
+        const risk = routeResult.synthesis?.risk || detectRisk(event.content);
+
+        // Determine intervention from route result
+        let intervention = 'observe';
+        if (routeResult.blocked) {
+          intervention = 'block';
+        } else if (routeResult.synthesis?.consensusResponse === 'warn') {
+          intervention = 'warn';
+        } else if (risk.level === 'high') {
+          intervention = 'warn';
+        }
+
+        // D11: Psychology-aware routing adjustment
+        const psy = event.userContext.psychology;
+        if (psy) {
+          if (psy.burnoutRisk > PHI_INV && intervention === 'observe') {
+            intervention = 'warn';
+            log.debug('Psychology: burnout risk elevated, increased caution');
+          } else if (psy.flow > PHI_INV && risk.level === 'low' && intervention === 'warn') {
+            intervention = 'observe';
+            log.debug('Psychology: flow state detected, reducing friction');
+          }
+        }
+
+        // Consult PerceptionRouter for data source routing (D4)
+        let perception = null;
+        if (this.perceptionRouter) {
+          try {
+            perception = this.perceptionRouter.route({
+              target: event.content,
+              intent: 'read',
+              preferStructured: true,
+            });
+          } catch (e) {
+            log.debug(`Perception routing skipped: ${e.message}`);
+          }
+        }
+
+        // Set routing on event with FULL Kabbalistic result
+        event.setRouting({
+          sefirah: routeResult.entrySefirah || null,
+          domain: taskType || 'general',
+          intervention,
+          risk,
+          suggestedAgent: routeResult.entrySefirah || null,
+          suggestedTools: perception?.tools?.length
+            ? [...(routeResult.decisions?.[0]?.tools || []), ...perception.tools]
+            : routeResult.decisions?.[0]?.tools || [],
+          perception: perception ? {
+            layer: perception.layer,
+            confidence: perception.confidence,
+            tools: perception.tools,
+          } : null,
+          // NEW: Full Kabbalistic routing data
+          kabbalistic: {
+            path: routeResult.path || [],
+            decisions: routeResult.decisions || [],
+            consultations: routeResult.consultations || [],
+            escalations: routeResult.escalations || [],
+            blocked: routeResult.blocked || false,
+            blockedBy: routeResult.blockedBy || null,
+            blockMessage: routeResult.blockMessage || null,
+            synthesis: routeResult.synthesis || null,
+            tier: routeResult.tier || null,
+            costOptimization: routeResult.costOptimization || null,
+            temporal: routeResult.temporal || null,
+            durationMs: routeResult.durationMs || 0,
+          },
+        });
+
+        // If blocked by Kabbalistic routing, set outcome early
+        if (routeResult.blocked) {
+          event.outcome = 'block';
+          event.context = event.context || {};
+          event.context.blockReason = routeResult.blockMessage || 'Blocked by collective consensus';
+          event.context.blockedBy = routeResult.blockedBy;
+          this.stats.blocked++;
+        }
+
+        this.stats.decisionsRouted++;
+        log.debug('Kabbalistic routing complete', {
+          taskType,
+          path: routeResult.path,
+          blocked: routeResult.blocked,
+          consensus: routeResult.synthesis?.hasConsensus,
+        });
+
+        return event;
+      } catch (err) {
+        log.warn('Kabbalistic routing failed, falling back to simple routing', { error: err.message });
+        // Fall through to simple routing
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // FALLBACK: Simple trigger matching (only if KabbalisticRouter unavailable)
+    // ═══════════════════════════════════════════════════════════════════════════
     let matchedDomain = null;
     let matchedRouting = null;
 
@@ -388,17 +513,15 @@ export class UnifiedOrchestrator extends EventEmitter {
     const psy = event.userContext.psychology;
     if (psy) {
       if (psy.burnoutRisk > PHI_INV) {
-        // High burnout risk → escalate caution (user making mistakes)
         if (intervention === 'observe') intervention = 'warn';
         log.debug('Psychology: burnout risk elevated, increased caution');
       } else if (psy.flow > PHI_INV && risk.level === 'low') {
-        // Flow state + low risk → reduce interruptions
         if (intervention === 'warn') intervention = 'observe';
         log.debug('Psychology: flow state detected, reducing friction');
       }
     }
 
-    // Consult PerceptionRouter for data source routing (D4: close dormant loop)
+    // Consult PerceptionRouter for data source routing (D4)
     let perception = null;
     if (this.perceptionRouter) {
       try {
@@ -412,7 +535,7 @@ export class UnifiedOrchestrator extends EventEmitter {
       }
     }
 
-    // Set routing on event (enriched with perception if available)
+    // Set routing on event (simple fallback)
     event.setRouting({
       sefirah: matchedRouting?.sefirah || null,
       domain: matchedDomain || 'general',
@@ -432,6 +555,54 @@ export class UnifiedOrchestrator extends EventEmitter {
     this.stats.decisionsRouted++;
 
     return event;
+  }
+
+  /**
+   * Infer task type from event for Kabbalistic routing
+   *
+   * Maps event sources and content to Lightning Flash task types.
+   *
+   * @private
+   * @param {DecisionEvent} event - The event to analyze
+   * @returns {string} Task type (PreToolUse, PostToolUse, design, security, etc.)
+   */
+  _inferTaskType(event) {
+    // Hook-based task types
+    if (event.source === EventSource.HOOK) {
+      const hookName = event.eventType?.toLowerCase() || '';
+      if (hookName.includes('pretool') || hookName === 'guard') return 'PreToolUse';
+      if (hookName.includes('posttool') || hookName === 'observe') return 'PostToolUse';
+      if (hookName.includes('sessionstart') || hookName === 'awaken') return 'SessionStart';
+      if (hookName.includes('sessionend') || hookName === 'digest') return 'SessionEnd';
+    }
+
+    // Content-based task type inference
+    const content = (event.content || '').toLowerCase();
+
+    // Security-related
+    if (/rm\s+-rf|delete|drop\s+table|password|secret|credential|token/i.test(content)) {
+      return 'security';
+    }
+
+    // Design-related
+    if (/architect|design|refactor|restructure|pattern|interface|abstract/i.test(content)) {
+      return 'design';
+    }
+
+    // Deployment-related
+    if (/deploy|release|publish|ci\/cd|build|docker|kubernetes/i.test(content)) {
+      return 'deployment';
+    }
+
+    // Exploration-related
+    if (/find|search|explore|discover|where|locate/i.test(content)) {
+      return 'exploration';
+    }
+
+    // Default based on event source
+    if (event.source === EventSource.TOOL) return 'PreToolUse';
+
+    return 'default';
   }
 
   /**
@@ -493,7 +664,7 @@ export class UnifiedOrchestrator extends EventEmitter {
 
     // Circuit breaker protection for judgment requests
     const cb = this._circuitBreakers.judgment;
-    if (!cb.isAllowed()) {
+    if (!cb.canExecute()) {
       log.warn('Judgment circuit breaker open, skipping');
       event.recordError('judgment', new Error('Circuit breaker open'));
       return event;
@@ -541,7 +712,7 @@ export class UnifiedOrchestrator extends EventEmitter {
 
     // Circuit breaker protection for synthesis requests
     const cb = this._circuitBreakers.synthesis;
-    if (!cb.isAllowed()) {
+    if (!cb.canExecute()) {
       log.warn('Synthesis circuit breaker open, skipping');
       event.recordError('synthesis', new Error('Circuit breaker open'));
       return event;
@@ -586,7 +757,7 @@ export class UnifiedOrchestrator extends EventEmitter {
 
     // Circuit breaker protection for skill invocations
     const cb = this._circuitBreakers.skill;
-    if (!cb.isAllowed()) {
+    if (!cb.canExecute()) {
       log.warn('Skill circuit breaker open, skipping', { domain });
       event.recordError('skill_invoke', new Error('Circuit breaker open'));
       return event;
@@ -811,7 +982,41 @@ export class UnifiedOrchestrator extends EventEmitter {
     }
 
     try {
-      return await this.llmRouter.route(request);
+      // FIX: LLMRouter has complete() and consensus(), not route()
+      // Determine tier based on request complexity/domain
+      const content = request.content || request.prompt || '';
+      const domain = request.domain || 'general';
+      const options = { tier: request.tier || 'full' };
+
+      // Use consensus for critical decisions (security, deployment)
+      const criticalDomains = ['security', 'deployment', 'architecture'];
+      const useConsensus = criticalDomains.includes(domain) ||
+                          request.requireConsensus === true;
+
+      if (useConsensus && this.llmRouter.validators?.length > 0) {
+        // Multi-LLM consensus for critical decisions
+        const result = await this.llmRouter.consensus(content, options);
+        return {
+          content: result.verdict,
+          tier: 'consensus',
+          consensus: {
+            hasConsensus: result.hasConsensus,
+            agreement: result.agreement,
+            isStrong: result.isStrong,
+            responseCount: result.responses?.length || 0,
+          },
+        };
+      }
+
+      // Single LLM completion for normal requests
+      const result = await this.llmRouter.complete(content, options);
+      return {
+        content: result.content,
+        tier: options.tier,
+        provider: result.provider,
+        model: result.model,
+        confidence: result.confidence,
+      };
     } catch (err) {
       log.error('LLM routing failed', { error: err.message });
       return { error: err.message, tier: 'error' };
@@ -924,9 +1129,9 @@ export class UnifiedOrchestrator extends EventEmitter {
    */
   getCircuitBreakerHealth() {
     return {
-      judgment: this._circuitBreakers.judgment.getHealth(),
-      synthesis: this._circuitBreakers.synthesis.getHealth(),
-      skill: this._circuitBreakers.skill.getHealth(),
+      judgment: this._circuitBreakers.judgment.getState(),
+      synthesis: this._circuitBreakers.synthesis.getState(),
+      skill: this._circuitBreakers.skill.getState(),
     };
   }
 

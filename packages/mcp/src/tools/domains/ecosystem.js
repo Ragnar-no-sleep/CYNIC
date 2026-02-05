@@ -88,13 +88,14 @@ export function createEcosystemMonitorTool(options = {}) {
     }
 
     // If judge available, create a quick judgment for pattern extraction
+    // FIX J1: Use judgeAsync for engine consultation
     if (judge) {
       try {
-        const judgment = await judge.judge({
+        const judgment = await judge.judgeAsync({
           type: 'commit',
           content: content.slice(0, 200),
           sources: [source],
-        });
+        }, {}, { consultEngines: true, maxEngines: 3 });
         digest.qScore = judgment.Q;
         digest.verdict = judgment.verdict;
       } catch (e) {

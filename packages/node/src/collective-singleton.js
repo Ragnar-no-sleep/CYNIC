@@ -72,6 +72,32 @@ class PersistenceStorageAdapter {
       log.debug(`Storage adapter set(${key}) failed: ${e.message}`);
     }
   }
+
+  /**
+   * FIX P3: Sync Fisher score to PostgreSQL patterns table
+   * "φ persists" - EWC++ knowledge must survive restarts
+   *
+   * @param {string} patternId - Pattern ID
+   * @param {number} fisherImportance - Fisher importance score (0-1)
+   * @param {boolean} locked - Whether pattern should be consolidation locked
+   */
+  async syncFisherScore(patternId, fisherImportance, locked = false) {
+    try {
+      // Update patterns table if it exists
+      await this._persistence.query?.(
+        `UPDATE patterns SET
+           fisher_importance = $2,
+           consolidation_locked = $3,
+           updated_at = NOW()
+         WHERE id = $1 OR signature = $1`,
+        [patternId, fisherImportance, locked]
+      );
+      log.trace(`Fisher synced: ${patternId} → ${fisherImportance}${locked ? ' (locked)' : ''}`);
+    } catch (e) {
+      // Non-fatal - pattern might not exist in patterns table yet
+      log.trace(`Fisher sync failed: ${patternId} - ${e.message}`);
+    }
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -176,8 +202,9 @@ export function getSharedMemory(options = {}) {
  */
 export function getCollectivePack(options = {}) {
   if (!_globalPack) {
-    // Ensure SharedMemory exists
-    const sharedMemory = options.sharedMemory || getSharedMemory();
+    // Ensure SharedMemory exists with persistence wired
+    // FIX: Pass options so PersistenceStorageAdapter is created
+    const sharedMemory = options.sharedMemory || getSharedMemory(options);
 
     // Merge with defaults
     const finalOptions = {
@@ -196,6 +223,60 @@ export function getCollectivePack(options = {}) {
       hasPersistence: !!finalOptions.persistence,
       hasJudge: !!finalOptions.judge,
     });
+
+    // FIX O3: Schedule background persistence initialization
+    // "φ persiste" - persistence should be loaded even for sync calls
+    if (finalOptions.persistence && !_initPromise) {
+      log.debug('Scheduling background persistence initialization (sync path)');
+      _initPromise = _initializeBackground(finalOptions.persistence).catch(err => {
+        log.warn('Background persistence initialization failed', { error: err.message });
+      });
+    }
+  }
+
+  return _globalPack;
+}
+
+/**
+ * Initialize persistence in background (called from sync getCollectivePack)
+ * @private
+ */
+async function _initializeBackground(persistence) {
+  // Create cynic_kv table if needed
+  try {
+    await persistence.query?.(
+      `CREATE TABLE IF NOT EXISTS cynic_kv (
+         key TEXT PRIMARY KEY,
+         data JSONB NOT NULL DEFAULT '{}',
+         updated_at TIMESTAMPTZ DEFAULT NOW()
+       )`
+    );
+  } catch (err) {
+    log.debug('cynic_kv table creation skipped', { error: err.message });
+  }
+
+  // Initialize SharedMemory from storage
+  try {
+    if (_sharedMemory?.initialize) {
+      await _sharedMemory.initialize();
+      log.debug('SharedMemory initialized from storage (background)');
+    }
+  } catch (err) {
+    log.debug('SharedMemory background init failed', { error: err.message });
+  }
+
+  // Load patterns from PostgreSQL if SharedMemory is empty
+  try {
+    await loadPersistedState(persistence);
+  } catch (err) {
+    log.debug('Background pattern load failed', { error: err.message });
+  }
+
+  // Initialize Q-Learning
+  try {
+    await initializeQLearning(persistence);
+  } catch (err) {
+    log.debug('Background Q-Learning init failed', { error: err.message });
   }
 
   return _globalPack;
@@ -386,14 +467,22 @@ export async function initializeQLearning(persistence) {
  * Load persisted state into SharedMemory
  *
  * Called during async initialization to restore:
- * - Patterns from PostgreSQL
- * - Dimension weights
- * - Fisher scores (EWC++)
+ * - Patterns from PostgreSQL (up to MAX_PATTERNS = 1597)
+ * - Transform PostgreSQL format → SharedMemory format
+ * - Prioritize by confidence × frequency (φ-weighted importance)
  *
  * @param {Object} persistence - PersistenceManager instance
  */
 async function loadPersistedState(persistence) {
   if (!_sharedMemory) return;
+
+  // Skip if SharedMemory already has patterns (loaded from cynic_kv)
+  if (_sharedMemory._patterns?.size > 0) {
+    log.debug('SharedMemory already has patterns, skipping PostgreSQL load', {
+      count: _sharedMemory._patterns.size,
+    });
+    return;
+  }
 
   const patternsRepo = persistence.getRepository?.('patterns');
   if (!patternsRepo) {
@@ -402,17 +491,85 @@ async function loadPersistedState(persistence) {
   }
 
   try {
-    // Load top patterns (by Fisher score)
-    const patterns = await patternsRepo.findRecent?.({ limit: 100 });
-    if (patterns?.length) {
-      for (const p of patterns) {
-        _sharedMemory.addPattern?.(p);
-      }
-      log.debug('Loaded persisted patterns', { count: patterns.length });
+    // FIX: Use list() instead of non-existent findRecent()
+    // Load top 1597 patterns (F17 = SharedMemory max) ordered by importance
+    // Note: list() returns patterns ordered by confidence DESC, frequency DESC
+    const patterns = await patternsRepo.list?.({ limit: 1597, offset: 0 });
+    if (!patterns?.length) {
+      log.debug('No patterns found in PostgreSQL');
+      return;
     }
+
+    // Transform PostgreSQL format → SharedMemory format and add
+    let added = 0;
+    for (const pgPattern of patterns) {
+      const smPattern = transformPgPatternToSharedMemory(pgPattern);
+      _sharedMemory.addPattern?.(smPattern);
+      added++;
+    }
+
+    log.info('Loaded patterns from PostgreSQL → SharedMemory', {
+      loaded: added,
+      total: patterns.length,
+    });
   } catch (err) {
     log.warn('Could not load persisted patterns', { error: err.message });
   }
+}
+
+/**
+ * Transform PostgreSQL pattern format to SharedMemory format
+ *
+ * PostgreSQL: { pattern_id, category, name, description, confidence, frequency, tags, data, ... }
+ * SharedMemory: { id, tags, applicableTo, description, weight, verified, fisherImportance, ... }
+ *
+ * @param {Object} pgPattern - Pattern from PostgreSQL
+ * @returns {Object} Pattern in SharedMemory format
+ */
+function transformPgPatternToSharedMemory(pgPattern) {
+  // Calculate φ-weighted importance from confidence × frequency
+  // Higher confidence and frequency = higher weight and Fisher importance
+  const confidence = parseFloat(pgPattern.confidence) || 0.5;
+  const frequency = parseInt(pgPattern.frequency) || 1;
+
+  // Weight: Scale by frequency (log to prevent runaway values)
+  // Range: 0.5 to 2.618 (φ + 1)
+  const weight = Math.min(2.618, 0.5 + Math.log10(frequency + 1) * 0.5);
+
+  // Fisher importance: confidence acts as initial importance
+  // High-confidence patterns are more resistant to forgetting
+  const fisherImportance = Math.min(1.0, confidence * 1.2);
+
+  // Verified: patterns with high confidence and frequency are considered verified
+  const verified = confidence >= PHI_INV && frequency >= 3;
+
+  // applicableTo: derive from category
+  const applicableTo = pgPattern.category
+    ? [pgPattern.category, '*']
+    : ['*'];
+
+  return {
+    id: pgPattern.pattern_id,
+    name: pgPattern.name,
+    description: pgPattern.description || '',
+    tags: pgPattern.tags || [],
+    applicableTo,
+    category: pgPattern.category,
+    // φ-aligned weights
+    weight,
+    fisherImportance,
+    verified,
+    consolidationLocked: fisherImportance >= PHI_INV, // Lock high-importance patterns
+    // Timestamps
+    addedAt: pgPattern.created_at ? new Date(pgPattern.created_at).getTime() : Date.now(),
+    lastUsed: pgPattern.updated_at ? new Date(pgPattern.updated_at).getTime() : null,
+    // Usage stats
+    useCount: frequency,
+    // Original data preserved
+    data: pgPattern.data || {},
+    sourceJudgments: pgPattern.source_judgments || [],
+    sourceCount: pgPattern.source_count || 0,
+  };
 }
 
 /**
