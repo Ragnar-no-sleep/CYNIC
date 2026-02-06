@@ -424,7 +424,8 @@ export const SYSTEM = {
 };
 
 // =============================================================================
-// THE 4 AXIOMS
+// THE 5 AXIOMS (F(5) = 5, self-referential fixed point)
+// Wu Xing: CULTURE(Wood)→BURN(Fire)→PHI(Earth)→VERIFY(Metal)→FIDELITY(Water)
 // =============================================================================
 
 export const AXIOMS = {
@@ -433,29 +434,46 @@ export const AXIOMS = {
     name: 'PHI',
     principle: 'All ratios derive from 1.618...',
     world: 'ATZILUT',
-    color: '#FFD700'
+    element: 'Earth',
+    solid: 'Cube',
+    color: '#FFD700',
   },
   VERIFY: {
     symbol: '✓',
     name: 'VERIFY',
     principle: "Don't trust, verify",
     world: 'BERIAH',
-    color: '#4169E1'
+    element: 'Metal',
+    solid: 'Octahedron',
+    color: '#4169E1',
   },
   CULTURE: {
     symbol: '⛩',
     name: 'CULTURE',
     principle: 'Culture is a moat',
     world: 'YETZIRAH',
-    color: '#228B22'
+    element: 'Wood',
+    solid: 'Icosahedron',
+    color: '#228B22',
   },
   BURN: {
     symbol: '🔥',
     name: 'BURN',
     principle: "Don't extract, burn",
     world: 'ASSIAH',
-    color: '#DC143C'
-  }
+    element: 'Fire',
+    solid: 'Tetrahedron',
+    color: '#DC143C',
+  },
+  FIDELITY: {
+    symbol: '🐕',
+    name: 'FIDELITY',
+    principle: 'Loyal to truth, not to comfort',
+    world: 'ADAM_KADMON',
+    element: 'Water',
+    solid: 'Dodecahedron',
+    color: '#7B68EE',
+  },
 };
 
 // =============================================================================

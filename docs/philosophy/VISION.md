@@ -62,9 +62,10 @@ Self-interest = Collective good
 
 | Document | Contenu |
 |----------|---------|
+| [**harmonized-structure.md**](./harmonized-structure.md) | **Structure Harmonisée — 5 axiomes, 36 dims, 7 valeurs, physique, philosophie (2026-02-06)** |
 | [**metathinking-synthesis.md**](./metathinking-synthesis.md) | **Synthèse unifiée de TOUS les protocoles (2026-02-06)** |
 | [**fractal-matrix.md**](./fractal-matrix.md) | **7×7 Matrice de Conscience (FONDAMENTAL)** |
-| [cynic-ontology.md](./cynic-ontology.md) | 4 axiomes, 25 dimensions, fractales |
+| [cynic-ontology.md](./cynic-ontology.md) | 4 axiomes, 25 dimensions, fractales (PRE-HARMONIZATION) |
 | [unified-pipeline.md](./unified-pipeline.md) | Pipeline d'exécution |
 | [human-llm-symbiosis.md](./human-llm-symbiosis.md) | CYNIC comme membrane |
 | [ecosystem-utility.md](./ecosystem-utility.md) | Rôle dans l'écosystème |

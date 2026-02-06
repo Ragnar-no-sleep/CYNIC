@@ -1,7 +1,7 @@
 /**
  * CYNIC Dimension Scorers - Registry & Exports
  *
- * Real scoring logic for all 25 dimensions.
+ * Real scoring logic for all 36 dimensions (5 axioms x 7 + THE_UNNAMEABLE).
  * Replaces mock scoring with intelligent content analysis.
  *
  * "phi distrusts phi" - kynikós
@@ -29,6 +29,7 @@ import {
   scoreElegance,
   scoreCompleteness,
   scorePrecision,
+  scoreProportion,
 } from './phi-axiom.js';
 
 import {
@@ -39,6 +40,7 @@ import {
   scoreReproducibility,
   scoreProvenance,
   scoreIntegrity,
+  scoreConsensus,
 } from './verify-axiom.js';
 
 import {
@@ -49,6 +51,7 @@ import {
   scoreAlignment,
   scoreImpact,
   scoreResonance,
+  scoreLineage,
 } from './culture-axiom.js';
 
 import {
@@ -57,22 +60,37 @@ import {
   scoreSustainability,
   scoreEfficiency,
   scoreValueCreation,
+  scoreSacrifice,
   scoreNonExtractive,
   scoreContribution,
+  scoreIrreversibility,
 } from './burn-axiom.js';
+
+import {
+  FidelityScorers,
+  scoreCommitment,
+  scoreAttunement,
+  scoreCandor,
+  scoreCongruence,
+  scoreAccountability,
+  scoreVigilance,
+  scoreKenosis,
+} from './fidelity-axiom.js';
 
 /**
  * Map of dimension names to scorer functions
  */
 export const Scorers = {
-  // PHI Axiom
+  // PHI Axiom (7 dims)
   ...PhiScorers,
-  // VERIFY Axiom
+  // VERIFY Axiom (7 dims)
   ...VerifyScorers,
-  // CULTURE Axiom
+  // CULTURE Axiom (7 dims)
   ...CultureScorers,
-  // BURN Axiom
+  // BURN Axiom (7 dims)
   ...BurnScorers,
+  // FIDELITY Axiom (7 dims)
+  ...FidelityScorers,
 };
 
 /**
@@ -127,38 +145,51 @@ export function createRealScorer() {
 
 // Re-export individual scorers for direct use
 export {
-  // PHI Axiom
+  // PHI Axiom (7)
   scoreCoherence,
   scoreHarmony,
   scoreStructure,
   scoreElegance,
   scoreCompleteness,
   scorePrecision,
-  // VERIFY Axiom
+  scoreProportion,
+  // VERIFY Axiom (7)
   scoreAccuracy,
   scoreVerifiability,
   scoreTransparency,
   scoreReproducibility,
   scoreProvenance,
   scoreIntegrity,
-  // CULTURE Axiom
+  scoreConsensus,
+  // CULTURE Axiom (7)
   scoreAuthenticity,
   scoreRelevance,
   scoreNovelty,
   scoreAlignment,
   scoreImpact,
   scoreResonance,
-  // BURN Axiom
+  scoreLineage,
+  // BURN Axiom (7)
   scoreUtility,
   scoreSustainability,
   scoreEfficiency,
   scoreValueCreation,
-  scoreNonExtractive,
+  scoreSacrifice,
+  scoreNonExtractive, // backward compat alias for scoreSacrifice
   scoreContribution,
+  scoreIrreversibility,
+  // FIDELITY Axiom (7)
+  scoreCommitment,
+  scoreAttunement,
+  scoreCandor,
+  scoreCongruence,
+  scoreAccountability,
+  scoreVigilance,
+  scoreKenosis,
 };
 
 // Re-export axiom groups
-export { PhiScorers, VerifyScorers, CultureScorers, BurnScorers };
+export { PhiScorers, VerifyScorers, CultureScorers, BurnScorers, FidelityScorers };
 
 // Re-export utilities
 export * from './utils.js';
@@ -167,29 +198,19 @@ export default {
   Scorers,
   scoreDimension,
   createRealScorer,
-  // Individual scorers (for testing/customization)
-  scoreCoherence,
-  scoreHarmony,
-  scoreStructure,
-  scoreElegance,
-  scoreCompleteness,
-  scorePrecision,
-  scoreAccuracy,
-  scoreVerifiability,
-  scoreTransparency,
-  scoreReproducibility,
-  scoreProvenance,
-  scoreIntegrity,
-  scoreAuthenticity,
-  scoreRelevance,
-  scoreNovelty,
-  scoreAlignment,
-  scoreImpact,
-  scoreResonance,
-  scoreUtility,
-  scoreSustainability,
-  scoreEfficiency,
-  scoreValueCreation,
-  scoreNonExtractive,
-  scoreContribution,
+  // PHI (7)
+  scoreCoherence, scoreHarmony, scoreStructure, scoreElegance,
+  scoreCompleteness, scorePrecision, scoreProportion,
+  // VERIFY (7)
+  scoreAccuracy, scoreVerifiability, scoreTransparency, scoreReproducibility,
+  scoreProvenance, scoreIntegrity, scoreConsensus,
+  // CULTURE (7)
+  scoreAuthenticity, scoreRelevance, scoreNovelty, scoreAlignment,
+  scoreImpact, scoreResonance, scoreLineage,
+  // BURN (7)
+  scoreUtility, scoreSustainability, scoreEfficiency, scoreValueCreation,
+  scoreSacrifice, scoreNonExtractive, scoreContribution, scoreIrreversibility,
+  // FIDELITY (7)
+  scoreCommitment, scoreAttunement, scoreCandor, scoreCongruence,
+  scoreAccountability, scoreVigilance, scoreKenosis,
 };

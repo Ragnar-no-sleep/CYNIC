@@ -1,7 +1,7 @@
 /**
  * CULTURE Axiom Scorers - Cultural Fit
  *
- * Dimensions: AUTHENTICITY, RELEVANCE, NOVELTY, ALIGNMENT, IMPACT, RESONANCE
+ * Dimensions: AUTHENTICITY, RESONANCE, NOVELTY, ALIGNMENT, RELEVANCE, IMPACT, LINEAGE
  *
  * @module @cynic/node/judge/scorers/culture-axiom
  */
@@ -383,6 +383,42 @@ export function scoreResonance(item, context = {}) {
 }
 
 /**
+ * Score LINEAGE - Chain of transmission, memory remembering its own chain
+ */
+export function scoreLineage(item, context = {}) {
+  let score = 45;
+  const text = extractText(item);
+
+  // Has explicit lineage/history
+  if (item.history || item.lineage || item.chain) score += 20;
+
+  // Has parent/ancestor
+  if (item.parent || item.ancestor || item.derivedFrom) score += 15;
+
+  // Has children/descendants
+  if (item.derivatives && item.derivatives > 0) score += 10;
+
+  // Has version history
+  if (item.version && item.previousVersion) score += 10;
+
+  // Has provenance chain
+  if (item.author && item.origin) score += 10;
+
+  // Has cultural references
+  if (/tradition|heritage|legacy|lineage|ancestry/i.test(text)) score += 10;
+
+  // Orphan content (no connections)
+  if (!item.history && !item.parent && !item.author && !item.origin) {
+    score -= 15;
+  }
+
+  // Apply universal risk penalty
+  score -= detectRiskPenalty(item, text);
+
+  return normalize(score);
+}
+
+/**
  * CULTURE Axiom scorer map
  */
 export const CultureScorers = {
@@ -392,4 +428,5 @@ export const CultureScorers = {
   ALIGNMENT: scoreAlignment,
   IMPACT: scoreImpact,
   RESONANCE: scoreResonance,
+  LINEAGE: scoreLineage,
 };

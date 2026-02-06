@@ -1,7 +1,7 @@
 /**
  * VERIFY Axiom Scorers - Verification & Trust
  *
- * Dimensions: ACCURACY, VERIFIABILITY, TRANSPARENCY, REPRODUCIBILITY, PROVENANCE, INTEGRITY
+ * Dimensions: ACCURACY, PROVENANCE, INTEGRITY, VERIFIABILITY, TRANSPARENCY, REPRODUCIBILITY, CONSENSUS
  *
  * @module @cynic/node/judge/scorers/verify-axiom
  */
@@ -189,6 +189,43 @@ export function scoreIntegrity(item, context = {}) {
 }
 
 /**
+ * Score CONSENSUS - Collectively witnessed truth
+ */
+export function scoreConsensus(item, context = {}) {
+  let score = 45;
+  const text = extractText(item);
+
+  // Multiple verifiers
+  if (item.verifiers && Array.isArray(item.verifiers)) {
+    score += Math.min(item.verifiers.length * 8, 25);
+  }
+
+  // Has votes/endorsements
+  if (item.votes && item.votes > 0) {
+    score += Math.min(Math.log10(item.votes + 1) * 10, 20);
+  }
+
+  // On-chain consensus (strongest)
+  if (item.onChain === true || item.finalized === true) score += 20;
+
+  // Peer-reviewed
+  if (item.peerReviewed === true || item.reviewed === true) score += 15;
+
+  // Community agreement
+  if (item.approved === true || item.endorsed === true) score += 10;
+
+  // Single source = no consensus
+  if (!item.verifiers && !item.votes && !item.peerReviewed && !item.onChain) {
+    score -= 10;
+  }
+
+  // Apply universal risk penalty
+  score -= detectRiskPenalty(item, text);
+
+  return normalize(score);
+}
+
+/**
  * VERIFY Axiom scorer map
  */
 export const VerifyScorers = {
@@ -198,4 +235,5 @@ export const VerifyScorers = {
   REPRODUCIBILITY: scoreReproducibility,
   PROVENANCE: scoreProvenance,
   INTEGRITY: scoreIntegrity,
+  CONSENSUS: scoreConsensus,
 };

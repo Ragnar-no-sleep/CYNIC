@@ -1,11 +1,19 @@
 /**
  * CYNIC Dimensions
  *
- * 25 Dimensions total:
- * - 4 Axioms × 6 Dimensions = 24 named dimensions
+ * 36 Dimensions total:
+ * - 5 Axioms × 7 Dimensions = 35 named dimensions
  * - 1 META dimension: THE_UNNAMEABLE
  *
- * THE_UNNAMEABLE = "explained variance" - how well the 24 dimensions
+ * φ generates all numbers:
+ *   5 = F(5) axioms, 7 = L(4) dimensions, 11 = L(5) dogs
+ *   5 × 7 + 1 = 36 = 6² = 36 Tzadikim
+ *
+ * Universal weight template per axiom:
+ *   Position:  FOUND  GEN    POWER  PIVOT  EXPR   VISION RECUR
+ *   Weight:    φ      φ⁻¹    1.0    φ      φ⁻²    φ⁻¹    φ⁻¹
+ *
+ * THE_UNNAMEABLE = "explained variance" - how well the 35 dimensions
  * capture the item's quality. High score = low residual = well understood.
  *
  * "φ qui se méfie de φ" - κυνικός
@@ -20,50 +28,66 @@ import { PHI, PHI_INV, PHI_INV_2, AXIOMS } from '@cynic/core';
 /**
  * Base dimensions organized by axiom
  *
- * 4 Axioms = FIXED
- * Dimensions per axiom = N (infinite, discovered via ResidualDetector)
+ * 5 Axioms × 7 Dimensions = 35 named + 1 META = 36 total
+ * Dimensions per axiom follow the universal φ weight template:
+ *   φ, φ⁻¹, 1.0, φ, φ⁻², φ⁻¹, φ⁻¹
  */
 export const Dimensions = {
-  // PHI Axiom - All ratios derive from 1.618...
+  // PHI Axiom - All ratios derive from 1.618... (Earth/Atzilut/Cube)
   PHI: {
     COHERENCE: {
       weight: PHI,
       threshold: 50,
       description: 'Internal logical consistency',
     },
-    HARMONY: {
+    ELEGANCE: {
       weight: PHI_INV,
       threshold: 50,
-      description: 'Balance and proportion (φ-alignment)',
+      description: 'Simplicity that generates beauty',
     },
     STRUCTURE: {
       weight: 1.0,
       threshold: 50,
       description: 'Organizational clarity',
     },
-    ELEGANCE: {
+    HARMONY: {
+      weight: PHI,
+      threshold: 50,
+      description: 'Balance and proportion (φ-alignment)',
+    },
+    PRECISION: {
       weight: PHI_INV_2,
       threshold: 50,
-      description: 'Simplicity and beauty',
+      description: 'Accuracy and exactness of expression',
     },
     COMPLETENESS: {
       weight: PHI_INV,
       threshold: 50,
-      description: 'Wholeness of solution',
+      description: 'Wholeness of vision',
     },
-    PRECISION: {
-      weight: 1.0,
+    PROPORTION: {
+      weight: PHI_INV,
       threshold: 50,
-      description: 'Accuracy and exactness',
+      description: 'Ratio of parts to whole at every scale (φ seeing φ)',
     },
   },
 
-  // VERIFY Axiom - Don't trust, verify
+  // VERIFY Axiom - Don't trust, verify (Metal/Beriah/Octahedron)
   VERIFY: {
     ACCURACY: {
       weight: PHI,
       threshold: 60,
       description: 'Factual correctness',
+    },
+    PROVENANCE: {
+      weight: PHI_INV,
+      threshold: 50,
+      description: 'Source is traceable',
+    },
+    INTEGRITY: {
+      weight: 1.0,
+      threshold: 60,
+      description: 'Has not been tampered with',
     },
     VERIFIABILITY: {
       weight: PHI,
@@ -71,62 +95,62 @@ export const Dimensions = {
       description: 'Can be independently verified',
     },
     TRANSPARENCY: {
-      weight: PHI_INV,
+      weight: PHI_INV_2,
       threshold: 50,
       description: 'Clear reasoning visible',
     },
     REPRODUCIBILITY: {
-      weight: 1.0,
-      threshold: 55,
-      description: 'Results can be reproduced',
-    },
-    PROVENANCE: {
-      weight: PHI_INV_2,
-      threshold: 50,
-      description: 'Source is traceable',
-    },
-    INTEGRITY: {
       weight: PHI_INV,
-      threshold: 60,
-      description: 'Has not been tampered with',
+      threshold: 55,
+      description: 'Results can be reproduced (pattern-stable)',
+    },
+    CONSENSUS: {
+      weight: PHI_INV,
+      threshold: 50,
+      description: 'Collectively witnessed truth (verification verifying itself)',
     },
   },
 
-  // CULTURE Axiom - Culture is a moat
+  // CULTURE Axiom - Culture is a moat (Wood/Yetzirah/Icosahedron)
   CULTURE: {
     AUTHENTICITY: {
       weight: PHI,
       threshold: 50,
       description: 'Genuine and original',
     },
-    RELEVANCE: {
+    RESONANCE: {
       weight: PHI_INV,
-      threshold: 50,
-      description: 'Pertinent to context',
+      threshold: 45,
+      description: 'Memetic propagation — connects emotionally',
     },
     NOVELTY: {
       weight: 1.0,
       threshold: 40,
-      description: 'New or unique contribution',
+      description: 'New or unique contribution (pattern-breaking)',
     },
     ALIGNMENT: {
-      weight: PHI_INV,
+      weight: PHI,
       threshold: 50,
-      description: 'Fits cultural values',
+      description: 'Harmony with cultural DNA',
+    },
+    RELEVANCE: {
+      weight: PHI_INV_2,
+      threshold: 50,
+      description: 'Pertinent to context',
     },
     IMPACT: {
-      weight: PHI_INV_2,
+      weight: PHI_INV,
       threshold: 45,
-      description: 'Meaningful effect',
+      description: 'Foresight of consequence — meaningful effect',
     },
-    RESONANCE: {
-      weight: PHI_INV_2,
+    LINEAGE: {
+      weight: PHI_INV,
       threshold: 45,
-      description: 'Connects emotionally',
+      description: 'Chain of transmission — memory remembering its own chain',
     },
   },
 
-  // BURN Axiom - Don't extract, burn
+  // BURN Axiom - Don't extract, burn (Fire/Assiah/Tetrahedron)
   BURN: {
     UTILITY: {
       weight: PHI,
@@ -136,40 +160,92 @@ export const Dimensions = {
     SUSTAINABILITY: {
       weight: PHI_INV,
       threshold: 50,
-      description: 'Long-term viability',
+      description: 'Long-term viability (self-renewal)',
     },
     EFFICIENCY: {
       weight: 1.0,
       threshold: 50,
-      description: 'Resource optimization',
+      description: 'Work-to-heat ratio (η) — resource optimization',
     },
     VALUE_CREATION: {
       weight: PHI,
       threshold: 50,
-      description: 'Creates more than consumes',
+      description: 'Creates more than consumes (net positive)',
     },
-    NON_EXTRACTIVE: {
-      weight: PHI_INV,
+    SACRIFICE: {
+      weight: PHI_INV_2,
       threshold: 60,
-      description: 'Does not extract value unfairly',
+      description: 'Genuine cost borne — skin in the game',
     },
     CONTRIBUTION: {
-      weight: PHI_INV_2,
+      weight: PHI_INV,
       threshold: 50,
       description: 'Gives back to ecosystem',
     },
+    IRREVERSIBILITY: {
+      weight: PHI_INV,
+      threshold: 50,
+      description: 'Finality of commitment — entropy\'s arrow (2nd law)',
+    },
   },
 
-  // META - The 25th dimension (transcends axioms)
+  // FIDELITY Axiom - Loyal to truth, not to comfort (Water/Adam Kadmon/Dodecahedron)
+  FIDELITY: {
+    COMMITMENT: {
+      weight: PHI,
+      threshold: 50,
+      description: 'Loyalty to declared purpose in behavior (askesis)',
+    },
+    ATTUNEMENT: {
+      weight: PHI_INV,
+      threshold: 50,
+      description: 'Responsiveness to own signals (De/wu-wei)',
+    },
+    CANDOR: {
+      weight: 1.0,
+      threshold: 50,
+      description: 'Willingness to tell hard truths (parrhesia)',
+    },
+    CONGRUENCE: {
+      weight: PHI,
+      threshold: 50,
+      description: 'Inside matches outside — the center holds (Tiferet)',
+    },
+    ACCOUNTABILITY: {
+      weight: PHI_INV_2,
+      threshold: 50,
+      description: 'Standing behind judgments — traceable provenance',
+    },
+    VIGILANCE: {
+      weight: PHI_INV,
+      threshold: 50,
+      description: 'Ongoing self-observation for drift (zanshin)',
+    },
+    KENOSIS: {
+      weight: PHI_INV,
+      threshold: 50,
+      description: 'Capacity for self-emptying — the door THE_UNNAMEABLE needs (Tzimtzum)',
+    },
+  },
+
+  // META - The 36th dimension (transcends axioms)
   META: {
     THE_UNNAMEABLE: {
       weight: PHI,
       threshold: PHI_INV_2 * 100, // 38.2% - same as anomaly threshold
-      description: 'Explained variance - what the 24 dimensions capture',
+      description: 'Explained variance - what the 35 dimensions capture',
       meta: true,
       formula: '100 - (residual × 100)', // High when residual is low
     },
   },
+};
+
+/**
+ * Backward compatibility: NON_EXTRACTIVE → SACRIFICE alias
+ * Old code referencing NON_EXTRACTIVE will still find it
+ */
+export const DIMENSION_ALIASES = {
+  NON_EXTRACTIVE: 'SACRIFICE',
 };
 
 /**
@@ -196,14 +272,17 @@ export function getDimensionsForAxiom(axiom) {
 }
 
 /**
- * Get dimension config
+ * Get dimension config (supports aliases)
  * @param {string} name - Dimension name
  * @returns {Object|null} Dimension config
  */
 export function getDimension(name) {
+  // Check alias first
+  const resolvedName = DIMENSION_ALIASES[name] || name;
+
   for (const [axiom, dims] of Object.entries(Dimensions)) {
-    if (dims[name]) {
-      return { ...dims[name], axiom };
+    if (dims[resolvedName]) {
+      return { ...dims[resolvedName], axiom };
     }
   }
   return null;
@@ -298,6 +377,7 @@ export const dimensionRegistry = new DimensionRegistry();
 
 export default {
   Dimensions,
+  DIMENSION_ALIASES,
   getAllDimensions,
   getDimensionsForAxiom,
   getDimension,

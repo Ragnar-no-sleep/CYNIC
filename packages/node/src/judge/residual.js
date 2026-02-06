@@ -277,20 +277,27 @@ export class ResidualDetector {
    */
   _suggestAxiom(cluster) {
     // Analyze which axioms' dimensions are weak
-    const axiomWeakness = { PHI: 0, VERIFY: 0, CULTURE: 0, BURN: 0 };
+    const axiomWeakness = { PHI: 0, VERIFY: 0, CULTURE: 0, BURN: 0, FIDELITY: 0 };
+
+    // Map dimensions to axioms (7 per axiom)
+    const axiomDims = {
+      PHI: ['COHERENCE', 'ELEGANCE', 'STRUCTURE', 'HARMONY', 'PRECISION', 'COMPLETENESS', 'PROPORTION'],
+      VERIFY: ['ACCURACY', 'PROVENANCE', 'INTEGRITY', 'VERIFIABILITY', 'TRANSPARENCY', 'REPRODUCIBILITY', 'CONSENSUS'],
+      CULTURE: ['AUTHENTICITY', 'RESONANCE', 'NOVELTY', 'ALIGNMENT', 'RELEVANCE', 'IMPACT', 'LINEAGE'],
+      BURN: ['UTILITY', 'SUSTAINABILITY', 'EFFICIENCY', 'VALUE_CREATION', 'SACRIFICE', 'CONTRIBUTION', 'IRREVERSIBILITY'],
+      FIDELITY: ['COMMITMENT', 'ATTUNEMENT', 'CANDOR', 'CONGRUENCE', 'ACCOUNTABILITY', 'VIGILANCE', 'KENOSIS'],
+    };
+
+    // Build reverse lookup
+    const dimToAxiom = {};
+    for (const [axiom, dims] of Object.entries(axiomDims)) {
+      for (const d of dims) dimToAxiom[d] = axiom;
+    }
 
     for (const sample of cluster.samples) {
       for (const [dim, score] of Object.entries(sample.dimensions || {})) {
-        // Determine axiom of dimension (simplified)
-        if (['COHERENCE', 'HARMONY', 'STRUCTURE', 'ELEGANCE', 'COMPLETENESS', 'PRECISION'].includes(dim)) {
-          if (score < 40) axiomWeakness.PHI++;
-        } else if (['ACCURACY', 'VERIFIABILITY', 'TRANSPARENCY', 'REPRODUCIBILITY', 'PROVENANCE', 'INTEGRITY'].includes(dim)) {
-          if (score < 40) axiomWeakness.VERIFY++;
-        } else if (['AUTHENTICITY', 'RELEVANCE', 'NOVELTY', 'ALIGNMENT', 'IMPACT', 'RESONANCE'].includes(dim)) {
-          if (score < 40) axiomWeakness.CULTURE++;
-        } else {
-          if (score < 40) axiomWeakness.BURN++;
-        }
+        const axiom = dimToAxiom[dim] || 'BURN';
+        if (score < 40) axiomWeakness[axiom]++;
       }
     }
 

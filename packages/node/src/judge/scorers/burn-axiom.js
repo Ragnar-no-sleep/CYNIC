@@ -1,7 +1,7 @@
 /**
  * BURN Axiom Scorers - Value & Sustainability
  *
- * Dimensions: UTILITY, SUSTAINABILITY, EFFICIENCY, VALUE_CREATION, NON_EXTRACTIVE, CONTRIBUTION
+ * Dimensions: UTILITY, SUSTAINABILITY, EFFICIENCY, VALUE_CREATION, SACRIFICE, CONTRIBUTION, IRREVERSIBILITY
  *
  * @module @cynic/node/judge/scorers/burn-axiom
  */
@@ -146,9 +146,10 @@ export function scoreValueCreation(item, context = {}) {
 }
 
 /**
- * Score NON_EXTRACTIVE - Does not extract value unfairly
+ * Score SACRIFICE - Genuine cost borne, skin in the game
+ * (renamed from NON_EXTRACTIVE)
  */
-export function scoreNonExtractive(item, context = {}) {
+export function scoreSacrifice(item, context = {}) {
   let score = 55;
   const text = extractText(item);
 
@@ -220,6 +221,37 @@ export function scoreContribution(item, context = {}) {
 }
 
 /**
+ * Score IRREVERSIBILITY - Finality of commitment, entropy's arrow
+ */
+export function scoreIrreversibility(item, context = {}) {
+  let score = 50;
+  const text = extractText(item);
+
+  // On-chain (immutable)
+  if (item.onChain === true || item.immutable === true) score += 20;
+
+  // Has commitment proof
+  if (item.commitment || item.proof) score += 15;
+
+  // Burns tokens (irreversible by definition)
+  if (item.burned === true || item.burnAmount > 0) score += 15;
+
+  // Time-locked
+  if (item.timeLocked === true || item.lockDuration) score += 10;
+
+  // Signed/attested
+  if (item.signature || item.attestation) score += 10;
+
+  // Scams are reversible in intent - they plan exit
+  score -= detectRiskPenalty(item, text);
+
+  return normalize(score);
+}
+
+// Backward compat alias
+export const scoreNonExtractive = scoreSacrifice;
+
+/**
  * BURN Axiom scorer map
  */
 export const BurnScorers = {
@@ -227,6 +259,8 @@ export const BurnScorers = {
   SUSTAINABILITY: scoreSustainability,
   EFFICIENCY: scoreEfficiency,
   VALUE_CREATION: scoreValueCreation,
-  NON_EXTRACTIVE: scoreNonExtractive,
+  SACRIFICE: scoreSacrifice,
+  NON_EXTRACTIVE: scoreSacrifice, // backward compat alias
   CONTRIBUTION: scoreContribution,
+  IRREVERSIBILITY: scoreIrreversibility,
 };

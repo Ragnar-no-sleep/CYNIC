@@ -80,7 +80,8 @@ describe('Q-Score', () => {
 
       assert.strictEqual(result.axiom, 'PHI');
       assert.ok(result.score > 0);
-      assert.strictEqual(result.missing.length, 0);
+      // 6 of 7 provided, PROPORTION missing → 1 missing
+      assert.strictEqual(result.missing.length, 1);
       assert.strictEqual(result.dimensions.length, 6);
     });
 
@@ -101,34 +102,21 @@ describe('Q-Score', () => {
   describe('calculateQScore', () => {
     it('calculates Q-Score from dimension scores', () => {
       const dimensionScores = {
-        // PHI dimensions
-        COHERENCE: 70,
-        HARMONY: 70,
-        STRUCTURE: 70,
-        ELEGANCE: 70,
-        COMPLETENESS: 70,
-        PRECISION: 70,
-        // VERIFY dimensions
-        ACCURACY: 70,
-        VERIFIABILITY: 70,
-        TRANSPARENCY: 70,
-        REPRODUCIBILITY: 70,
-        PROVENANCE: 70,
-        INTEGRITY: 70,
-        // CULTURE dimensions
-        AUTHENTICITY: 70,
-        RELEVANCE: 70,
-        NOVELTY: 70,
-        ALIGNMENT: 70,
-        IMPACT: 70,
-        RESONANCE: 70,
-        // BURN dimensions
-        UTILITY: 70,
-        SUSTAINABILITY: 70,
-        EFFICIENCY: 70,
-        VALUE_CREATION: 70,
-        NON_EXTRACTIVE: 70,
-        CONTRIBUTION: 70,
+        // PHI dimensions (7)
+        COHERENCE: 70, HARMONY: 70, STRUCTURE: 70, ELEGANCE: 70,
+        COMPLETENESS: 70, PRECISION: 70, PROPORTION: 70,
+        // VERIFY dimensions (7)
+        ACCURACY: 70, VERIFIABILITY: 70, TRANSPARENCY: 70,
+        REPRODUCIBILITY: 70, PROVENANCE: 70, INTEGRITY: 70, CONSENSUS: 70,
+        // CULTURE dimensions (7)
+        AUTHENTICITY: 70, RELEVANCE: 70, NOVELTY: 70,
+        ALIGNMENT: 70, IMPACT: 70, RESONANCE: 70, LINEAGE: 70,
+        // BURN dimensions (7)
+        UTILITY: 70, SUSTAINABILITY: 70, EFFICIENCY: 70,
+        VALUE_CREATION: 70, SACRIFICE: 70, CONTRIBUTION: 70, IRREVERSIBILITY: 70,
+        // FIDELITY dimensions (7)
+        COMMITMENT: 70, ATTUNEMENT: 70, CANDOR: 70,
+        CONGRUENCE: 70, ACCOUNTABILITY: 70, VIGILANCE: 70, KENOSIS: 70,
       };
 
       const result = calculateQScore(dimensionScores);
@@ -141,17 +129,19 @@ describe('Q-Score', () => {
 
     it('returns lower score for imbalanced dimensions', () => {
       const balanced = calculateQScore({
-        COHERENCE: 70, HARMONY: 70, STRUCTURE: 70, ELEGANCE: 70, COMPLETENESS: 70, PRECISION: 70,
-        ACCURACY: 70, VERIFIABILITY: 70, TRANSPARENCY: 70, REPRODUCIBILITY: 70, PROVENANCE: 70, INTEGRITY: 70,
-        AUTHENTICITY: 70, RELEVANCE: 70, NOVELTY: 70, ALIGNMENT: 70, IMPACT: 70, RESONANCE: 70,
-        UTILITY: 70, SUSTAINABILITY: 70, EFFICIENCY: 70, VALUE_CREATION: 70, NON_EXTRACTIVE: 70, CONTRIBUTION: 70,
+        COHERENCE: 70, HARMONY: 70, STRUCTURE: 70, ELEGANCE: 70, COMPLETENESS: 70, PRECISION: 70, PROPORTION: 70,
+        ACCURACY: 70, VERIFIABILITY: 70, TRANSPARENCY: 70, REPRODUCIBILITY: 70, PROVENANCE: 70, INTEGRITY: 70, CONSENSUS: 70,
+        AUTHENTICITY: 70, RELEVANCE: 70, NOVELTY: 70, ALIGNMENT: 70, IMPACT: 70, RESONANCE: 70, LINEAGE: 70,
+        UTILITY: 70, SUSTAINABILITY: 70, EFFICIENCY: 70, VALUE_CREATION: 70, SACRIFICE: 70, CONTRIBUTION: 70, IRREVERSIBILITY: 70,
+        COMMITMENT: 70, ATTUNEMENT: 70, CANDOR: 70, CONGRUENCE: 70, ACCOUNTABILITY: 70, VIGILANCE: 70, KENOSIS: 70,
       });
 
       const imbalanced = calculateQScore({
-        COHERENCE: 90, HARMONY: 90, STRUCTURE: 90, ELEGANCE: 90, COMPLETENESS: 90, PRECISION: 90,
-        ACCURACY: 90, VERIFIABILITY: 90, TRANSPARENCY: 90, REPRODUCIBILITY: 90, PROVENANCE: 90, INTEGRITY: 90,
-        AUTHENTICITY: 90, RELEVANCE: 90, NOVELTY: 90, ALIGNMENT: 90, IMPACT: 90, RESONANCE: 90,
-        UTILITY: 20, SUSTAINABILITY: 20, EFFICIENCY: 20, VALUE_CREATION: 20, NON_EXTRACTIVE: 20, CONTRIBUTION: 20,
+        COHERENCE: 90, HARMONY: 90, STRUCTURE: 90, ELEGANCE: 90, COMPLETENESS: 90, PRECISION: 90, PROPORTION: 90,
+        ACCURACY: 90, VERIFIABILITY: 90, TRANSPARENCY: 90, REPRODUCIBILITY: 90, PROVENANCE: 90, INTEGRITY: 90, CONSENSUS: 90,
+        AUTHENTICITY: 90, RELEVANCE: 90, NOVELTY: 90, ALIGNMENT: 90, IMPACT: 90, RESONANCE: 90, LINEAGE: 90,
+        UTILITY: 20, SUSTAINABILITY: 20, EFFICIENCY: 20, VALUE_CREATION: 20, SACRIFICE: 20, CONTRIBUTION: 20, IRREVERSIBILITY: 20,
+        COMMITMENT: 70, ATTUNEMENT: 70, CANDOR: 70, CONGRUENCE: 70, ACCOUNTABILITY: 70, VIGILANCE: 70, KENOSIS: 70,
       });
 
       // Imbalanced should have lower Q despite higher average
@@ -162,6 +152,7 @@ describe('Q-Score', () => {
   describe('calculateQScoreFromAxioms', () => {
     it('calculates Q-Score from pre-computed axiom scores', () => {
       const result = calculateQScoreFromAxioms({
+        FIDELITY: 80,
         PHI: 80,
         VERIFY: 80,
         CULTURE: 80,
@@ -174,14 +165,15 @@ describe('Q-Score', () => {
 
     it('penalizes one weak axiom', () => {
       const result = calculateQScoreFromAxioms({
+        FIDELITY: 80,
         PHI: 80,
         VERIFY: 80,
         CULTURE: 80,
         BURN: 20,
       });
 
-      // Q should be much lower than 80 due to weak BURN
-      assert.ok(result.Q < 60);
+      // Q should be much lower than 80 due to weak BURN (5th root softens to ~60.6)
+      assert.ok(result.Q < 70);
     });
   });
 
@@ -256,11 +248,12 @@ describe('Q-Score', () => {
 
   describe('Philosophy Bridge', () => {
     describe('PHILOSOPHY_AXIOM_MAP', () => {
-      it('has all four axioms mapped', () => {
+      it('has core axioms mapped', () => {
         assert.ok(PHILOSOPHY_AXIOM_MAP.PHI);
         assert.ok(PHILOSOPHY_AXIOM_MAP.VERIFY);
         assert.ok(PHILOSOPHY_AXIOM_MAP.CULTURE);
         assert.ok(PHILOSOPHY_AXIOM_MAP.BURN);
+        // FIDELITY bridge pending — philosophy-bridge.js is pre-harmonization
       });
 
       it('has 6 dimensions per axiom', () => {

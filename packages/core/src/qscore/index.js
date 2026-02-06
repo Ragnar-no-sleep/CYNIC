@@ -3,11 +3,14 @@
  *
  * "Quality > Quantity, mathematically proven"
  *
- * Q = 100 × ∜(φ × V × C × B)
+ * Q = 100 × ⁵√(F × φ × V × C × B)
+ *
+ * 5 axioms: FIDELITY, PHI, VERIFY, CULTURE, BURN
+ * 5 = F(5) = the only Fibonacci number equal to its own index
  *
  * Like K-Score but for knowledge:
  * - K-Score: K = 100 × ∛(D × O × L) - 3 pillars, balanced
- * - Q-Score: Q = 100 × ∜(φ × V × C × B) - 4 axioms, balanced
+ * - Q-Score: Q = 100 × ⁵√(F × φ × V × C × B) - 5 axioms, balanced
  *
  * Key insight: One weak pillar = low score (cannot game by excelling elsewhere)
  *
@@ -69,10 +72,11 @@ export function nthRoot(value, n) {
  * Used when no explicit dimensions are provided
  */
 const DEFAULT_AXIOM_DIMENSIONS = {
-  PHI: ['COHERENCE', 'HARMONY', 'STRUCTURE', 'ELEGANCE', 'COMPLETENESS', 'PRECISION'],
-  VERIFY: ['ACCURACY', 'VERIFIABILITY', 'TRANSPARENCY', 'REPRODUCIBILITY', 'PROVENANCE', 'INTEGRITY'],
-  CULTURE: ['AUTHENTICITY', 'RELEVANCE', 'NOVELTY', 'ALIGNMENT', 'IMPACT', 'RESONANCE'],
-  BURN: ['UTILITY', 'SUSTAINABILITY', 'EFFICIENCY', 'VALUE_CREATION', 'NON_EXTRACTIVE', 'CONTRIBUTION'],
+  PHI: ['COHERENCE', 'ELEGANCE', 'STRUCTURE', 'HARMONY', 'PRECISION', 'COMPLETENESS', 'PROPORTION'],
+  VERIFY: ['ACCURACY', 'PROVENANCE', 'INTEGRITY', 'VERIFIABILITY', 'TRANSPARENCY', 'REPRODUCIBILITY', 'CONSENSUS'],
+  CULTURE: ['AUTHENTICITY', 'RESONANCE', 'NOVELTY', 'ALIGNMENT', 'RELEVANCE', 'IMPACT', 'LINEAGE'],
+  BURN: ['UTILITY', 'SUSTAINABILITY', 'EFFICIENCY', 'VALUE_CREATION', 'SACRIFICE', 'CONTRIBUTION', 'IRREVERSIBILITY'],
+  FIDELITY: ['COMMITMENT', 'ATTUNEMENT', 'CANDOR', 'CONGRUENCE', 'ACCOUNTABILITY', 'VIGILANCE', 'KENOSIS'],
 };
 
 /**
@@ -135,7 +139,7 @@ export function calculateAxiomScore(axiomName, dimensionScores, options = {}) {
 /**
  * Calculate hierarchical Q-Score
  *
- * Q = 100 × ∜(φ_score × V_score × C_score × B_score)
+ * Q = 100 × ⁵√(F × φ × V × C × B / 100^5)
  *
  * @param {Object} dimensionScores - { HARMONY: 75, TRUTH: 80, ... }
  * @param {Object} [options] - { weighted: boolean }
@@ -150,7 +154,8 @@ export function calculateQScore(dimensionScores, options = {}) {
     axiomScores[axiomName] = calculateAxiomScore(axiomName, dimensionScores);
   }
 
-  // Extract raw scores
+  // Extract raw scores (5 axioms)
+  const f_score = axiomScores.FIDELITY?.score ?? 50;
   const phi_score = axiomScores.PHI.score;
   const v_score = axiomScores.VERIFY.score;
   const c_score = axiomScores.CULTURE.score;
@@ -160,28 +165,29 @@ export function calculateQScore(dimensionScores, options = {}) {
 
   if (weighted) {
     // Weighted version: apply axiom weights
-    // Each axiom has equal weight in balanced mode
     const weights = {
-      PHI: PHI_INV,    // 0.618
-      VERIFY: PHI_INV, // 0.618
-      CULTURE: 1.0,    // 1.0
-      BURN: PHI_INV,   // 0.618
+      FIDELITY: PHI_INV, // 0.618
+      PHI: PHI_INV,      // 0.618
+      VERIFY: PHI_INV,   // 0.618
+      CULTURE: 1.0,      // 1.0
+      BURN: PHI_INV,     // 0.618
     };
 
     const weightedProduct =
+      Math.pow(f_score, weights.FIDELITY) *
       Math.pow(phi_score, weights.PHI) *
       Math.pow(v_score, weights.VERIFY) *
       Math.pow(c_score, weights.CULTURE) *
       Math.pow(b_score, weights.BURN);
 
     const totalWeight =
-      weights.PHI + weights.VERIFY + weights.CULTURE + weights.BURN;
+      weights.FIDELITY + weights.PHI + weights.VERIFY + weights.CULTURE + weights.BURN;
 
     Q = nthRoot(weightedProduct, totalWeight);
   } else {
-    // Simple 4th root (unweighted, like K-Score's cube root)
-    // Q = 100 × ∜(φ × V × C × B / 100^4)
-    Q = 100 * nthRoot((phi_score * v_score * c_score * b_score) / Math.pow(100, 4), 4);
+    // 5th root (unweighted) — 5 = F(5), self-referential
+    // Q = 100 × ⁵√(F × φ × V × C × B / 100^5)
+    Q = 100 * nthRoot((f_score * phi_score * v_score * c_score * b_score) / Math.pow(100, 5), 5);
   }
 
   // Round to 1 decimal
@@ -195,14 +201,15 @@ export function calculateQScore(dimensionScores, options = {}) {
     verdict,
     axiomScores,
     breakdown: {
+      FIDELITY: f_score,
       PHI: phi_score,
       VERIFY: v_score,
       CULTURE: c_score,
       BURN: b_score,
     },
     formula: weighted
-      ? 'Q = ∜(φ^w × V^w × C^w × B^w)'
-      : 'Q = 100 × ∜(φ × V × C × B / 100^4)',
+      ? 'Q = ⁵√(F^w × φ^w × V^w × C^w × B^w)'
+      : 'Q = 100 × ⁵√(F × φ × V × C × B / 100^5)',
     meta: {
       dimensionCount: Object.keys(dimensionScores).length,
       weighted,
@@ -216,15 +223,21 @@ export function calculateQScore(dimensionScores, options = {}) {
  *
  * Useful when axiom scores are already available (e.g., from Judge)
  *
- * @param {Object} axiomScores - { PHI: 75, VERIFY: 80, CULTURE: 60, BURN: 70 }
+ * @param {Object} axiomScores - { FIDELITY: 65, PHI: 75, VERIFY: 80, CULTURE: 60, BURN: 70 }
  * @returns {Object} Q-Score result
  */
 export function calculateQScoreFromAxioms(axiomScores) {
-  const { PHI: phi_score = 50, VERIFY: v_score = 50, CULTURE: c_score = 50, BURN: b_score = 50 } = axiomScores;
+  const {
+    FIDELITY: f_score = 50,
+    PHI: phi_score = 50,
+    VERIFY: v_score = 50,
+    CULTURE: c_score = 50,
+    BURN: b_score = 50,
+  } = axiomScores;
 
-  // Q = 100 × ∜(φ × V × C × B / 100^4)
+  // Q = 100 × ⁵√(F × φ × V × C × B / 100^5)
   const Q = Math.round(
-    100 * nthRoot((phi_score * v_score * c_score * b_score) / Math.pow(100, 4), 4) * 10
+    100 * nthRoot((f_score * phi_score * v_score * c_score * b_score) / Math.pow(100, 5), 5) * 10
   ) / 10;
 
   const verdict = getVerdict(Q);
@@ -232,8 +245,8 @@ export function calculateQScoreFromAxioms(axiomScores) {
   return {
     Q,
     verdict,
-    breakdown: { PHI: phi_score, VERIFY: v_score, CULTURE: c_score, BURN: b_score },
-    formula: 'Q = 100 × ∜(φ × V × C × B / 100^4)',
+    breakdown: { FIDELITY: f_score, PHI: phi_score, VERIFY: v_score, CULTURE: c_score, BURN: b_score },
+    formula: 'Q = 100 × ⁵√(F × φ × V × C × B / 100^5)',
   };
 }
 
@@ -329,8 +342,8 @@ export function analyzeWeaknesses(qScoreResult) {
   const strongest = sorted[sorted.length - 1];
 
   // Calculate how much the weakest axiom is pulling down the score
-  const avgWithoutWeakest =
-    (breakdown.PHI + breakdown.VERIFY + breakdown.CULTURE + breakdown.BURN - weakest[1]) / 3;
+  const totalWithout = Object.values(breakdown).reduce((s, v) => s + v, 0) - weakest[1];
+  const avgWithoutWeakest = totalWithout / (Object.keys(breakdown).length - 1);
 
   const drag = avgWithoutWeakest - Q;
 
@@ -408,9 +421,9 @@ export const COMPARISON = {
     purpose: 'Token quality measurement',
   },
   'Q-Score': {
-    formula: 'Q = 100 × ∜(φ × V × C × B)',
-    pillars: ['PHI (φ)', 'VERIFY (V)', 'CULTURE (C)', 'BURN (B)'],
-    root: 4,
+    formula: 'Q = 100 × ⁵√(F × φ × V × C × B)',
+    pillars: ['FIDELITY (F)', 'PHI (φ)', 'VERIFY (V)', 'CULTURE (C)', 'BURN (B)'],
+    root: 5,
     purpose: 'Knowledge quality measurement',
   },
   'Final': {

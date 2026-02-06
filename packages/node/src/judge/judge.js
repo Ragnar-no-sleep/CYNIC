@@ -238,7 +238,7 @@ export class CYNICJudge {
   /**
    * Register a custom dimension with scorer (Phase 3 plugin API)
    *
-   * @param {string} axiom - Axiom (PHI, VERIFY, CULTURE, BURN)
+   * @param {string} axiom - Axiom (PHI, VERIFY, CULTURE, BURN, FIDELITY)
    * @param {string} name - Dimension name (UPPER_SNAKE_CASE)
    * @param {Object} config - Dimension configuration
    * @param {number} config.weight - Score weight (0.1-2.0)
@@ -427,7 +427,7 @@ export class CYNICJudge {
     const entropyAnalysis = judgmentEntropy(dimensionScores);
 
     // Dimension-level entropy analysis (inference module)
-    // Uses all 25 dimension scores for finer granularity
+    // Uses all 36 dimension scores for finer granularity
     const dimScoreValues = Object.values(dimensionScores);
     const dimensionEntropyAnalysis = entropyConfidence(dimScoreValues);
 
@@ -666,7 +666,7 @@ export class CYNICJudge {
       }
     }
 
-    // Calculate THE_UNNAMEABLE (25th dimension) based on score variance
+    // Calculate THE_UNNAMEABLE (36th dimension) based on score variance
     // High variance = high unexplained variance = low UNNAMEABLE score
     // Low variance = dimensions capture well = high UNNAMEABLE score
     scores.THE_UNNAMEABLE = this._scoreTheUnnameable(scores);
@@ -676,7 +676,7 @@ export class CYNICJudge {
 
   /**
    * Calculate THE_UNNAMEABLE dimension score
-   * Measures "explained variance" - how well 24 dimensions capture the item
+   * Measures "explained variance" - how well 35 dimensions capture the item
    * High score = low residual = well understood
    * @private
    * @param {Object} scores - All other dimension scores
@@ -935,7 +935,7 @@ export class CYNICJudge {
    * Applies learned weight modifiers from RLHF feedback
    * @private
    * @param {Object} dimensionScores - All dimension scores
-   * @returns {Object} Axiom scores {PHI, VERIFY, CULTURE, BURN}
+   * @returns {Object} Axiom scores {PHI, VERIFY, CULTURE, BURN, FIDELITY}
    */
   _calculateAxiomScores(dimensionScores) {
     const axiomScores = {};
@@ -1983,7 +1983,7 @@ export class CYNICJudge {
    * @param {string} candidateKey - Candidate key from getCandidateDimensions()
    * @param {Object} params - Acceptance parameters
    * @param {string} params.name - Final dimension name (e.g., 'SUSTAINABILITY')
-   * @param {string} params.axiom - Axiom to add to (PHI, VERIFY, CULTURE, BURN)
+   * @param {string} params.axiom - Axiom to add to (PHI, VERIFY, CULTURE, BURN, FIDELITY)
    * @param {number} [params.weight] - Dimension weight (default: 1.0)
    * @param {number} [params.threshold] - Score threshold (default: 50)
    * @returns {Object|null} Accepted dimension or null if no detector

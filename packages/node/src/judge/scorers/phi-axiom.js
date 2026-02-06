@@ -1,7 +1,7 @@
 /**
  * PHI Axiom Scorers - Structure & Coherence
  *
- * Dimensions: COHERENCE, HARMONY, STRUCTURE, ELEGANCE, COMPLETENESS, PRECISION
+ * Dimensions: COHERENCE, ELEGANCE, STRUCTURE, HARMONY, PRECISION, COMPLETENESS, PROPORTION
  *
  * @module @cynic/node/judge/scorers/phi-axiom
  */
@@ -245,6 +245,44 @@ export function scorePrecision(item, context = {}) {
 }
 
 /**
+ * Score PROPORTION - Ratio of parts to whole at every scale (φ seeing φ)
+ */
+export function scoreProportion(item, context = {}) {
+  let score = 50;
+  const text = extractText(item);
+
+  if (text.length === 0) return score;
+
+  const words = wordCount(text);
+  const sentences = sentenceCount(text);
+
+  // φ ratio in structure (intro:body ≈ 38:62)
+  if (typeof item === 'object') {
+    const keys = Object.keys(item);
+    if (keys.length >= 5 && keys.length <= 8) score += 10; // φ-range
+  }
+
+  // Balanced paragraph lengths (self-similarity)
+  const paragraphs = text.split(/\n\n+/).filter(p => p.trim().length > 0);
+  if (paragraphs.length >= 2) {
+    const lengths = paragraphs.map(p => p.length);
+    const avg = lengths.reduce((s, l) => s + l, 0) / lengths.length;
+    const variance = lengths.reduce((s, l) => s + Math.pow(l - avg, 2), 0) / lengths.length;
+    const cv = Math.sqrt(variance) / Math.max(avg, 1); // coefficient of variation
+    if (cv < 0.5) score += 15; // Self-similar proportions
+    else if (cv < 1.0) score += 5;
+  }
+
+  // Fibonacci-range sentence count
+  if (sentences >= 3 && sentences <= 21) score += 10;
+
+  // Scams distort proportion — overblown claims, tiny substance
+  score -= detectRiskPenalty(item, text);
+
+  return normalize(score);
+}
+
+/**
  * PHI Axiom scorer map
  */
 export const PhiScorers = {
@@ -254,4 +292,5 @@ export const PhiScorers = {
   ELEGANCE: scoreElegance,
   COMPLETENESS: scoreCompleteness,
   PRECISION: scorePrecision,
+  PROPORTION: scoreProportion,
 };
