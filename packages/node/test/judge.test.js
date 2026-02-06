@@ -21,29 +21,30 @@ import { PHI, PHI_INV, PHI_INV_2, AXIOMS } from '@cynic/core';
 import { Verdict } from '@cynic/protocol';
 
 describe('Dimensions', () => {
-  it('should have 5 axioms (4 core + META)', () => {
+  it('should have 6 axioms (5 core + META)', () => {
     const axioms = Object.keys(Dimensions);
-    assert.strictEqual(axioms.length, 5);
+    assert.strictEqual(axioms.length, 6);
     assert.ok(axioms.includes('PHI'));
     assert.ok(axioms.includes('VERIFY'));
     assert.ok(axioms.includes('CULTURE'));
     assert.ok(axioms.includes('BURN'));
-    assert.ok(axioms.includes('META')); // 25th dimension axiom
+    assert.ok(axioms.includes('FIDELITY'));
+    assert.ok(axioms.includes('META')); // 36th dimension axiom
   });
 
-  it('should have 6 dimensions per core axiom, 1 for META', () => {
+  it('should have 7 dimensions per core axiom, 1 for META', () => {
     for (const axiom of Object.keys(Dimensions)) {
       const dims = Object.keys(Dimensions[axiom]);
-      const expected = axiom === 'META' ? 1 : 6;
+      const expected = axiom === 'META' ? 1 : 7;
       assert.strictEqual(dims.length, expected, `${axiom} should have ${expected} dimensions`);
     }
   });
 
   it('should have φ-derived weights', () => {
-    // Check PHI axiom dimensions
+    // Check PHI axiom dimensions — universal weight template: φ, φ⁻¹, 1.0, φ, φ⁻², φ⁻¹, φ⁻¹
     assert.strictEqual(Dimensions.PHI.COHERENCE.weight, PHI);
-    assert.strictEqual(Dimensions.PHI.HARMONY.weight, PHI_INV);
-    assert.strictEqual(Dimensions.PHI.ELEGANCE.weight, PHI_INV_2);
+    assert.strictEqual(Dimensions.PHI.HARMONY.weight, PHI);
+    assert.strictEqual(Dimensions.PHI.ELEGANCE.weight, PHI_INV);
 
     // Check VERIFY axiom dimensions
     assert.strictEqual(Dimensions.VERIFY.ACCURACY.weight, PHI);
@@ -53,8 +54,8 @@ describe('Dimensions', () => {
   it('should get all dimensions flat', () => {
     const all = getAllDimensions();
 
-    // Should have 25 dimensions (4 axioms × 6 + 1 META)
-    assert.strictEqual(Object.keys(all).length, 25);
+    // Should have 36 dimensions (5 axioms × 7 + 1 META)
+    assert.strictEqual(Object.keys(all).length, 36);
 
     // Each should have axiom property
     for (const [name, config] of Object.entries(all)) {
@@ -66,9 +67,10 @@ describe('Dimensions', () => {
 
   it('should get dimensions for axiom', () => {
     const phiDims = getDimensionsForAxiom('PHI');
-    assert.strictEqual(Object.keys(phiDims).length, 6);
+    assert.strictEqual(Object.keys(phiDims).length, 7);
     assert.ok(phiDims.COHERENCE);
     assert.ok(phiDims.HARMONY);
+    assert.ok(phiDims.PROPORTION);
   });
 
   it('should return empty for invalid axiom', () => {

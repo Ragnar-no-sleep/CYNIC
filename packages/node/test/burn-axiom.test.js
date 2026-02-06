@@ -763,12 +763,14 @@ describe('BURN Axiom - CONTRIBUTION Dimension', () => {
 // ============================================================
 
 describe('BurnScorers Map', () => {
-  it('exports all 6 BURN dimensions', () => {
+  it('exports all 8 BURN dimensions (7 + NON_EXTRACTIVE alias)', () => {
     const dimensions = Object.keys(BurnScorers);
     assert.deepStrictEqual(dimensions.sort(), [
       'CONTRIBUTION',
       'EFFICIENCY',
+      'IRREVERSIBILITY',
       'NON_EXTRACTIVE',
+      'SACRIFICE',
       'SUSTAINABILITY',
       'UTILITY',
       'VALUE_CREATION',
@@ -980,8 +982,10 @@ describe('BURN Axiom Integration Tests', () => {
         SUSTAINABILITY: 50,
         EFFICIENCY: 50,
         VALUE_CREATION: 50,
+        SACRIFICE: 55,
         NON_EXTRACTIVE: 55,
         CONTRIBUTION: 45,
+        IRREVERSIBILITY: 50,
       };
 
       for (const [name, scorer] of Object.entries(BurnScorers)) {
