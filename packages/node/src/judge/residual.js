@@ -45,6 +45,10 @@ export class ResidualDetector {
     this._initialized = false;
     this._dirty = false;
 
+    // WS6: Governance callback - called when candidate reaches voting threshold
+    this.onCandidateReady = options.onCandidateReady || null;
+    this._governanceThreshold = PHI_INV_2; // 38.2% confidence = ready for vote
+
     // Anomaly storage (bounded)
     this.anomalies = [];
 
@@ -244,6 +248,15 @@ export class ResidualDetector {
 
     this.candidates.set(key, candidate);
     this._markDirty(); // FIX J5: Persist candidate changes
+
+    // WS6: Notify when candidate reaches governance threshold
+    if (candidate.confidence >= this._governanceThreshold && this.onCandidateReady) {
+      try {
+        this.onCandidateReady(candidate);
+      } catch (_) {
+        // Non-blocking
+      }
+    }
 
     // Evict oldest candidates if over limit
     if (this.candidates.size > this.maxCandidates) {

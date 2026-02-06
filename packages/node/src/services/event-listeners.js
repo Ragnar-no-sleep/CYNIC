@@ -592,6 +592,7 @@ export function startEventListeners(options = {}) {
     sharedMemory,
     saveState,
     judge,
+    collectivePack,
     sessionId,
     userId,
     blockStore,
@@ -797,6 +798,52 @@ export function startEventListeners(options = {}) {
     _unsubscribers.push(unsubAnchorFailed);
 
     log.info('Block anchoring event listeners wired (PHASE 2)');
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Subscribe to DIMENSION_CANDIDATE (WS6: Dimension Discovery Governance)
+  // When ResidualDetector finds a candidate dimension, trigger Dog vote
+  // ─────────────────────────────────────────────────────────────────────────────
+  if (collectivePack?.consensus) {
+    const unsubDimCandidate = globalEventBus.subscribe(
+      EventType.DIMENSION_CANDIDATE,
+      async (event) => {
+        const candidate = event.candidate || event;
+        try {
+          const result = await collectivePack.consensus.triggerConsensus({
+            topic: `dimension_governance:${candidate.key}`,
+            context: {
+              candidateKey: candidate.key,
+              suggestedName: candidate.suggestedName,
+              suggestedAxiom: candidate.suggestedAxiom,
+              sampleCount: candidate.sampleCount,
+              avgResidual: candidate.avgResidual,
+              confidence: candidate.confidence,
+              weakDimensions: candidate.weakDimensions,
+            },
+            reason: `New dimension candidate "${candidate.suggestedName}" detected (${candidate.sampleCount} samples, residual ${(candidate.avgResidual * 100).toFixed(1)}%)`,
+          });
+
+          // Apply governance decision
+          if (result?.approved && collectivePack.judgeComponent?.residualDetector) {
+            const detector = collectivePack.judgeComponent.residualDetector;
+            detector.acceptCandidate(candidate.key, {
+              name: candidate.suggestedName,
+              axiom: candidate.suggestedAxiom,
+              weight: 1.0,
+            });
+            log.info('Dimension candidate ACCEPTED by Dogs', { name: candidate.suggestedName, axiom: candidate.suggestedAxiom });
+          } else if (collectivePack.judgeComponent?.residualDetector) {
+            collectivePack.judgeComponent.residualDetector.rejectCandidate(candidate.key);
+            log.info('Dimension candidate REJECTED by Dogs', { name: candidate.suggestedName });
+          }
+        } catch (err) {
+          log.debug('Dimension governance failed (non-blocking)', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubDimCandidate);
+    log.info('Dimension governance listener wired (WS6)');
   }
 
   _started = true;

@@ -12,7 +12,7 @@
 'use strict';
 
 import { EventEmitter } from 'events';
-import { createLogger } from '@cynic/core';
+import { createLogger, globalEventBus, EventType } from '@cynic/core';
 import { CYNICJudge } from '../judge/judge.js';
 
 const log = createLogger('JudgeComponent');
@@ -39,8 +39,17 @@ export class JudgeComponent extends EventEmitter {
     // Initialize judge
     this._judge = new CYNICJudge();
 
-    // Initialize residual detector
-    this._residualDetector = new ResidualDetector();
+    // Initialize residual detector with governance callback (WS6)
+    this._residualDetector = new ResidualDetector({
+      onCandidateReady: (candidate) => {
+        globalEventBus.publish(EventType.DIMENSION_CANDIDATE, {
+          candidate,
+          source: 'residual_detector',
+          timestamp: Date.now(),
+        });
+        this.emit('candidate:ready', candidate);
+      },
+    });
 
     // Initialize learning service
     this._learningService = new LearningService({

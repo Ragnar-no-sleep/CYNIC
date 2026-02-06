@@ -63,6 +63,12 @@ export function setupBusSubscriptions(services) {
   // JUDGMENT EVENTS
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // Network nodes to forward judgments to (POST /judgment)
+  const networkNodes = (process.env.CYNIC_NETWORK_NODES || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+
   subscriptions.push(
     globalEventBus.subscribe(EventType.JUDGMENT_CREATED, (event) => {
       const { qScore, verdict, dimensions } = event.payload || {};
@@ -74,6 +80,38 @@ export function setupBusSubscriptions(services) {
           patternId: event.id,
           dimensionScores: dimensions,
         });
+      }
+
+      // Forward judgment to P2P network nodes for blockchain inclusion.
+      // Skip forwarded judgments (source starts with 'peer:' or 'http:') to avoid loops.
+      const source = event.source || '';
+      if (networkNodes.length > 0 && !source.startsWith('peer:') && !source.startsWith('http:')) {
+        const judgment = {
+          id: event.id,
+          qScore: qScore ?? 50,
+          verdict: verdict || 'BARK',
+          timestamp: event.timestamp || Date.now(),
+        };
+        const body = JSON.stringify(judgment);
+
+        // Fire-and-forget POST to first reachable node (others get it via gossip)
+        for (const nodeUrl of networkNodes) {
+          const url = `${nodeUrl.replace(/\/$/, '')}/judgment`;
+          fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body,
+            signal: AbortSignal.timeout(5000),
+          })
+            .then(r => {
+              if (r.ok) log.debug('Judgment forwarded to network', { node: nodeUrl, id: event.id });
+              else log.warn('Judgment forward failed', { node: nodeUrl, status: r.status });
+            })
+            .catch(err => {
+              log.trace('Judgment forward unreachable', { node: nodeUrl, error: err.message });
+            });
+          break; // One node is enough — gossip propagates to the rest
+        }
       }
     })
   );
