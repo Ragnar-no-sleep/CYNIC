@@ -8,6 +8,7 @@
     "packages/*"
   ],
   "scripts": {
+    "preinstall": "rm -rf node_modules/@cynic 2>/dev/null; exit 0",
     "test": "node --test",
     "lint": "eslint .",
     "build": "echo 'No build step - pure JavaScript'",
