@@ -185,10 +185,17 @@ export class CynicAgent extends EventEmitter {
     this.learner.on('lesson', (lesson) => {
       this.emit('lesson', lesson);
 
+      // 1. Dimension weight adjustments (which dimensions are reliable?)
       const adjustments = this.learner.getDimensionAdjustments();
       if (Object.keys(adjustments).length > 0) {
         this.decider.applyWeightAdjustments(adjustments);
       }
+
+      // 2. Thompson Sampling scores (which actions are profitable?)
+      this.decider.setActionScores(this.learner.getActionScores());
+
+      // 3. Adaptive confidence threshold (should we be more/less cautious?)
+      this.config.minConfidenceToAct = this.learner.getAdaptiveThreshold();
     });
   }
 
@@ -231,6 +238,18 @@ export class CynicAgent extends EventEmitter {
       }
     } catch (e) {
       log.debug('Collective init skipped', { error: e.message });
+    }
+
+    // Restore learning state from previous sessions
+    const persistedAdjustments = this.learner.getDimensionAdjustments();
+    if (Object.keys(persistedAdjustments).length > 0) {
+      this.decider.applyWeightAdjustments(persistedAdjustments);
+      this.decider.setActionScores(this.learner.getActionScores());
+      this.config.minConfidenceToAct = this.learner.getAdaptiveThreshold();
+      log.info('Learning state restored', {
+        adjustments: Object.keys(persistedAdjustments).length,
+        threshold: (this.config.minConfidenceToAct * 100).toFixed(1) + '%',
+      });
     }
 
     this.isRunning = true;

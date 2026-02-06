@@ -115,6 +115,9 @@ export class Decider extends EventEmitter {
     // Weight adjustments from Learner feedback
     this._weightAdjustments = {};
 
+    // Thompson Sampling action scores from Learner
+    this._actionScores = null;
+
     // Metrics
     this.metrics = {
       judgments: 0,
@@ -493,13 +496,16 @@ export class Decider extends EventEmitter {
     let totalWeight = 0;
     let weightedSum = 0;
 
-    // Score each dimension
-    for (const [dim, weight] of Object.entries(this.weights)) {
+    // Score each dimension with weight adjustments from learning
+    for (const [dim, baseWeight] of Object.entries(this.weights)) {
       const score = await this._scoreDimension(dim, opportunity);
-      scores[dim] = score;
 
-      weightedSum += score * weight;
-      totalWeight += weight;
+      // Apply learned adjustments to scores (same as CYNICJudge path)
+      const adj = this._weightAdjustments[dim] || 0;
+      scores[dim] = Math.max(0, Math.min(1, score + adj));
+
+      weightedSum += scores[dim] * baseWeight;
+      totalWeight += baseWeight;
     }
 
     // Calculate Q-Score (0-100)
@@ -613,6 +619,15 @@ export class Decider extends EventEmitter {
   }
 
   /**
+   * Set Thompson Sampling scores from Learner
+   * @param {Object} scores - Map of action → success probability
+   */
+  setActionScores(scores) {
+    this._actionScores = { ...scores };
+    log.debug('Thompson Sampling scores updated', { scores });
+  }
+
+  /**
    * Decide action from judgment
    *
    * @param {Object} judgment - The judgment
@@ -655,6 +670,21 @@ export class Decider extends EventEmitter {
       }
     } else {
       this.metrics.holds++;
+    }
+
+    // Thompson Sampling gate: if action's historical success rate is too low, downgrade to HOLD
+    if (action !== Action.HOLD && this._actionScores) {
+      const actionScore = this._actionScores[action] || 0.5;
+      if (actionScore < PHI_INV_2) {
+        log.info('Thompson Sampling demoted action to HOLD', {
+          action,
+          actionScore: (actionScore * 100).toFixed(1) + '%',
+          threshold: (PHI_INV_2 * 100).toFixed(1) + '%',
+        });
+        action = Action.HOLD;
+        size = 0;
+        this.metrics.holds++;
+      }
     }
 
     const decision = {

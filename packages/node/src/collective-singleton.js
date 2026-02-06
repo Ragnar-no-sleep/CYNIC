@@ -798,8 +798,16 @@ export async function getCollectivePackAsync(options = {}) {
             residualStorage: _residualStorage,
           });
 
+          // FIX: Create LearningManager instead of reading from pack.learner (was always null)
+          // LearningManager auto-initializes DPOProcessor, DPOOptimizer, CalibrationTracker
+          const learningManager = new LearningManager({
+            persistence: options.persistence ? { query: (sql, params) => options.persistence.query(sql, params) } : null,
+            eventBus: globalEventBus,
+          });
+          try { await learningManager.initialize(); } catch { /* non-blocking */ }
+
           _learningScheduler.setDependencies({
-            learningManager: pack.learner?.learningManager || null,
+            learningManager,
             dpoOptimizer: new DPOOptimizer({ pool: options.persistence }),
             calibrationTracker: new CalibrationTracker({ pool: options.persistence }),
             residualGovernance,

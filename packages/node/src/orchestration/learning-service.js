@@ -463,14 +463,15 @@ export class QLearningService {
   _calculateReward(outcome) {
     const rewards = this.config.rewards;
 
+    // FIX: Check nuanced score FIRST — binary success/failure was swallowing
+    // the real 0-100 signal from calculateRealReward(). Score converts to [-1, 1].
+    if (typeof outcome.score === 'number') {
+      return (outcome.score - 50) / 50;
+    }
+
+    // Fall back to categorical signals when no nuanced score available
     if (outcome.blocked) {
       return rewards.blocked;
-    }
-    if (outcome.success === true || outcome.type === 'success') {
-      return rewards.success;
-    }
-    if (outcome.success === false || outcome.type === 'failure') {
-      return rewards.failure;
     }
     if (outcome.timeout || outcome.type === 'timeout') {
       return rewards.timeout;
@@ -478,10 +479,11 @@ export class QLearningService {
     if (outcome.partial || outcome.type === 'partial') {
       return rewards.partialSuccess;
     }
-
-    // Use score if available (normalize 0-100 to -1 to 1)
-    if (typeof outcome.score === 'number') {
-      return (outcome.score - 50) / 50;
+    if (outcome.success === true || outcome.type === 'success') {
+      return rewards.success;
+    }
+    if (outcome.success === false || outcome.type === 'failure') {
+      return rewards.failure;
     }
 
     return 0;

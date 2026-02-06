@@ -10,9 +10,16 @@
 'use strict';
 
 import { EventEmitter } from 'eventemitter3';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { join } from 'path';
+import { homedir } from 'os';
 import { PHI_INV, PHI_INV_2, createLogger, globalEventBus, EventType } from '@cynic/core';
 
 const log = createLogger('Learner');
+
+// Persistence file for cross-restart learning
+const CYNIC_DIR = join(homedir(), '.cynic');
+const LEARNER_STATE_FILE = join(CYNIC_DIR, 'learner-state.json');
 
 // Lazy-load UnifiedSignalStore to avoid circular deps
 let _signalStore = null;
@@ -100,6 +107,16 @@ export class Learner extends EventEmitter {
       wins: 0,
       losses: 0,
     };
+
+    // Action outcome tracking for Thompson Sampling (Beta distribution)
+    this.actionOutcomes = {
+      BUY: { successes: 1, failures: 1 },   // Beta(1,1) = uniform prior
+      SELL: { successes: 1, failures: 1 },
+      HOLD: { successes: 1, failures: 1 },
+    };
+
+    // Load persisted state from previous sessions
+    this._loadPersistedState();
   }
 
   /**
@@ -212,6 +229,16 @@ export class Learner extends EventEmitter {
     // Persist if enabled
     if (this.config.persistSignals) {
       await this._persistSignal(signal);
+    }
+
+    // Update Thompson Sampling (Beta distribution) for action taken
+    const action = record.decision?.action;
+    if (action && this.actionOutcomes[action]) {
+      if (outcomeType === OutcomeType.PROFITABLE) {
+        this.actionOutcomes[action].successes++;
+      } else if (outcomeType === OutcomeType.LOSS) {
+        this.actionOutcomes[action].failures++;
+      }
     }
 
     // Emit to globalEventBus for collective learning
@@ -419,6 +446,9 @@ export class Learner extends EventEmitter {
       outcomeType: lesson.outcomeType,
       recommendation: lesson.recommendation,
     });
+
+    // Persist state after each lesson
+    this._persistState();
   }
 
   /**
@@ -438,6 +468,122 @@ export class Learner extends EventEmitter {
   }
 
   /**
+   * Get Thompson Sampling scores for each action.
+   * Samples from Beta(successes, failures) for each action.
+   *
+   * @returns {Object} Map of action → sampled probability
+   */
+  getActionScores() {
+    const scores = {};
+    for (const [action, { successes, failures }] of Object.entries(this.actionOutcomes)) {
+      // Beta distribution mean: α / (α + β)
+      // Using mean instead of random sample for deterministic decisions
+      scores[action] = successes / (successes + failures);
+    }
+    return scores;
+  }
+
+  /**
+   * Get adaptive confidence threshold based on win rate.
+   * High win rate → slightly lower threshold (more aggressive).
+   * Low win rate → higher threshold (more cautious).
+   * Always φ-bounded.
+   *
+   * @returns {number} Adaptive minConfidenceToAct
+   */
+  getAdaptiveThreshold() {
+    const { wins, losses } = this.metrics;
+    const total = wins + losses;
+
+    if (total < this.config.minSamples) {
+      return PHI_INV_2; // Default until we have enough data
+    }
+
+    const winRate = this.metrics.winRate;
+
+    // Interpolate between cautious (PHI_INV_2 = 38.2%) and aggressive (PHI_INV_3 = 23.6%)
+    // winRate 0% → PHI_INV_2 (38.2%), winRate 61.8% → PHI_INV_2 * 0.75 (28.6%)
+    // Never go below PHI_INV_3 (23.6%) - always maintain minimum skepticism
+    const PHI_INV_3 = 0.236;
+    const threshold = PHI_INV_2 - (winRate * (PHI_INV_2 - PHI_INV_3));
+    return Math.max(PHI_INV_3, Math.min(PHI_INV_2, threshold));
+  }
+
+  /**
+   * Persist learning state to disk (survives restarts)
+   * @private
+   */
+  _persistState() {
+    try {
+      if (!existsSync(CYNIC_DIR)) {
+        mkdirSync(CYNIC_DIR, { recursive: true });
+      }
+
+      const state = {
+        version: 1,
+        updatedAt: Date.now(),
+        dimensionAdjustments: this.dimensionAdjustments,
+        actionOutcomes: this.actionOutcomes,
+        metrics: {
+          wins: this.metrics.wins,
+          losses: this.metrics.losses,
+          winRate: this.metrics.winRate,
+          totalPnL: this.metrics.totalPnL,
+          lessonsLearned: this.metrics.lessonsLearned,
+        },
+      };
+
+      writeFileSync(LEARNER_STATE_FILE, JSON.stringify(state, null, 2));
+      log.debug('Learner state persisted', { file: LEARNER_STATE_FILE });
+    } catch (e) {
+      log.warn('Failed to persist learner state', { error: e.message });
+    }
+  }
+
+  /**
+   * Load persisted state from disk
+   * @private
+   */
+  _loadPersistedState() {
+    try {
+      if (!existsSync(LEARNER_STATE_FILE)) return;
+
+      const data = JSON.parse(readFileSync(LEARNER_STATE_FILE, 'utf8'));
+
+      // Only load if version matches and data is recent (< 30 days)
+      if (data.version !== 1) return;
+      if (data.updatedAt && (Date.now() - data.updatedAt) > 30 * 24 * 60 * 60 * 1000) {
+        log.info('Persisted learner state too old, starting fresh');
+        return;
+      }
+
+      if (data.dimensionAdjustments) {
+        this.dimensionAdjustments = data.dimensionAdjustments;
+      }
+
+      if (data.actionOutcomes) {
+        this.actionOutcomes = { ...this.actionOutcomes, ...data.actionOutcomes };
+      }
+
+      if (data.metrics) {
+        this.metrics.wins = data.metrics.wins || 0;
+        this.metrics.losses = data.metrics.losses || 0;
+        this.metrics.winRate = data.metrics.winRate || 0;
+        this.metrics.totalPnL = data.metrics.totalPnL || 0;
+        this.metrics.lessonsLearned = data.metrics.lessonsLearned || 0;
+      }
+
+      log.info('Learner state restored from disk', {
+        adjustments: Object.keys(this.dimensionAdjustments).length,
+        winRate: (this.metrics.winRate * 100).toFixed(1) + '%',
+        lessons: this.metrics.lessonsLearned,
+      });
+    } catch (e) {
+      log.debug('No persisted learner state found', { error: e.message });
+    }
+  }
+
+  /**
    * Get status
    */
   getStatus() {
@@ -446,6 +592,8 @@ export class Learner extends EventEmitter {
       pendingActions: this.pendingActions.size,
       lessonsCount: this.lessons.length,
       dimensionAdjustments: Object.keys(this.dimensionAdjustments).length,
+      actionOutcomes: { ...this.actionOutcomes },
+      adaptiveThreshold: this.getAdaptiveThreshold(),
       winRate: this.metrics.winRate,
       totalPnL: this.metrics.totalPnL,
     };

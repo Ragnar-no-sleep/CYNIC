@@ -2,7 +2,7 @@
 
 > Autonomous Solana AI Agent - Perceive, Judge, Decide, Act, Learn
 
-**Category**: library | **Version**: 0.1.0 | **Quality**: 🔴 critical
+**Category**: library | **Version**: 0.1.0 | **Quality**: 🟠 needs tests
 
 ## Installation
 
@@ -55,8 +55,8 @@ const instance = createAgent();
 ## Stats
 
 - **Source files**: 6
-- **Test files**: 1
-- **Test ratio**: 17%
+- **Test files**: 2
+- **Test ratio**: 33%
 - **Exports**: 17 named + default
 
 ## Fractal Structure
@@ -67,7 +67,7 @@ const instance = createAgent();
 ## Dimensions (4 Axioms)
 
 ```
-[██░░░░░░░░] 17% φ (Confidence)
+[███░░░░░░░] 33% φ (Confidence)
 [█████░░░░░] 50% Verify
 [█████░░░░░] 50% Culture
 [█░░░░░░░░░]  6% Burn (Simplicity)
