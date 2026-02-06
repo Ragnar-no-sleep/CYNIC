@@ -95,3 +95,8 @@ export {
   TraceStorage,
   createTraceStorage,
 } from './trace-storage.js';
+
+// THE_UNNAMEABLE: Residual storage for discovered dimensions
+export {
+  createResidualStorage,
+} from './residual-storage.js';

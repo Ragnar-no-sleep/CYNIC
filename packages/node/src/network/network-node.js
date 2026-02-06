@@ -83,6 +83,7 @@ export class CYNICNetworkNode extends EventEmitter {
     this._port = options.port || 8618;
     this._seedNodes = options.seedNodes || [];
     this._enabled = options.enabled ?? true;
+    this._anchoringEnabled = options.anchoringEnabled ?? false;
 
     this._state = NetworkState.OFFLINE;
     this._startedAt = null;
@@ -273,6 +274,11 @@ export class CYNICNetworkNode extends EventEmitter {
         eScore: this._eScore,
         timestamp: Date.now(),
       });
+
+      // Auto-enable anchoring if configured
+      if (this._anchoringEnabled) {
+        await this._anchoringManager.enable();
+      }
 
       // Only set ONLINE if consensus hasn't already promoted to PARTICIPATING
       // (consensus:started fires synchronously during _consensus.start() above)

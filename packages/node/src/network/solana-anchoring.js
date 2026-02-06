@@ -42,10 +42,20 @@ export class SolanaAnchoringManager extends EventEmitter {
     this._stats = {
       blocksAnchored: 0,
       anchorsFailed: 0,
+      anchorsRetried: 0,
       lastAnchorSignature: null,
       lastAnchorTimestamp: null,
     };
+
+    // Retry infrastructure
+    this._blockStore = null;
+    this._retryInterval = null;
   }
+
+  // Fibonacci backoff delays in ms: F(6)-F(10) = [8, 13, 21, 34, 55] seconds
+  static FIBONACCI_DELAYS = [8000, 13000, 21000, 34000, 55000];
+  static RETRY_SWEEP_MS = 21000; // F(8) seconds
+  static MAX_RETRY_COUNT = 8;
 
   /**
    * Enable Solana anchoring
@@ -61,6 +71,7 @@ export class SolanaAnchoringManager extends EventEmitter {
     if (options.wallet) this._wallet = options.wallet;
     if (options.interval) this._anchorInterval = options.interval;
     if (options.dryRun !== undefined) this._dryRun = options.dryRun;
+    if (options.blockStore) this._blockStore = options.blockStore;
 
     if (!this._anchorer) {
       try {
@@ -89,6 +100,9 @@ export class SolanaAnchoringManager extends EventEmitter {
       cluster: this._cluster,
       interval: this._anchorInterval,
     });
+
+    // Start retry timer for failed anchors
+    this._startRetryTimer();
   }
 
   /** Disable anchoring */
@@ -103,7 +117,7 @@ export class SolanaAnchoringManager extends EventEmitter {
    * @param {Object} block - { slot, hash, merkleRoot, ... }
    * @returns {Promise<Object|null>} Anchor result or null
    */
-  async anchorBlock(block) {
+  async anchorBlock(block, retryCount = 0) {
     if (!this._enabled) return null;
 
     if (!this._anchorer && !this._wallet) {
@@ -113,11 +127,16 @@ export class SolanaAnchoringManager extends EventEmitter {
 
     const { slot, hash, merkleRoot } = block;
 
+    // Preserve existing retryCount if re-anchoring
+    const existing = this._pendingAnchors.get(hash);
+    const currentRetryCount = retryCount || existing?.retryCount || 0;
+
     this._pendingAnchors.set(hash, {
       slot,
       merkleRoot,
       status: 'pending',
-      queuedAt: Date.now(),
+      retryCount: currentRetryCount,
+      queuedAt: existing?.queuedAt || Date.now(),
     });
 
     log.info('Anchoring block to Solana', {
@@ -167,19 +186,29 @@ export class SolanaAnchoringManager extends EventEmitter {
         throw new Error(result.error || 'Anchor failed');
       }
     } catch (error) {
+      const nextRetryCount = currentRetryCount + 1;
+
       this._pendingAnchors.set(hash, {
         slot,
         merkleRoot,
         status: 'failed',
+        retryCount: nextRetryCount,
         error: error.message,
         failedAt: Date.now(),
       });
 
       this._stats.anchorsFailed++;
 
-      log.error('Failed to anchor block', { slot, error: error.message });
+      log.error('Failed to anchor block', { slot, retryCount: nextRetryCount, error: error.message });
 
-      this.emit('anchor:failed', { slot, hash, error: error.message });
+      const failureData = { slot, hash, error: error.message, retryCount: nextRetryCount };
+      this.emit('anchor:failed', failureData);
+
+      // Publish to globalEventBus for event-listeners persistence
+      globalEventBus.publish('anchor:failed', {
+        ...failureData,
+        timestamp: Date.now(),
+      });
 
       return { success: false, error: error.message };
     }
@@ -339,9 +368,87 @@ export class SolanaAnchoringManager extends EventEmitter {
   }
 
   /**
+   * Wire a BlockStore for retry sweeps
+   * @param {Object} blockStore - BlockStore instance with getFailedAnchors()
+   */
+  setBlockStore(blockStore) {
+    this._blockStore = blockStore;
+  }
+
+  /**
+   * Start Fibonacci retry timer for failed anchors.
+   * Sweeps every 21s (F(8)).
+   * @private
+   */
+  _startRetryTimer() {
+    if (this._retryInterval) return;
+    this._retryInterval = setInterval(
+      () => this._retryFailedAnchors(),
+      SolanaAnchoringManager.RETRY_SWEEP_MS
+    );
+    log.debug('Retry timer started', { intervalMs: SolanaAnchoringManager.RETRY_SWEEP_MS });
+  }
+
+  /**
+   * Stop retry timer.
+   * @private
+   */
+  _stopRetryTimer() {
+    if (this._retryInterval) {
+      clearInterval(this._retryInterval);
+      this._retryInterval = null;
+    }
+  }
+
+  /**
+   * Sweep failed anchors and retry with Fibonacci backoff.
+   * @private
+   */
+  async _retryFailedAnchors() {
+    if (!this._blockStore) return;
+
+    let failed;
+    try {
+      failed = await this._blockStore.getFailedAnchors(5);
+    } catch (err) {
+      log.debug('Failed to fetch failed anchors for retry', { error: err.message });
+      return;
+    }
+
+    if (!failed || failed.length === 0) return;
+
+    for (const anchor of failed) {
+      // Get retryCount from in-memory pendingAnchors or default to 0
+      const pending = this._pendingAnchors.get(anchor.hash);
+      const retryCount = pending?.retryCount || 0;
+
+      // Cap retries
+      if (retryCount >= SolanaAnchoringManager.MAX_RETRY_COUNT) {
+        log.warn('Anchor retry cap reached', { slot: anchor.slot, retryCount });
+        continue;
+      }
+
+      // Fibonacci backoff: skip if retried too recently
+      const delayIdx = Math.min(retryCount, SolanaAnchoringManager.FIBONACCI_DELAYS.length - 1);
+      const requiredDelay = SolanaAnchoringManager.FIBONACCI_DELAYS[delayIdx];
+      const lastFailed = pending?.failedAt || 0;
+      if (Date.now() - lastFailed < requiredDelay) continue;
+
+      log.info('Retrying failed anchor', { slot: anchor.slot, retryCount, attempt: retryCount + 1 });
+      this._stats.anchorsRetried++;
+
+      await this.anchorBlock(
+        { slot: anchor.slot, hash: anchor.hash, merkleRoot: anchor.merkleRoot },
+        retryCount
+      );
+    }
+  }
+
+  /**
    * Cleanup anchorer (called on node stop)
    */
   cleanup() {
+    this._stopRetryTimer();
     this._anchorer = null;
   }
 

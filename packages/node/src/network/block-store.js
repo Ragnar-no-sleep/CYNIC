@@ -177,15 +177,133 @@ export class BlockStore extends EventEmitter {
     return latest;
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Anchor storage (migration 031: block_anchors table)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Store or update an anchor record (UPSERT).
+   *
+   * @param {Object} anchor
+   * @param {number} anchor.slot
+   * @param {string} [anchor.txSignature] - Solana transaction signature
+   * @param {string} [anchor.status] - 'pending' | 'anchored' | 'confirmed' | 'failed'
+   * @param {string} [anchor.merkleRoot]
+   * @param {string} [anchor.cluster]
+   * @param {number} [anchor.retryCount]
+   */
+  async storeAnchor(anchor) {
+    if (!anchor || anchor.slot === undefined) return;
+
+    // Normalize status: 'confirmed' maps to 'anchored' in DB
+    const dbStatus = anchor.status === 'confirmed' ? 'anchored' : (anchor.status || 'pending');
+
+    if (this._pool) {
+      try {
+        await this._pool.query(
+          `INSERT INTO block_anchors (slot, solana_tx_signature, anchor_status, merkle_root, cluster, anchored_at)
+           VALUES ($1, $2, $3, $4, $5, $6)
+           ON CONFLICT (slot) DO UPDATE SET
+             solana_tx_signature = COALESCE(EXCLUDED.solana_tx_signature, block_anchors.solana_tx_signature),
+             anchor_status = EXCLUDED.anchor_status,
+             merkle_root = COALESCE(EXCLUDED.merkle_root, block_anchors.merkle_root),
+             cluster = COALESCE(EXCLUDED.cluster, block_anchors.cluster),
+             anchored_at = CASE WHEN EXCLUDED.anchor_status = 'anchored' THEN NOW() ELSE block_anchors.anchored_at END`,
+          [
+            anchor.slot,
+            anchor.txSignature || null,
+            dbStatus,
+            anchor.merkleRoot || null,
+            anchor.cluster || 'devnet',
+            dbStatus === 'anchored' ? new Date() : null,
+          ]
+        );
+        this.emit('anchor:stored', { slot: anchor.slot, status: dbStatus });
+      } catch (err) {
+        this._stats.errors++;
+        log.error('storeAnchor failed', { slot: anchor.slot, error: err.message });
+      }
+    }
+  }
+
+  /**
+   * Get failed anchors for retry sweeps.
+   *
+   * @param {number} [limit=10]
+   * @returns {Promise<Object[]>}
+   */
+  async getFailedAnchors(limit = 10) {
+    if (!this._pool) return [];
+
+    try {
+      const { rows } = await this._pool.query(
+        `SELECT ba.slot, ba.solana_tx_signature, ba.anchor_status, ba.merkle_root, ba.cluster, ba.created_at,
+                b.hash
+         FROM block_anchors ba
+         JOIN blocks b ON b.slot = ba.slot
+         WHERE ba.anchor_status = 'failed'
+         ORDER BY ba.created_at ASC
+         LIMIT $1`,
+        [limit]
+      );
+      return rows.map(r => ({
+        slot: Number(r.slot),
+        hash: r.hash,
+        merkleRoot: r.merkle_root,
+        cluster: r.cluster,
+        txSignature: r.solana_tx_signature,
+        createdAt: r.created_at,
+      }));
+    } catch (err) {
+      this._stats.errors++;
+      log.error('getFailedAnchors failed', { error: err.message });
+      return [];
+    }
+  }
+
+  /**
+   * Get a single anchor by slot.
+   *
+   * @param {number} slot
+   * @returns {Promise<Object|null>}
+   */
+  async getAnchor(slot) {
+    if (!this._pool) return null;
+
+    try {
+      const { rows: [row] } = await this._pool.query(
+        'SELECT * FROM block_anchors WHERE slot = $1',
+        [slot]
+      );
+      if (!row) return null;
+      return {
+        slot: Number(row.slot),
+        txSignature: row.solana_tx_signature,
+        status: row.anchor_status,
+        merkleRoot: row.merkle_root,
+        cluster: row.cluster,
+        createdAt: row.created_at,
+        anchoredAt: row.anchored_at,
+      };
+    } catch (err) {
+      this._stats.errors++;
+      log.error('getAnchor failed', { slot, error: err.message });
+      return null;
+    }
+  }
+
   /**
    * Return callbacks for NetworkNode.wireBlockStore()
    *
-   * @returns {{ getBlocks: Function, storeBlock: Function }}
+   * @returns {{ getBlocks: Function, storeBlock: Function, storeAnchor: Function, getFailedAnchors: Function, getAnchor: Function }}
    */
   callbacks() {
     return {
       getBlocks: this.getBlocks.bind(this),
       storeBlock: this.storeBlock.bind(this),
+      storeAnchor: this.storeAnchor.bind(this),
+      getFailedAnchors: this.getFailedAnchors.bind(this),
+      getAnchor: this.getAnchor.bind(this),
     };
   }
 

@@ -59,6 +59,12 @@ const _stats = {
   dogSignalsFailed: 0,
   snapshotsPersisted: 0,
   snapshotsFailed: 0,
+  blocksFinalizedPersisted: 0,
+  blocksFinalizedFailed: 0,
+  blocksAnchoredPersisted: 0,
+  blocksAnchoredFailed: 0,
+  anchorFailuresPersisted: 0,
+  anchorFailuresFailed: 0,
   startedAt: null,
 };
 
@@ -451,6 +457,103 @@ async function handleCynicState(event, persistence, context) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// BLOCK ANCHORING PERSISTENCE (PHASE 2: DECENTRALIZE)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Handle BLOCK_FINALIZED event
+ * Persists finalized block to blocks table via BlockStore
+ */
+async function handleBlockFinalized(event, blockStore) {
+  if (!blockStore) return;
+
+  const { blockHash, slot, block } = event.payload || event;
+  if (slot === undefined) return;
+
+  try {
+    await withRetry(async () => {
+      await blockStore.storeBlock({
+        slot,
+        hash: blockHash || block?.hash,
+        proposer: block?.proposer,
+        merkle_root: block?.merkleRoot || block?.judgments_root,
+        judgments: block?.judgments,
+        judgment_count: block?.judgmentCount || block?.judgments?.length || 0,
+        prev_hash: block?.parentHash || block?.prev_hash,
+        timestamp: block?.timestamp || Date.now(),
+      });
+    }, `Persist finalized block ${slot}`);
+    _stats.blocksFinalizedPersisted++;
+  } catch (err) {
+    _stats.blocksFinalizedFailed++;
+    globalEventBus.publish(EventType.COMPONENT_ERROR, {
+      component: 'EventListeners',
+      operation: 'handleBlockFinalized',
+      error: err.message,
+      slot,
+    });
+  }
+}
+
+/**
+ * Handle BLOCK_ANCHORED event
+ * Persists successful anchor to block_anchors table via BlockStore
+ */
+async function handleBlockAnchored(event, blockStore) {
+  if (!blockStore) return;
+
+  const { slot, signature, merkleRoot, cluster } = event.payload || event;
+  if (slot === undefined) return;
+
+  try {
+    await withRetry(async () => {
+      await blockStore.storeAnchor({
+        slot,
+        txSignature: signature,
+        status: 'confirmed',
+        merkleRoot,
+        cluster,
+      });
+    }, `Persist block anchor ${slot}`);
+    _stats.blocksAnchoredPersisted++;
+  } catch (err) {
+    _stats.blocksAnchoredFailed++;
+    globalEventBus.publish(EventType.COMPONENT_ERROR, {
+      component: 'EventListeners',
+      operation: 'handleBlockAnchored',
+      error: err.message,
+      slot,
+    });
+  }
+}
+
+/**
+ * Handle anchor:failed event
+ * Persists failed anchor to block_anchors table via BlockStore
+ */
+async function handleAnchorFailed(event, blockStore) {
+  if (!blockStore) return;
+
+  const { slot, retryCount } = event.payload || event;
+  if (slot === undefined) return;
+
+  try {
+    await withRetry(async () => {
+      await blockStore.storeAnchor({
+        slot,
+        txSignature: null,
+        status: 'failed',
+        retryCount,
+      });
+    }, `Persist anchor failure ${slot}`);
+    _stats.anchorFailuresPersisted++;
+  } catch (err) {
+    _stats.anchorFailuresFailed++;
+    log.debug('Anchor failure persistence failed', { slot, error: err.message });
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // PUBLIC API
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -489,6 +592,7 @@ export function startEventListeners(options = {}) {
     saveState,
     sessionId,
     userId,
+    blockStore,
   } = options;
 
   // Get or create repositories
@@ -621,6 +725,49 @@ export function startEventListeners(options = {}) {
     log.info('Dog collective event listeners wired (AXE 2+)');
   }
 
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Subscribe to BLOCK_FINALIZED (PHASE 2: DECENTRALIZE)
+  // ─────────────────────────────────────────────────────────────────────────────
+  if (blockStore) {
+    const unsubBlockFinalized = globalEventBus.subscribe(
+      EventType.BLOCK_FINALIZED,
+      (event) => {
+        handleBlockFinalized(event, blockStore).catch((err) => {
+          log.error('Block finalized handler threw unexpectedly', { error: err.message });
+        });
+      }
+    );
+    _unsubscribers.push(unsubBlockFinalized);
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Subscribe to BLOCK_ANCHORED (PHASE 2: DECENTRALIZE)
+    // ─────────────────────────────────────────────────────────────────────────────
+    const unsubBlockAnchored = globalEventBus.subscribe(
+      EventType.BLOCK_ANCHORED,
+      (event) => {
+        handleBlockAnchored(event, blockStore).catch((err) => {
+          log.error('Block anchored handler threw unexpectedly', { error: err.message });
+        });
+      }
+    );
+    _unsubscribers.push(unsubBlockAnchored);
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Subscribe to anchor:failed (PHASE 2: DECENTRALIZE)
+    // ─────────────────────────────────────────────────────────────────────────────
+    const unsubAnchorFailed = globalEventBus.subscribe(
+      'anchor:failed',
+      (event) => {
+        handleAnchorFailed(event, blockStore).catch((err) => {
+          log.debug('Anchor failed handler error', { error: err.message });
+        });
+      }
+    );
+    _unsubscribers.push(unsubAnchorFailed);
+
+    log.info('Block anchoring event listeners wired (PHASE 2)');
+  }
+
   _started = true;
   _stats.startedAt = Date.now();
 
@@ -630,6 +777,7 @@ export function startEventListeners(options = {}) {
     hasSessionsRepo: !!repositories.sessions,
     hasSharedMemory: !!sharedMemory,
     hasPersistence: !!persistence?.query,
+    hasBlockStore: !!blockStore,
   });
 
   /**

@@ -38,6 +38,7 @@ import { getHumanEmergence } from './symbiosis/human-emergence.js';
 import { wireAmbientConsensus } from './agents/collective/ambient-consensus.js';
 import { startEventListeners, stopEventListeners, cleanupOldEventData } from './services/event-listeners.js';
 import { getNetworkNodeAsync, startNetworkNode, stopNetworkNode, isP2PEnabled } from './network-singleton.js';
+import { BlockStore } from './network/block-store.js';
 
 const log = createLogger('CollectiveSingleton');
 
@@ -509,14 +510,20 @@ export function getCollectivePack(options = {}) {
     // AXE 2 (PERSIST): Wire Event Listeners to close data loops
     // "Le chien n'oublie jamais" - persists judgments, feedback, session state
     if (finalOptions.persistence && !_eventListeners) {
+      // PHASE 2: Create BlockStore with pool for block anchoring persistence
+      const blockStore = finalOptions.persistence.pool
+        ? new BlockStore({ pool: finalOptions.persistence.pool })
+        : (finalOptions.persistence.query ? new BlockStore({ pool: finalOptions.persistence }) : null);
+
       _eventListeners = startEventListeners({
         persistence: finalOptions.persistence,
         sharedMemory,
         saveState,
         sessionId: finalOptions.sessionId,
         userId: finalOptions.userId,
+        blockStore,
       });
-      log.info('EventListeners started - data loops closed (AXE 2)');
+      log.info('EventListeners started - data loops closed (AXE 2)', { hasBlockStore: !!blockStore });
     }
 
     // FIX O3: Schedule background persistence initialization
@@ -667,12 +674,17 @@ export async function getCollectivePackAsync(options = {}) {
   // start them now (fixes the case where constructor called without persistence first)
   if (_globalPack) {
     if (options.persistence && !_eventListeners) {
+      const blockStore = options.persistence.pool
+        ? new BlockStore({ pool: options.persistence.pool })
+        : (options.persistence.query ? new BlockStore({ pool: options.persistence }) : null);
+
       _eventListeners = startEventListeners({
         persistence: options.persistence,
         sharedMemory: _sharedMemory,
         saveState,
         sessionId: options.sessionId,
         userId: options.userId,
+        blockStore,
       });
       log.info('EventListeners started on subsequent call with persistence (AXE 2 fix)');
     }
@@ -727,6 +739,39 @@ export async function getCollectivePackAsync(options = {}) {
         log.warn('Could not initialize Q-Learning', { error: err.message });
       }
 
+      // THE_UNNAMEABLE: Load discovered dimensions from DB and register in DimensionRegistry
+      // This is the gate that makes CYNIC remember what it learned to see
+      let _residualStorage = null;
+      try {
+        const { createResidualStorage } = await import('@cynic/persistence');
+        const { globalDimensionRegistry } = await import('./judge/dimension-registry.js');
+
+        _residualStorage = createResidualStorage({ pool: options.persistence });
+
+        // Load previously discovered dimensions
+        const discovered = await _residualStorage.loadDiscoveredDimensions();
+        for (const dim of discovered) {
+          globalDimensionRegistry.register(dim.axiom, dim.name, {
+            weight: dim.weight,
+            threshold: dim.threshold,
+            description: dim.description || `Discovered: ${dim.name}`,
+          });
+        }
+
+        if (discovered.length > 0) {
+          log.info('THE_UNNAMEABLE: Loaded discovered dimensions', { count: discovered.length });
+        }
+
+        // Wire storage to ResidualDetector in JudgeComponent
+        if (pack.judge?.residualDetector) {
+          pack.judge.residualDetector.storage = _residualStorage;
+          await pack.judge.residualDetector.initialize();
+          log.debug('ResidualDetector wired with PostgreSQL storage');
+        }
+      } catch (err) {
+        log.warn('Could not initialize THE_UNNAMEABLE persistence', { error: err.message });
+      }
+
       // C1.5 + C6.7: Start LearningScheduler (DPO + Governance)
       // Wire dependencies and start scheduler
       if (_learningScheduler) {
@@ -734,14 +779,17 @@ export async function getCollectivePackAsync(options = {}) {
           // Try to get dependencies from judge package
           const { DPOOptimizer, CalibrationTracker, ResidualGovernance, LearningManager } = await import('./judge/index.js');
 
+          const residualGovernance = new ResidualGovernance({
+            pool: options.persistence,
+            collectivePack: pack,
+            residualStorage: _residualStorage,
+          });
+
           _learningScheduler.setDependencies({
             learningManager: pack.learner?.learningManager || null,
             dpoOptimizer: new DPOOptimizer({ pool: options.persistence }),
             calibrationTracker: new CalibrationTracker({ pool: options.persistence }),
-            residualGovernance: new ResidualGovernance({
-              pool: options.persistence,
-              collectivePack: pack,
-            }),
+            residualGovernance,
           });
 
           _learningScheduler.start();

@@ -58,6 +58,7 @@ export class ResidualGovernance {
     this.residualDetector = options.residualDetector || null;
     this.collectivePack = options.collectivePack || null;
     this.dpoProcessor = options.dpoProcessor || null;
+    this.residualStorage = options.residualStorage || null;
 
     // Governance state
     this._reviewHistory = new Map();  // candidateKey -> lastReviewAt
@@ -76,10 +77,11 @@ export class ResidualGovernance {
   /**
    * Set dependencies (for late binding)
    */
-  setDependencies({ residualDetector, collectivePack, dpoProcessor }) {
+  setDependencies({ residualDetector, collectivePack, dpoProcessor, residualStorage }) {
     if (residualDetector) this.residualDetector = residualDetector;
     if (collectivePack) this.collectivePack = collectivePack;
     if (dpoProcessor) this.dpoProcessor = dpoProcessor;
+    if (residualStorage) this.residualStorage = residualStorage;
   }
 
   /**
@@ -301,6 +303,30 @@ export class ResidualGovernance {
         axiom,
         fromCandidate: candidate.key,
       });
+
+      // THE_UNNAMEABLE: Persist discovered dimension to PostgreSQL
+      // Without this, discoveries die on restart
+      if (this.residualStorage?.saveDiscoveredDimension) {
+        await this.residualStorage.saveDiscoveredDimension({
+          name,
+          axiom,
+          weight: 1.0,
+          threshold: 50,
+          description: `Discovered dimension (was ${candidate.suggestedName})`,
+          promotedBy: this.collectivePack ? 'governance' : 'auto',
+          fromCandidate: candidate.key,
+          evidenceCount: candidate.sampleCount,
+          avgResidual: candidate.avgResidual,
+          weakDimensions: candidate.weakDimensions,
+        });
+        await this.residualStorage.markCandidatePromoted?.(candidate.key);
+        await this.residualStorage.logGovernanceDecision?.({
+          candidateKey: candidate.key,
+          approved: true,
+          promotedAs: { name, axiom },
+          confidence: candidate.confidence,
+        });
+      }
 
       // Record for DPO learning (this is a "chosen" outcome)
       await this._recordForDPO(candidate, discovery, true);
