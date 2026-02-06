@@ -21,11 +21,13 @@
 import crypto from 'crypto';
 import { createLogger } from '@cynic/core';
 import { CYNICNetworkNode } from './network/network-node.js';
+import { createEScoreProvider } from './network/escore-provider.js';
 
 const log = createLogger('NetworkSingleton');
 
 let _networkNode = null;
 let _initPromise = null;
+let _eScoreProvider = null;
 
 /**
  * Check if P2P networking is enabled via env vars
@@ -81,12 +83,16 @@ export function getNetworkNode(options = {}) {
     .map(s => s.trim())
     .filter(Boolean);
 
+  // Wire EScore7DCalculator as dynamic E-Score provider
+  _eScoreProvider = createEScoreProvider({ selfPublicKey: keys.publicKey });
+
   _networkNode = new CYNICNetworkNode({
     publicKey: keys.publicKey,
     privateKey: keys.privateKey,
     port,
     seedNodes,
     eScore: 50,
+    eScoreProvider: _eScoreProvider.provider,
     enabled: true,
     // Solana anchoring (opt-in)
     anchoringEnabled: process.env.CYNIC_ANCHORING_ENABLED === 'true',
@@ -99,6 +105,7 @@ export function getNetworkNode(options = {}) {
     publicKey: keys.publicKey.slice(0, 16),
     port,
     seedNodes: seedNodes.length,
+    eScoreProvider: 'EScore7DCalculator',
   });
 
   return _networkNode;
@@ -176,6 +183,8 @@ export async function startNetworkNode() {
 export async function stopNetworkNode() {
   if (!_networkNode) return;
   await _networkNode.stop();
+  _eScoreProvider?.destroy();
+  _eScoreProvider = null;
 }
 
 /**
@@ -196,6 +205,8 @@ export function _resetNetworkForTesting() {
   }
   _networkNode = null;
   _initPromise = null;
+  _eScoreProvider?.destroy();
+  _eScoreProvider = null;
 }
 
 export default {
