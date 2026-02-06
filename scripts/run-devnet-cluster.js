@@ -106,6 +106,7 @@ async function main() {
       solanaCluster: RPC_URL,
       slotDuration: 2000, // 2s slots for visible feedback
       genesisTime: Date.now(),
+      minPeers: 1, // Star topology: leaf nodes have 1 peer (seed), don't aggressively reconnect
     });
 
     // Register ALL validators in consensus for each node

@@ -120,11 +120,14 @@ export class PeerDiscovery extends EventEmitter {
       this.emit('peer:discovered', { peerId, address, source: 'connection' });
     });
 
-    // When a peer disconnects, try to maintain minimum
+    // When a peer disconnects, try to maintain minimum (with cooldown to prevent storm)
+    this._lastReconnectAttempt = 0;
     this.transport.on('peer:disconnected', ({ peerId }) => {
       const connectedCount = this.transport.getConnectedPeers().length;
+      const now = Date.now();
 
-      if (connectedCount < this.minPeers) {
+      if (connectedCount < this.minPeers && now - this._lastReconnectAttempt > 5000) {
+        this._lastReconnectAttempt = now;
         this.state = DiscoveryState.DISCOVERING;
         this._tryConnectKnownPeers();
       }
@@ -394,9 +397,11 @@ export class PeerDiscovery extends EventEmitter {
       }
     }
 
-    // Try to connect to new peers if needed
+    // Try to connect to new peers if needed (respect cooldown)
     const connectedCount = this.transport.getConnectedPeers().length;
-    if (connectedCount < this.minPeers) {
+    const now = Date.now();
+    if (connectedCount < this.minPeers && now - this._lastReconnectAttempt > 5000) {
+      this._lastReconnectAttempt = now;
       this._tryConnectKnownPeers();
     }
   }

@@ -140,6 +140,7 @@ async function test2_clusterStartup(wallets, p2pKeypairs) {
       solanaCluster: RPC_URL,
       slotDuration: 1500, // Faster for E2E
       genesisTime: Date.now(),
+      minPeers: 1, // Star topology: don't aggressively reconnect
     });
 
     // Register ALL validators in consensus
