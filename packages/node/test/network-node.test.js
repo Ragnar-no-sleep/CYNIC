@@ -541,3 +541,170 @@ describe('State Sync', () => {
     expect(events[0].bestPeer).toBe('peer-1');
   });
 });
+
+describe('Solana Anchoring', () => {
+  let node;
+
+  beforeEach(() => {
+    node = new CYNICNetworkNode({
+      publicKey: 'test-public-key-0123456789abcdef',
+      privateKey: 'test-private-key-0123456789abcdef',
+      enabled: false,
+      anchoringEnabled: false, // Start disabled
+      solanaCluster: 'devnet',
+      anchorInterval: 100,
+    });
+  });
+
+  afterEach(async () => {
+    if (node) {
+      await node.stop();
+    }
+  });
+
+  it('starts with anchoring disabled by default', () => {
+    const status = node.getAnchoringStatus();
+    expect(status.enabled).toBe(false);
+    expect(status.cluster).toBe('devnet');
+    expect(status.anchorInterval).toBe(100);
+  });
+
+  it('enables anchoring', () => {
+    node.enableAnchoring({ wallet: 'mock-wallet-keypair' });
+
+    const status = node.getAnchoringStatus();
+    expect(status.enabled).toBe(true);
+    expect(status.hasWallet).toBe(true);
+  });
+
+  it('disables anchoring', () => {
+    node.enableAnchoring({ wallet: 'mock-wallet' });
+    expect(node.getAnchoringStatus().enabled).toBe(true);
+
+    node.disableAnchoring();
+    expect(node.getAnchoringStatus().enabled).toBe(false);
+  });
+
+  it('shouldAnchor returns true for slots at interval', () => {
+    node.enableAnchoring({ wallet: 'mock-wallet' });
+
+    // Interval is 100, so slot 100, 200, 300 should anchor
+    expect(node.shouldAnchor(100)).toBe(true);
+    expect(node.shouldAnchor(200)).toBe(true);
+    expect(node.shouldAnchor(0)).toBe(true); // 0 % 100 = 0
+
+    // Non-interval slots should not anchor
+    expect(node.shouldAnchor(50)).toBe(false);
+    expect(node.shouldAnchor(150)).toBe(false);
+  });
+
+  it('shouldAnchor returns false when disabled', () => {
+    // Anchoring is disabled
+    expect(node.shouldAnchor(100)).toBe(false);
+  });
+
+  it('anchors block and tracks status', async () => {
+    node.enableAnchoring({ wallet: 'mock-wallet' });
+
+    const block = {
+      slot: 100,
+      hash: 'block-hash-100-abcd1234efgh5678',
+      merkleRoot: 'merkle-root-xyz',
+    };
+
+    const events = [];
+    node.on('block:anchored', (e) => events.push(e));
+
+    const result = await node.anchorBlock(block);
+
+    expect(result.success).toBe(true);
+    expect(result.signature).toContain('sim_'); // Simulated signature
+    expect(events.length).toBe(1);
+    expect(events[0].slot).toBe(100);
+
+    // Check status updated
+    const status = node.getAnchoringStatus();
+    expect(status.lastAnchorSlot).toBe(100);
+    expect(status.anchored).toBe(1);
+    expect(status.stats.blocksAnchored).toBe(1);
+  });
+
+  it('returns null when anchoring without wallet', async () => {
+    node.enableAnchoring({}); // No wallet
+
+    const result = await node.anchorBlock({ slot: 100, hash: 'hash' });
+
+    expect(result).toBeNull();
+  });
+
+  it('tracks pending, anchored, and failed counts', async () => {
+    node.enableAnchoring({ wallet: 'mock-wallet' });
+
+    // Anchor a block
+    await node.anchorBlock({ slot: 100, hash: 'hash-100', merkleRoot: 'root-100' });
+    await node.anchorBlock({ slot: 200, hash: 'hash-200', merkleRoot: 'root-200' });
+
+    const status = node.getAnchoringStatus();
+    expect(status.anchored).toBe(2);
+    expect(status.failed).toBe(0);
+  });
+
+  it('getAnchorStatus returns anchor info for hash', async () => {
+    node.enableAnchoring({ wallet: 'mock-wallet' });
+
+    const hash = 'unique-block-hash-12345';
+    await node.anchorBlock({ slot: 100, hash, merkleRoot: 'root' });
+
+    const anchorInfo = node.getAnchorStatus(hash);
+    expect(anchorInfo).not.toBeNull();
+    expect(anchorInfo.status).toBe('anchored');
+    expect(anchorInfo.slot).toBe(100);
+  });
+
+  it('verifyAnchor finds signature in cache', async () => {
+    node.enableAnchoring({ wallet: 'mock-wallet' });
+
+    const result = await node.anchorBlock({
+      slot: 100,
+      hash: 'hash-for-verify',
+      merkleRoot: 'root',
+    });
+
+    const verification = await node.verifyAnchor(result.signature);
+    expect(verification.verified).toBe(true);
+    expect(verification.slot).toBe(100);
+    expect(verification.hash).toBe('hash-for-verify');
+  });
+
+  it('verifyAnchor returns false for unknown signature', async () => {
+    const verification = await node.verifyAnchor('unknown-signature-xyz');
+    expect(verification.verified).toBe(false);
+    expect(verification.error).toContain('not found');
+  });
+
+  it('onBlockFinalized triggers anchoring when shouldAnchor', async () => {
+    node.enableAnchoring({ wallet: 'mock-wallet' });
+
+    const events = [];
+    node.on('block:anchored', (e) => events.push(e));
+
+    // Slot 100 should trigger anchor (interval = 100)
+    await node.onBlockFinalized({
+      slot: 100,
+      hash: 'finalized-block-hash',
+      merkleRoot: 'merkle-root',
+    });
+
+    expect(events.length).toBe(1);
+  });
+
+  it('onBlockFinalized records block hash', async () => {
+    await node.onBlockFinalized({
+      slot: 50,
+      hash: 'block-hash-50',
+      merkleRoot: 'root',
+    });
+
+    expect(node._slotHashes.get(50)?.hash).toBe('block-hash-50');
+  });
+});
