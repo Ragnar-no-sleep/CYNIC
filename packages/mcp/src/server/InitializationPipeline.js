@@ -606,7 +606,10 @@ export class InitializationPipeline {
         });
 
         try {
-          await s.xProxy.start();
+          await Promise.race([
+            s.xProxy.start(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('start timeout (5s)')), 5000)),
+          ]);
           console.error(`   X Proxy: ENABLED (port ${s.xProxy.port}) - LOCAL FIRST`);
           console.error(`   Configure browser/system proxy: 127.0.0.1:${s.xProxy.port}`);
         } catch (err) {

@@ -86,6 +86,9 @@ export class AmbientConsensus {
     // Consensus history for entropy analysis
     this.consensusHistory = [];
 
+    // Stored unsubscribe functions (from eventBus.subscribe return value)
+    this._unsubscribers = [];
+
     // Bind methods
     this._onPreToolUse = this._onPreToolUse.bind(this);
     this._onPostToolUse = this._onPostToolUse.bind(this);
@@ -98,13 +101,17 @@ export class AmbientConsensus {
   start() {
     if (this._running) return;
 
-    // Subscribe to hook events
-    this.eventBus.subscribe(EventType.HOOK_PRE_TOOL, 'AmbientConsensus', this._onPreToolUse);
-    this.eventBus.subscribe(EventType.HOOK_POST_TOOL, 'AmbientConsensus', this._onPostToolUse);
+    // Subscribe to hook events (store unsubscribe fns)
+    this._unsubscribers.push(
+      this.eventBus.subscribe(EventType.HOOK_PRE_TOOL, this._onPreToolUse),
+      this.eventBus.subscribe(EventType.HOOK_POST_TOOL, this._onPostToolUse),
+    );
 
     // Subscribe to dog signals
     Object.values(DogSignal).forEach(signal => {
-      this.eventBus.subscribe(signal, 'AmbientConsensus', this._onDogSignal);
+      this._unsubscribers.push(
+        this.eventBus.subscribe(signal, this._onDogSignal),
+      );
     });
 
     this._running = true;
@@ -117,12 +124,10 @@ export class AmbientConsensus {
   stop() {
     if (!this._running) return;
 
-    this.eventBus.unsubscribe(EventType.HOOK_PRE_TOOL, 'AmbientConsensus');
-    this.eventBus.unsubscribe(EventType.HOOK_POST_TOOL, 'AmbientConsensus');
-
-    Object.values(DogSignal).forEach(signal => {
-      this.eventBus.unsubscribe(signal, 'AmbientConsensus');
-    });
+    for (const unsub of this._unsubscribers) {
+      if (typeof unsub === 'function') unsub();
+    }
+    this._unsubscribers = [];
 
     this._running = false;
     log.info('Ambient consensus stopped');
