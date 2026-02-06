@@ -165,6 +165,12 @@ const instance = createIdentity();
 | `ComponentCategory` | ComponentCategory implementation |
 | `ComponentMetadata` | ComponentMetadata implementation |
 | `AutoWirer` | AutoWirer implementation |
+| `NetworkState` | NetworkState implementation |
+| `DiscoveryState` | DiscoveryState implementation |
+| `TransportComponent` | TransportComponent implementation |
+| `ConsensusComponent` | ConsensusComponent implementation |
+| `ConsensusState` | ConsensusState implementation |
+| `BlockStatus` | BlockStatus implementation |
 
 ### Factory Functions
 
@@ -303,10 +309,10 @@ const instance = createIdentity();
 
 ## Stats
 
-- **Source files**: 232
-- **Test files**: 65
-- **Test ratio**: 28%
-- **Exports**: 409 named
+- **Source files**: 234
+- **Test files**: 67
+- **Test ratio**: 29%
+- **Exports**: 415 named
 
 ## Fractal Structure
 
@@ -316,7 +322,7 @@ const instance = createIdentity();
 ## Dimensions (4 Axioms)
 
 ```
-[███░░░░░░░] 28% φ (Confidence)
+[███░░░░░░░] 29% φ (Confidence)
 [█████░░░░░] 50% Verify
 [█████░░░░░] 50% Culture
 [████░░░░░░] 41% Burn (Simplicity)

@@ -66,6 +66,15 @@ export const EventType = {
   CYNIC_STATE: 'cynic:state',
   DOG_EVENT: 'dog:event',
   CONSENSUS_COMPLETED: 'consensus:completed',
+
+  // Network/P2P events (PHASE 2: DECENTRALIZE)
+  NODE_STARTED: 'node:started',
+  NODE_STOPPED: 'node:stopped',
+  BLOCK_FINALIZED: 'block:finalized',
+  BLOCK_PROPOSED: 'block:proposed',
+  METRICS_REPORTED: 'metrics:reported',
+  PEER_CONNECTED: 'peer:connected',
+  PEER_DISCONNECTED: 'peer:disconnected',
 };
 
 /**

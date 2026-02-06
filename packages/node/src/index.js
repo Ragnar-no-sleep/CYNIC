@@ -765,3 +765,20 @@ export {
   AutoWirer,
   initAutoWiring,
 } from './registry/index.js';
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Network Module - PHASE 2: DECENTRALIZE
+// "The pack hunts together"
+// ═══════════════════════════════════════════════════════════════════════════════
+export {
+  // Multi-Node Orchestrator
+  CYNICNetworkNode,
+  NetworkState,
+  // Component re-exports for convenience
+  PeerDiscovery,
+  DiscoveryState,
+  TransportComponent,
+  ConsensusComponent,
+  ConsensusState,
+  BlockStatus,
+} from './network/index.js';
