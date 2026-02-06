@@ -473,8 +473,11 @@ export class WebSocketTransport extends EventEmitter {
       // Check if we already have a connection to this peer
       const existing = this.connections.get(realPeerId);
       if (existing) {
-        // Duplicate connection - keep one deterministically (lower publicKey wins as server)
-        const keepExisting = this.publicKey < publicKey;
+        // Duplicate connection - keep one deterministically
+        // Rule: always keep the connection initiated by the node with the LOWER publicKey
+        // Both sides compute the same answer since iAmLower flips AND isOutbound flips
+        const iAmLower = this.publicKey < publicKey;
+        const keepExisting = iAmLower === existing.isOutbound;
         if (keepExisting) {
           // Close this new connection, mark as not outbound to prevent reconnect
           conn.isOutbound = false;
