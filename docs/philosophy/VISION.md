@@ -62,6 +62,7 @@ Self-interest = Collective good
 
 | Document | Contenu |
 |----------|---------|
+| [**metathinking-synthesis.md**](./metathinking-synthesis.md) | **Synthèse unifiée de TOUS les protocoles (2026-02-06)** |
 | [**fractal-matrix.md**](./fractal-matrix.md) | **7×7 Matrice de Conscience (FONDAMENTAL)** |
 | [cynic-ontology.md](./cynic-ontology.md) | 4 axiomes, 25 dimensions, fractales |
 | [unified-pipeline.md](./unified-pipeline.md) | Pipeline d'exécution |
