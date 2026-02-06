@@ -1050,6 +1050,9 @@ export class ConsensusGossip extends EventEmitter {
 
     const requestId = `mdiff_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
+    // Track timeout so we can cancel it in early-return paths
+    let timeoutId;
+
     // Create promise for response
     const responsePromise = new Promise((resolve, reject) => {
       // Store pending request
@@ -1059,7 +1062,7 @@ export class ConsensusGossip extends EventEmitter {
       this.gossip.pendingRequests.set(requestId, { resolve, reject });
 
       // Timeout after 30 seconds
-      setTimeout(() => {
+      timeoutId = setTimeout(() => {
         if (this.gossip.pendingRequests?.has(requestId)) {
           this.gossip.pendingRequests.delete(requestId);
           reject(new Error('Merkle diff request timeout'));
@@ -1087,9 +1090,15 @@ export class ConsensusGossip extends EventEmitter {
         };
         await this.gossip.sendFn(peer, message);
       } else {
+        // Cancel timeout and clean up to prevent orphaned rejection
+        clearTimeout(timeoutId);
+        this.gossip.pendingRequests?.delete(requestId);
         return { error: 'peer-not-found' };
       }
     } catch (err) {
+      // Cancel timeout and clean up to prevent orphaned rejection
+      clearTimeout(timeoutId);
+      this.gossip.pendingRequests?.delete(requestId);
       return { error: err.message };
     }
 

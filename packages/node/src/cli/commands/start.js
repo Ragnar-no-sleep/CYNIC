@@ -268,19 +268,8 @@ export async function startCommand(options) {
     process.exit(1);
   }
 
-  // Connect to initial peers (beyond seed nodes which discovery handles)
-  if (peerAddresses.length > 0) {
-    console.log(chalk.gray('\n  Connecting to peers...'));
-    for (const address of peerAddresses) {
-      try {
-        const wsAddress = address.startsWith('ws') ? address : `wss://${address}`;
-        await node.connectToPeer({ id: `peer_${Date.now()}`, address: wsAddress });
-        console.log(chalk.green('  [OK]   ') + `Connected to ${chalk.cyan(address)}`);
-      } catch (err) {
-        console.log(chalk.red('  [FAIL] ') + `Could not connect to ${address}: ${err.message}`);
-      }
-    }
-  }
+  // PeerDiscovery already connects to seedNodes on start().
+  // We only track addresses for the auto-reconnect loop below.
 
   // Track required peers for auto-reconnect (normalized addresses)
   const requiredPeers = new Set();

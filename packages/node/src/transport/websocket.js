@@ -270,9 +270,15 @@ export class WebSocketTransport extends EventEmitter {
 
     if (this.connections.has(peerId)) {
       const conn = this.connections.get(peerId);
-      if (conn.state === ConnectionState.CONNECTED) {
-        return; // Already connected
+      if (conn.state === ConnectionState.CONNECTED || conn.state === ConnectionState.CONNECTING) {
+        return; // Already connected or connecting
       }
+    }
+
+    // Check if we already have a connection to this address (under a different peerId)
+    // Prevents duplicate connections when the same host is referenced by different IDs
+    if (address && this.hasConnectionToAddress(address)) {
+      return;
     }
 
     this.stats.connectionAttempts++;
@@ -833,7 +839,9 @@ export class WebSocketTransport extends EventEmitter {
   hasConnectionToAddress(address) {
     const bare = address.replace(/^wss?:\/\//, '');
     for (const conn of this.connections.values()) {
-      if (conn.state !== ConnectionState.CONNECTED) continue;
+      // Consider any active connection state (not just CONNECTED)
+      // CONNECTING/RECONNECTING mean we're already trying — don't create duplicates
+      if (conn.state === ConnectionState.DISCONNECTED || conn.state === ConnectionState.CLOSED) continue;
       const connBare = (conn.address || '').replace(/^wss?:\/\//, '');
       const outBare = (conn.outboundAddress || '').replace(/^wss?:\/\//, '');
       if (connBare === bare || outBare === bare || conn.address === address) return true;
