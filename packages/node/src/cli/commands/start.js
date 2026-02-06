@@ -421,12 +421,16 @@ export async function startCommand(options) {
       }, 61800); // φ-aligned heartbeat
     }
 
-    // Auto-reconnect loop: try all required peers every 30s
-    // Always attempts all peers - transport rejects duplicates with "already connected"
-    // This handles the case where we have enough total peers but lost a specific required one
-    // (e.g., after rolling deploys where connections shift to different peers)
+    // Auto-reconnect loop: check every 30s if we've lost peers
+    // Only attempts reconnection when connected count drops below required
+    // This prevents the duplicate_connection storm where unconditional reconnects
+    // create new WebSocket connections that the transport then has to reject
     if (requiredPeers.size > 0) {
       setInterval(async () => {
+        const connectedCount = transport.getConnectedPeers().length;
+        if (connectedCount >= requiredPeers.size) return; // Healthy, skip
+
+        console.log(chalk.yellow('  [RECONN] ') + `Peers ${connectedCount}/${requiredPeers.size} - attempting reconnection...`);
         for (const address of requiredPeers) {
           try {
             const peerId = `peer_${Date.now()}`;
