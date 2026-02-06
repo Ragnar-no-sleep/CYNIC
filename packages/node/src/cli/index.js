@@ -55,6 +55,9 @@ export function createCLI(program) {
     .option('--no-server', 'Client-only mode (no server)')
     .option('-v, --verbose', 'Verbose output')
     .option('-d, --daemon', 'Daemon mode (no interactive REPL)')
+    .option('--anchor', 'Enable Solana block anchoring (default: true)')
+    .option('--no-anchor', 'Disable Solana block anchoring')
+    .option('--anchor-interval <n>', 'Anchor every N blocks (default: 100)', '100')
     .action(startCommand);
 
   // Keygen command

@@ -67,6 +67,14 @@ function loadOrGenerateKeypair(keyfile, verbose) {
  * Start command handler
  */
 export async function startCommand(options) {
+  // Pass anchor CLI flags to env vars before network-singleton reads them
+  if (options.anchor !== undefined) {
+    process.env.CYNIC_ANCHORING_ENABLED = options.anchor ? 'true' : 'false';
+  }
+  if (options.anchorInterval) {
+    process.env.CYNIC_ANCHOR_INTERVAL = options.anchorInterval;
+  }
+
   const port = parseInt(options.port);
   const host = options.host;
   const verbose = options.verbose;

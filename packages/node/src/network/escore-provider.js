@@ -103,18 +103,40 @@ export function createEScoreProvider({ selfPublicKey }) {
     subscribedEvents: subscriptions.length,
   });
 
+  // Remote score cache: publicKey -> { score, updatedAt }
+  const _remoteScores = new Map();
+  const REMOTE_SCORE_TTL = 120_000; // 2 min (> 2 heartbeats at 8s interval)
+
   /**
    * Provider function for ValidatorManager.
-   * Returns score for the local node; null for remote validators
-   * (remote validators report their own score via heartbeat).
+   * Returns score for the local node via calculator;
+   * returns cached score for remote validators (fed by heartbeats).
    *
    * @param {string} publicKey
    * @returns {number|null}
    */
   function provider(publicKey) {
-    if (publicKey !== selfPublicKey) return null;
-    const result = calc.calculate();
-    return result.score;
+    if (publicKey === selfPublicKey) {
+      const result = calc.calculate();
+      return result.score;
+    }
+    // Remote: return cached score from heartbeat
+    const cached = _remoteScores.get(publicKey);
+    if (!cached || Date.now() - cached.updatedAt > REMOTE_SCORE_TTL) {
+      _remoteScores.delete(publicKey);
+      return null;
+    }
+    return cached.score;
+  }
+
+  /**
+   * Update a remote validator's E-Score (called from heartbeat handler)
+   *
+   * @param {string} publicKey - Remote validator's public key
+   * @param {number} score - E-Score reported in heartbeat
+   */
+  function updateRemoteScore(publicKey, score) {
+    _remoteScores.set(publicKey, { score, updatedAt: Date.now() });
   }
 
   /**
@@ -126,8 +148,9 @@ export function createEScoreProvider({ selfPublicKey }) {
       else if (unsub?.unsubscribe) unsub.unsubscribe();
     }
     subscriptions.length = 0;
+    _remoteScores.clear();
     log.info('EScore provider destroyed');
   }
 
-  return { provider, calculator: calc, destroy };
+  return { provider, calculator: calc, destroy, updateRemoteScore };
 }

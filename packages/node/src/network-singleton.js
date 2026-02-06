@@ -93,9 +93,11 @@ export function getNetworkNode(options = {}) {
     seedNodes,
     eScore: 50,
     eScoreProvider: _eScoreProvider.provider,
+    eScoreProviderInstance: _eScoreProvider,
     enabled: true,
     // Solana anchoring (opt-in)
-    anchoringEnabled: process.env.CYNIC_ANCHORING_ENABLED === 'true',
+    anchoringEnabled: process.env.CYNIC_ANCHORING_ENABLED !== 'false',
+    anchorInterval: parseInt(process.env.CYNIC_ANCHOR_INTERVAL) || 100,
     solanaCluster: process.env.SOLANA_CLUSTER || 'devnet',
     dryRun: process.env.CYNIC_ANCHORING_DRY_RUN !== 'false',
     ...options,

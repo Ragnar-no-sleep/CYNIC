@@ -84,6 +84,7 @@ export class CYNICNetworkNode extends EventEmitter {
     this._seedNodes = options.seedNodes || [];
     this._enabled = options.enabled ?? true;
     this._anchoringEnabled = options.anchoringEnabled ?? false;
+    this._eScoreProviderInstance = options.eScoreProviderInstance || null;
 
     this._state = NetworkState.OFFLINE;
     this._startedAt = null;
@@ -553,6 +554,11 @@ export class CYNICNetworkNode extends EventEmitter {
 
     if (eScore && eScore >= 20) {
       this._validatorManager.addValidator({ publicKey: peerId, eScore });
+    }
+
+    // Update remote E-Score in provider cache (for cross-node sharing)
+    if (eScore !== undefined && this._eScoreProviderInstance?.updateRemoteScore) {
+      this._eScoreProviderInstance.updateRemoteScore(peerId, eScore);
     }
 
     if (recentHashes && recentHashes.length > 0) {

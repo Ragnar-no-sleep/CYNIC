@@ -458,15 +458,16 @@ describe('Score Constants', () => {
 // =============================================================================
 
 describe('AXIOMS', () => {
-  it('should have exactly 4 axioms', () => {
-    assert.strictEqual(Object.keys(AXIOMS).length, 4);
+  it('should have exactly 5 axioms', () => {
+    assert.strictEqual(Object.keys(AXIOMS).length, 5);
   });
 
-  it('should have PHI, VERIFY, CULTURE, BURN', () => {
+  it('should have PHI, VERIFY, CULTURE, BURN, FIDELITY', () => {
     assert.ok('PHI' in AXIOMS);
     assert.ok('VERIFY' in AXIOMS);
     assert.ok('CULTURE' in AXIOMS);
     assert.ok('BURN' in AXIOMS);
+    assert.ok('FIDELITY' in AXIOMS);
   });
 
   describe('PHI Axiom', () => {
