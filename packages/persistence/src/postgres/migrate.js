@@ -64,7 +64,7 @@ async function repairPartialMigrations(db, log) {
  * @returns {Promise<{applied: number, skipped: number, total: number}>} Migration results
  */
 export async function migrate(options = {}) {
-  const { silent = false, exitOnError = false } = options;
+  const { silent = false, exitOnError = false, migrationsDir } = options;
   const log = silent ? () => {} : console.log.bind(console);
   const logError = silent ? () => {} : console.error.bind(console);
 
@@ -93,8 +93,9 @@ export async function migrate(options = {}) {
     const { rows: applied } = await db.query('SELECT name FROM _migrations');
     const appliedSet = new Set(applied.map(r => r.name));
 
-    // Get migration files
-    const files = readdirSync(MIGRATIONS_DIR)
+    // Get migration files (use explicit dir if provided, fallback to __dirname)
+    const effectiveDir = migrationsDir || MIGRATIONS_DIR;
+    const files = readdirSync(effectiveDir)
       .filter(f => f.endsWith('.sql'))
       .sort();
 
@@ -112,7 +113,7 @@ export async function migrate(options = {}) {
 
       log(`▶️  Applying ${name}...`);
 
-      const sql = readFileSync(join(MIGRATIONS_DIR, file), 'utf8');
+      const sql = readFileSync(join(effectiveDir, file), 'utf8');
 
       await db.transaction(async (client) => {
         await client.query(sql);

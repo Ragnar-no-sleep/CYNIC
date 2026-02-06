@@ -11,6 +11,7 @@
 
 'use strict';
 
+import { join } from 'path';
 import { createLifecycle, HealthStatus } from '../lifecycle.js';
 import { registerProvider } from '../discovery.js';
 import { createLogger } from '../../logger.js';
@@ -43,7 +44,9 @@ export function registerMCPProviders(options = {}) {
       try {
         const { migrate } = await import('@cynic/persistence');
 
-        const migrationPromise = migrate({ silent: false, exitOnError: false });
+        // Use cwd-relative path to avoid stale workspace symlink issues
+        const migrationsDir = join(process.cwd(), 'packages/persistence/src/postgres/migrations');
+        const migrationPromise = migrate({ silent: false, exitOnError: false, migrationsDir });
         const timeoutPromise = new Promise((_, reject) =>
           setTimeout(() => reject(new Error(`Migration timed out (${migrationTimeout}ms)`)), migrationTimeout)
         );
@@ -241,7 +244,8 @@ export function createMigrationsProvider(options = {}) {
       try {
         const { migrate } = await import('@cynic/persistence');
 
-        const migrationPromise = migrate({ silent: false, exitOnError: false });
+        const migrationsDir = join(process.cwd(), 'packages/persistence/src/postgres/migrations');
+        const migrationPromise = migrate({ silent: false, exitOnError: false, migrationsDir });
         const timeoutPromise = new Promise((_, reject) =>
           setTimeout(() => reject(new Error(`Migration timed out (${timeout}ms)`)), timeout)
         );
