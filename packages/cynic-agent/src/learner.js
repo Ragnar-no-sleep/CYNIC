@@ -216,7 +216,18 @@ export class Learner extends EventEmitter {
 
     record.outcome = outcome;
 
-    // Extract lesson
+    // Update Thompson Sampling (Beta distribution) for action taken
+    // Must happen BEFORE lesson extraction so _persistState captures updated counts
+    const action = record.decision?.action;
+    if (action && this.actionOutcomes[action]) {
+      if (outcomeType === OutcomeType.PROFITABLE) {
+        this.actionOutcomes[action].successes++;
+      } else if (outcomeType === OutcomeType.LOSS) {
+        this.actionOutcomes[action].failures++;
+      }
+    }
+
+    // Extract lesson (triggers _recordLesson → _persistState)
     const lesson = await this._extractLesson(record, outcome);
     if (lesson) {
       this._recordLesson(lesson);
@@ -229,16 +240,6 @@ export class Learner extends EventEmitter {
     // Persist if enabled
     if (this.config.persistSignals) {
       await this._persistSignal(signal);
-    }
-
-    // Update Thompson Sampling (Beta distribution) for action taken
-    const action = record.decision?.action;
-    if (action && this.actionOutcomes[action]) {
-      if (outcomeType === OutcomeType.PROFITABLE) {
-        this.actionOutcomes[action].successes++;
-      } else if (outcomeType === OutcomeType.LOSS) {
-        this.actionOutcomes[action].failures++;
-      }
     }
 
     // Emit to globalEventBus for collective learning
