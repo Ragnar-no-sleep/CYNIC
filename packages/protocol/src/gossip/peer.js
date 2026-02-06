@@ -98,6 +98,10 @@ export class PeerManager {
       this._evictWorstPeer();
     }
 
+    // Ensure defaults for required fields
+    if (!peerInfo.status) peerInfo.status = PeerStatus.ACTIVE;
+    if (!peerInfo.lastSeen) peerInfo.lastSeen = Date.now();
+
     this.peers.set(peerInfo.id, peerInfo);
     return true;
   }

@@ -274,7 +274,11 @@ export class CYNICNetworkNode extends EventEmitter {
         timestamp: Date.now(),
       });
 
-      this._state = NetworkState.ONLINE;
+      // Only set ONLINE if consensus hasn't already promoted to PARTICIPATING
+      // (consensus:started fires synchronously during _consensus.start() above)
+      if (this._state !== NetworkState.PARTICIPATING) {
+        this._state = NetworkState.ONLINE;
+      }
       this.emit('started', { nodeId: this._publicKey.slice(0, 16), port: this._port });
 
       log.info('Network node started', {
@@ -365,7 +369,9 @@ export class CYNICNetworkNode extends EventEmitter {
         this.emit('block:confirmed', { slot, ratio });
       },
       onConsensusStarted: (slot) => {
-        if (this._state === NetworkState.ONLINE || this._state === NetworkState.SYNCING) {
+        if (this._state === NetworkState.BOOTSTRAPPING ||
+            this._state === NetworkState.ONLINE ||
+            this._state === NetworkState.SYNCING) {
           this._state = NetworkState.PARTICIPATING;
         }
         this.emit('consensus:started', { slot });
@@ -401,10 +407,13 @@ export class CYNICNetworkNode extends EventEmitter {
 
   /** @private */
   _publishHeartbeat() {
+    const gossip = this._transport.gossip;
+    if (!gossip) return;
+
     const recentHashes = this._forkDetector.getRecentBlockHashes(5);
 
-    this._transport.gossip?.broadcastMessage?.({
-      type: 'HEARTBEAT',
+    // Create a proper gossip message with payload in standard format
+    const payload = {
       nodeId: this._publicKey.slice(0, 32),
       eScore: this._eScore,
       slot: this._consensus?.currentSlot || 0,
@@ -413,7 +422,21 @@ export class CYNICNetworkNode extends EventEmitter {
       recentHashes,
       state: this._state,
       timestamp: Date.now(),
-    });
+    };
+
+    // Use gossip.broadcast() with a heartbeat message
+    // Heartbeats skip sig verification in gossip (ttl=1, no relay)
+    const message = {
+      id: `hb_${this._publicKey.slice(0, 8)}_${Date.now().toString(36)}`,
+      type: 'HEARTBEAT',
+      payload,
+      sender: this._publicKey,
+      timestamp: Date.now(),
+      ttl: 1,
+      hops: 0,
+    };
+
+    gossip.broadcast(message).catch(() => {});
   }
 
   /** @private */
@@ -505,7 +528,10 @@ export class CYNICNetworkNode extends EventEmitter {
 
   /** @private */
   async _handleHeartbeat(message, peerId) {
-    const { eScore, finalizedSlot, finalizedHash, slot, state, recentHashes, nodeId } = message;
+    // Heartbeat data is in message.payload (standard gossip format)
+    // or at top-level for backwards compatibility
+    const data = message.payload || message;
+    const { eScore, finalizedSlot, finalizedHash, slot, state, recentHashes, nodeId } = data;
 
     this._stateSyncManager.updatePeer(peerId, { finalizedSlot, finalizedHash, slot, state, eScore });
     this._validatorManager.updateValidatorActivity(peerId);
