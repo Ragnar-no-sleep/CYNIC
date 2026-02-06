@@ -342,7 +342,9 @@ export class CYNICNetworkNode extends EventEmitter {
       },
       onPeerDisconnected: (peerId, code, reason) => {
         this._stats.peersConnected = this._transport.getConnectedPeers().length;
-        if (this._stats.peersConnected < 3 && this._state === NetworkState.PARTICIPATING) {
+        // Only demote if we lost ALL peers (not just < 3)
+        // In star topologies, leaf nodes only have 1 peer (the seed)
+        if (this._stats.peersConnected === 0 && this._state === NetworkState.PARTICIPATING) {
           this._state = NetworkState.SYNCING;
         }
         this.emit('peer:disconnected', { peerId, code, reason });
@@ -454,6 +456,13 @@ export class CYNICNetworkNode extends EventEmitter {
       log.info('Node is behind network', { behindBy: result.behindBy });
     } else if (result.justCompleted && this._state === NetworkState.SYNCING) {
       this._state = NetworkState.ONLINE;
+    }
+
+    // Recovery: re-promote to PARTICIPATING if synced and connected
+    // Prevents deadlock where SYNCING/ONLINE nodes can't propose → no consensus → stuck
+    if ((this._state === NetworkState.ONLINE || this._state === NetworkState.SYNCING) &&
+        this._stats.peersConnected > 0 && !result.needsSync) {
+      this._state = NetworkState.PARTICIPATING;
     }
   }
 
