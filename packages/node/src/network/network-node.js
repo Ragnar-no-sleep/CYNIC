@@ -33,6 +33,14 @@ import { BlockProducer } from './block-producer.js';
 const log = createLogger('CYNICNetworkNode');
 
 /**
+ * Shared genesis time for slot alignment across all nodes.
+ * All nodes MUST use the same genesis so slot numbers are globally consistent.
+ * Without this, each node uses Date.now() → different slot numbers → every node
+ * is leader for every slot → duplicate blocks → no finalization.
+ */
+const SHARED_GENESIS_TIME = new Date('2026-02-06T00:00:00.000Z').getTime();
+
+/**
  * Network node states
  */
 export const NetworkState = {
@@ -117,7 +125,7 @@ export class CYNICNetworkNode extends EventEmitter {
     this._stateSyncManager = new StateSyncManager();
     this._blockProducer = new BlockProducer({
       publicKey: this._publicKey,
-      genesisTime: options.genesisTime,
+      genesisTime: options.genesisTime || SHARED_GENESIS_TIME,
       slotDuration: options.slotDuration,
       maxJudgmentsPerBlock: options.maxJudgmentsPerBlock,
     });
@@ -173,10 +181,22 @@ export class CYNICNetworkNode extends EventEmitter {
       maxPeers: options.maxPeers || 50,
     });
 
-    // Wire dependencies into extracted components
-    const sendTo = (peerId, msg) => {
+    // Wire dependencies into extracted components.
+    // sendTo tries gossip first (handles routing), falls back to raw transport
+    // if the peer isn't in gossip's peer list (e.g. missed peer:connected event).
+    const sendTo = async (peerId, msg) => {
       this._stats.messagesSent++;
-      return this._transport.sendTo(peerId, msg);
+      try {
+        return await this._transport.sendTo(peerId, msg);
+      } catch (err) {
+        // Gossip doesn't know this peer — try raw transport send as fallback
+        const transport = this._transport.transport;
+        if (transport?.isConnected(peerId)) {
+          const sendFn = transport.getSendFn();
+          return sendFn({ id: peerId, publicKey: peerId }, msg);
+        }
+        throw err;
+      }
     };
     const getLastFinalizedSlot = () => this._consensus?.lastFinalizedSlot || 0;
     const getCurrentSlot = () => this._consensus?.currentSlot || 0;
@@ -260,12 +280,17 @@ export class CYNICNetworkNode extends EventEmitter {
     this._startedAt = Date.now();
 
     try {
-      await this._transport.start();
+      // CRITICAL: Wire event handlers BEFORE starting the server.
+      // If wired after, inbound connections that complete identity exchange
+      // between start() and wireEvents() fire peer:connected with no listener
+      // → gossip never learns about the peer → sendTo fails → SYNCING forever.
       this._wireTransportEvents();
       this._wireConsensusEvents();
 
-      this._discovery.start();
+      await this._transport.start();
+
       this._wireDiscoveryEvents();
+      this._discovery.start();
 
       this._consensus.start({ eScore: this._eScore });
       this._blockProducer.start();
@@ -461,12 +486,28 @@ export class CYNICNetworkNode extends EventEmitter {
       this._state = NetworkState.ONLINE;
     }
 
-    // Recovery: re-promote to PARTICIPATING if synced and connected
-    // Prevents deadlock where SYNCING/ONLINE nodes can't propose → no consensus → stuck
+    // Recovery: re-promote to PARTICIPATING if synced and connected.
+    // Prevents deadlock where SYNCING/ONLINE nodes can't propose → no consensus → stuck.
+    // Also promotes fresh nodes that have no peer slot data yet (behindBy=0, needsSync=false).
     if ((this._state === NetworkState.ONLINE || this._state === NetworkState.SYNCING) &&
         this._stats.peersConnected > 0 && !result.needsSync) {
       this._state = NetworkState.PARTICIPATING;
     }
+
+    // Backstop: if stuck SYNCING for >30s with peers connected but sync keeps failing,
+    // force-promote to PARTICIPATING so the node can produce blocks and participate.
+    // The sync failures mean the peer can't be reached via gossip, but the node IS connected.
+    if (this._state === NetworkState.SYNCING && this._stats.peersConnected > 0) {
+      const stuckDuration = Date.now() - (this._lastSyncPromotionCheck || this._startedAt);
+      if (stuckDuration > 30000) {
+        log.warn('Stuck in SYNCING too long, promoting to PARTICIPATING', {
+          stuckMs: stuckDuration,
+          peers: this._stats.peersConnected,
+        });
+        this._state = NetworkState.PARTICIPATING;
+      }
+    }
+    this._lastSyncPromotionCheck = Date.now();
   }
 
   /** @private */
@@ -515,8 +556,9 @@ export class CYNICNetworkNode extends EventEmitter {
     this._stats.messagesReceived++;
 
     // Use message.sender (signed publicKey) as authoritative peer identity,
-    // falling back to transport-level peerId
+    // falling back to transport-level peerId. Skip messages with no identity.
     const senderPeerId = message.sender || peerId;
+    if (!senderPeerId) return; // No sender identity — can't route meaningfully
 
     switch (message.type) {
       case 'HEARTBEAT':

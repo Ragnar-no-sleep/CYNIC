@@ -100,17 +100,17 @@ export class UnifiedBridge extends EventEmitter {
       this._subscriptions.push([EventType.JUDGMENT_CREATED, judgmentHandler]);
     }
 
-    // Subscribe to TOOL_EXECUTION
+    // Subscribe to TOOL_COMPLETED (tool executions with outcome)
     if (this.config.autoRecordTools) {
       const toolHandler = (event) => this._handleToolExecution(event);
-      globalEventBus.on(EventType.TOOL_EXECUTION, toolHandler);
-      this._subscriptions.push([EventType.TOOL_EXECUTION, toolHandler]);
+      globalEventBus.on(EventType.TOOL_COMPLETED, toolHandler);
+      this._subscriptions.push([EventType.TOOL_COMPLETED, toolHandler]);
     }
 
     // Subscribe to FEEDBACK events (to attach outcomes)
     const feedbackHandler = (event) => this._handleFeedback(event);
-    globalEventBus.on(EventType.FEEDBACK_RECEIVED, feedbackHandler);
-    this._subscriptions.push([EventType.FEEDBACK_RECEIVED, feedbackHandler]);
+    globalEventBus.on(EventType.USER_FEEDBACK, feedbackHandler);
+    this._subscriptions.push([EventType.USER_FEEDBACK, feedbackHandler]);
 
     this._isActive = true;
     log.info('UnifiedBridge started');

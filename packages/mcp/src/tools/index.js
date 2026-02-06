@@ -405,6 +405,7 @@ export function createAllTools(options = {}) {
     // Phase 22: Orchestrators for brain_orchestrate
     dogOrchestrator = null, // DogOrchestrator for Dogs voting
     engineOrchestrator = null, // EngineOrchestrator for Engines synthesis
+    perceptionRouter = null, // PerceptionRouter for data source routing
     // X/Twitter vision
     xRepository = null, // XDataRepository for cloud social data (optional)
     // Local Privacy Stores (SQLite - privacy by design)
@@ -434,7 +435,7 @@ export function createAllTools(options = {}) {
     createJudgeTool(judge, persistence, sessionManager, pojChainManager, graphIntegration, onJudgment, null /* burnEnforcer */, emergenceLayer, thermodynamics),
     createRefineTool(judge, persistence), // Self-refinement: critique → refine → learn
     // P4: brain_keter removed — brain_orchestrate (Full) supersedes it
-    createFullOrchestrateTool({ judge, persistence, dogOrchestrator, engineOrchestrator, memoryRetriever }), // Full orchestration: routing + judgment + synthesis
+    createFullOrchestrateTool({ judge, persistence, dogOrchestrator, engineOrchestrator, memoryRetriever, learningService, psychologyProvider: persistence?.psychology, perceptionRouter }), // Full orchestration: routing + judgment + synthesis
     createCircuitBreakerTool({ persistence }), // Circuit breaker health/stats (Phase 21)
     createDecisionsTool({ persistence }), // Decision history/tracing (Phase 21)
     createVectorSearchTool({ persistence }), // Semantic search with embeddings

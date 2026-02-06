@@ -228,6 +228,9 @@ function getOrCreateOrchestrator(options = {}) {
       dogOrchestrator: options.dogOrchestrator,
       engineOrchestrator: options.engineOrchestrator,
       memoryRetriever: options.memoryRetriever,
+      learningService: options.learningService,
+      psychologyProvider: options.psychologyProvider,
+      perceptionRouter: options.perceptionRouter,
       tracer,
       skillRegistry,
     });

@@ -729,6 +729,7 @@ export class InitializationPipeline {
       sona: s.sona,
       dogOrchestrator: s.dogOrchestrator,
       engineOrchestrator: s.engineOrchestrator,
+      perceptionRouter: s.perceptionRouter,
       xRepository: s.persistence?.repositories?.xData,
       localXStore: s.localXStore,
       localPrivacyStore: s.localPrivacyStore,
