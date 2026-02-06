@@ -159,7 +159,8 @@ export async function initRelayerSigner() {
   if (relayerSigner) return relayerSigner;
 
   if (!config.relayerPrivateKey) {
-    throw new Error('RELAYER_PRIVATE_KEY not configured');
+    console.warn('[Solana] RELAYER_PRIVATE_KEY not configured — running in DRY-RUN mode (no real transactions)');
+    return null;
   }
 
   // Decode base58 private key to bytes
@@ -177,10 +178,15 @@ export async function initRelayerSigner() {
  * Get relayer address
  */
 export function getRelayerAddress() {
-  if (!relayerSigner) {
-    throw new Error('Relayer signer not initialized. Call initRelayerSigner() first.');
-  }
+  if (!relayerSigner) return null;
   return relayerSigner.address;
+}
+
+/**
+ * Check if relayer is in dry-run mode (no private key)
+ */
+export function isDryRun() {
+  return !relayerSigner;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -204,6 +210,7 @@ export async function getBalance(pubkey) {
  */
 export async function getRelayerBalance() {
   const signer = await initRelayerSigner();
+  if (!signer) return 0n;
   return getBalance(signer.address);
 }
 
@@ -370,6 +377,7 @@ export async function calculateFee(computeUnits = 200000) {
 export async function submitAndPayFee(serializedTx, options = {}) {
   const client = initRpc();
   const signer = await initRelayerSigner();
+  if (!signer) throw new Error('Relayer in DRY-RUN mode — no private key configured');
   const blockhash = await getLatestBlockhash();
 
   // Decode the user's base64 transaction
@@ -416,6 +424,7 @@ export async function createBurnTransaction(amount, options = {}) {
 
   const client = initRpc();
   const signer = await initRelayerSigner();
+  if (!signer) throw new Error('Relayer in DRY-RUN mode — no private key configured');
 
   // 1. Check balance before proceeding (clear error messages)
   const balance = await getBalance(signer.address);
@@ -539,6 +548,7 @@ export async function createTreasuryTransfer(amount, options = {}) {
 
   const client = initRpc();
   const signer = await initRelayerSigner();
+  if (!signer) throw new Error('Relayer in DRY-RUN mode — no private key configured');
 
   // Check balance
   const balance = await getBalance(signer.address);
@@ -754,6 +764,30 @@ export async function checkHealth() {
   try {
     const client = initRpc();
     const { value: slot } = await client.getSlot().send();
+
+    // Dry-run mode — RPC works but no signer
+    if (isDryRun()) {
+      return {
+        connected: true,
+        dryRun: true,
+        cluster: config.cluster,
+        rpcUrl: config.rpcUrl.replace(/\/\/[^:]+:[^@]+@/, '//***:***@'),
+        slot: Number(slot),
+        relayerAddress: 'DRY-RUN (no private key)',
+        relayerBalance: '0',
+        relayerBalanceSol: 0,
+        lowBalance: false,
+        criticalBalance: false,
+        warnings: ['⚠️ DRY-RUN mode: RELAYER_PRIVATE_KEY not set — transactions disabled'],
+        config: {
+          burnRate: config.burnRate,
+          treasuryRate: config.treasuryRate,
+          maxRetries: config.maxRetries,
+          confirmationTimeout: config.confirmationTimeout,
+        },
+      };
+    }
+
     const balance = await getRelayerBalance();
 
     // Cluster awareness warnings
@@ -809,6 +843,7 @@ export default {
   initSubscriptions,
   initRelayerSigner,
   getRelayerAddress,
+  isDryRun,
 
   // Balance
   getBalance,

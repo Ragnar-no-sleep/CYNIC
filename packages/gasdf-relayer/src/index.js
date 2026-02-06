@@ -290,25 +290,31 @@ async function start() {
     solana.initRpc();
     await solana.initRelayerSigner();
 
-    const health = await solana.checkHealth();
-    if (!health.connected) {
-      throw new Error(`Solana connection failed: ${health.error}`);
-    }
+    const dryRun = solana.isDryRun();
 
-    // Cluster awareness logging (security checklist)
-    app.log.info({ cluster: health.cluster }, `Connected to Solana ${health.cluster}`);
-    app.log.info(
-      { relayerBalance: health.relayerBalanceSol.toFixed(4) },
-      `Relayer wallet: ${solana.getRelayerAddress()}`
-    );
+    if (dryRun) {
+      app.log.warn('⚠️ DRY-RUN MODE: No RELAYER_PRIVATE_KEY — transactions will be rejected');
+    } else {
+      const health = await solana.checkHealth();
+      if (!health.connected) {
+        throw new Error(`Solana connection failed: ${health.error}`);
+      }
 
-    // Log all warnings from health check
-    for (const warning of health.warnings || []) {
-      app.log.warn(warning);
-    }
+      // Cluster awareness logging (security checklist)
+      app.log.info({ cluster: health.cluster }, `Connected to Solana ${health.cluster}`);
+      app.log.info(
+        { relayerBalance: health.relayerBalanceSol.toFixed(4) },
+        `Relayer wallet: ${solana.getRelayerAddress()}`
+      );
 
-    if (health.criticalBalance) {
-      app.log.error('🔴 CRITICAL: Relayer balance dangerously low! Service may fail.');
+      // Log all warnings from health check
+      for (const warning of health.warnings || []) {
+        app.log.warn(warning);
+      }
+
+      if (health.criticalBalance) {
+        app.log.error('🔴 CRITICAL: Relayer balance dangerously low! Service may fail.');
+      }
     }
 
     // Start timers
@@ -319,8 +325,11 @@ async function start() {
     // Start server
     await app.listen({ port: config.port, host: config.host });
 
-    app.log.info(`GASdf Relayer running on http://${config.host}:${config.port}`);
-    app.log.info(`Cluster: ${health.cluster} | φ-burn: ${(health.config?.burnRate * 100).toFixed(1)}%`);
+    app.log.info(`GASdf Relayer running on http://${config.host}:${config.port}${dryRun ? ' [DRY-RUN]' : ''}`);
+    if (!dryRun) {
+      const health = await solana.checkHealth();
+      app.log.info(`Cluster: ${health.cluster} | φ-burn: ${(health.config?.burnRate * 100).toFixed(1)}%`);
+    }
     app.log.info('"Don\'t Extract, Burn" - κυνικός');
   } catch (err) {
     app.log.error(err);
