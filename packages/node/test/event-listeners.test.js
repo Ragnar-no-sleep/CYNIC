@@ -179,6 +179,64 @@ describe('EventListeners (AXE 2: PERSIST)', () => {
       );
       assert.strictEqual(feedbackIncrements.length, 1, 'Should increment feedback counter');
     });
+
+    it('should call judge.recordFeedback when judge is provided (WS1)', async () => {
+      let recordedFeedback = null;
+      const mockJudge = {
+        recordFeedback: (data) => {
+          recordedFeedback = data;
+        },
+      };
+
+      startEventListeners({
+        repositories: mockRepositories,
+        sessionId: 'test-session',
+        userId: 'test-user',
+        judge: mockJudge,
+      });
+
+      globalEventBus.publish(EventType.USER_FEEDBACK, {
+        judgmentId: 'jdg_ws1_test',
+        outcome: 'correct',
+        actualScore: 85,
+        itemType: 'code_review',
+        qScore: 72,
+        dimensionCorrections: { COHERENCE: 0.9 },
+      });
+
+      await new Promise((r) => setTimeout(r, 50));
+
+      assert.ok(recordedFeedback, 'judge.recordFeedback should have been called');
+      assert.strictEqual(recordedFeedback.judgment.id, 'jdg_ws1_test');
+      assert.strictEqual(recordedFeedback.outcome, 'correct');
+      assert.strictEqual(recordedFeedback.actualScore, 85);
+      assert.deepStrictEqual(recordedFeedback.dimensions, { COHERENCE: 0.9 });
+    });
+
+    it('should not crash if judge.recordFeedback throws (WS1 resilience)', async () => {
+      const mockJudge = {
+        recordFeedback: () => {
+          throw new Error('Bayesian tracker error');
+        },
+      };
+
+      startEventListeners({
+        repositories: mockRepositories,
+        sessionId: 'test-session',
+        judge: mockJudge,
+      });
+
+      globalEventBus.publish(EventType.USER_FEEDBACK, {
+        judgmentId: 'jdg_error_test',
+        outcome: 'incorrect',
+      });
+
+      await new Promise((r) => setTimeout(r, 50));
+
+      // Feedback should still be persisted even if judge.recordFeedback throws
+      assert.strictEqual(mockFeedback.length, 1, 'Feedback should persist despite judge error');
+      assert.strictEqual(mockFeedback[0].outcome, 'incorrect');
+    });
   });
 
   describe('stopEventListeners', () => {

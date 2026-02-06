@@ -434,7 +434,7 @@ export function createAllTools(options = {}) {
     createJudgeTool(judge, persistence, sessionManager, pojChainManager, graphIntegration, onJudgment, null /* burnEnforcer */, emergenceLayer, thermodynamics),
     createRefineTool(judge, persistence), // Self-refinement: critique → refine → learn
     // P4: brain_keter removed — brain_orchestrate (Full) supersedes it
-    createFullOrchestrateTool({ judge, persistence, dogOrchestrator, engineOrchestrator }), // Full orchestration: routing + judgment + synthesis
+    createFullOrchestrateTool({ judge, persistence, dogOrchestrator, engineOrchestrator, memoryRetriever }), // Full orchestration: routing + judgment + synthesis
     createCircuitBreakerTool({ persistence }), // Circuit breaker health/stats (Phase 21)
     createDecisionsTool({ persistence }), // Decision history/tracing (Phase 21)
     createVectorSearchTool({ persistence }), // Semantic search with embeddings

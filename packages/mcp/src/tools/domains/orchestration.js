@@ -227,6 +227,7 @@ function getOrCreateOrchestrator(options = {}) {
       judge: options.judge,
       dogOrchestrator: options.dogOrchestrator,
       engineOrchestrator: options.engineOrchestrator,
+      memoryRetriever: options.memoryRetriever,
       tracer,
       skillRegistry,
     });

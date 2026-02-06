@@ -520,11 +520,12 @@ export function getCollectivePack(options = {}) {
         persistence: finalOptions.persistence,
         sharedMemory,
         saveState,
+        judge: finalOptions.judge || _globalPack?.judge,
         sessionId: finalOptions.sessionId,
         userId: finalOptions.userId,
         blockStore,
       });
-      log.info('EventListeners started - data loops closed (AXE 2)', { hasBlockStore: !!blockStore });
+      log.info('EventListeners started - data loops closed (AXE 2)', { hasBlockStore: !!blockStore, hasJudge: !!(finalOptions.judge || _globalPack?.judge) });
     }
 
     // FIX O3: Schedule background persistence initialization
@@ -683,6 +684,7 @@ export async function getCollectivePackAsync(options = {}) {
         persistence: options.persistence,
         sharedMemory: _sharedMemory,
         saveState,
+        judge: _globalPack?.judge,
         sessionId: options.sessionId,
         userId: options.userId,
         blockStore,
