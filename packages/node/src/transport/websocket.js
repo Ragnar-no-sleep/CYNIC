@@ -830,10 +830,11 @@ export class WebSocketTransport extends EventEmitter {
    * @returns {boolean} True if connected to that address
    */
   hasConnectionToAddress(address) {
+    const bare = address.replace(/^wss?:\/\//, '');
     for (const conn of this.connections.values()) {
-      if (conn.address === address && conn.state === ConnectionState.CONNECTED) {
-        return true;
-      }
+      if (conn.state !== ConnectionState.CONNECTED) continue;
+      const connBare = (conn.address || '').replace(/^wss?:\/\//, '');
+      if (connBare === bare || conn.address === address) return true;
     }
     return false;
   }

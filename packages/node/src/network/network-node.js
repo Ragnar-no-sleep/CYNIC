@@ -85,6 +85,7 @@ export class CYNICNetworkNode extends EventEmitter {
     this._enabled = options.enabled ?? true;
     this._anchoringEnabled = options.anchoringEnabled ?? false;
     this._eScoreProviderInstance = options.eScoreProviderInstance || null;
+    this._httpHandler = options.httpHandler || null;
 
     this._state = NetworkState.OFFLINE;
     this._startedAt = null;
@@ -153,6 +154,7 @@ export class CYNICNetworkNode extends EventEmitter {
       privateKey: this._privateKey,
       ssl: options.ssl,
       onMessage: this._handleMessage.bind(this),
+      httpHandler: this._httpHandler,
     });
 
     this._consensus = new ConsensusComponent({

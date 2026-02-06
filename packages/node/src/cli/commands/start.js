@@ -1,7 +1,10 @@
 /**
  * Start Command
  *
- * Start a CYNIC node with optional peer connections
+ * Start a CYNIC node using CYNICNetworkNode (Phase 2)
+ *
+ * Delegates all P2P, consensus, and validator logic to CYNICNetworkNode.
+ * Keeps HTTP API + REPL as thin presentation layers.
  *
  * @module @cynic/node/cli/commands/start
  */
@@ -9,20 +12,11 @@
 'use strict';
 
 import fs from 'fs';
-import path from 'path';
 import readline from 'readline';
 import chalk from 'chalk';
-import { WebSocketTransport } from '../../transport/index.js';
-import {
-  GossipProtocol,
-  generateKeypair,
-  createPeerInfo,
-  ConsensusEngine,
-  ConsensusGossip,
-  SlotManager,
-  hashBlock,
-} from '@cynic/protocol';
+import { generateKeypair, hashBlock } from '@cynic/protocol';
 import { PHI_INV } from '@cynic/core';
+import { CYNICNetworkNode } from '../../network/network-node.js';
 
 /**
  * Format bytes to human readable
@@ -78,296 +72,18 @@ export async function startCommand(options) {
   const port = parseInt(options.port);
   const host = options.host;
   const verbose = options.verbose;
-  const startServer = options.server !== false;
 
   console.log(chalk.bold.cyan('\n  CYNIC Node Starting...\n'));
 
   // Load keypair
   const keypair = loadOrGenerateKeypair(options.keyfile, verbose);
   // Skip DER header (first 24 hex chars = 12 bytes) to get actual ed25519 key bytes
-  // DER structure: 302a 3005 0603 2b6570 0321 00 [32 bytes of key]
   const nodeId = keypair.publicKey.slice(24, 40);
 
   console.log(chalk.gray('  Node ID: ') + chalk.yellow(nodeId + '...'));
   console.log(chalk.gray('  Port:    ') + chalk.white(port));
   console.log(chalk.gray('  Host:    ') + chalk.white(host));
   console.log();
-
-  // Build HTTP handler for API endpoints
-  const httpHandler = async (req, res) => {
-    // CORS headers
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    res.setHeader('Content-Type', 'application/json');
-
-    if (req.method === 'OPTIONS') {
-      res.writeHead(204);
-      return res.end();
-    }
-
-    const url = req.url.split('?')[0];
-
-    // Root
-    if (url === '/') {
-      res.writeHead(200);
-      return res.end(JSON.stringify({
-        name: 'CYNIC Node',
-        version: '0.1.0',
-        nodeId,
-        greek: 'κυνικός',
-        endpoints: ['/health', '/status', '/peers', '/consensus', '/propose'],
-      }));
-    }
-
-    // Health
-    if (url === '/health') {
-      const stats = transport.getStats();
-      res.writeHead(200);
-      return res.end(JSON.stringify({
-        status: 'healthy',
-        nodeId,
-        uptime: Date.now() - startTime,
-        peers: stats.connections.connected,
-        phi: { maxConfidence: PHI_INV },
-      }));
-    }
-
-    // Status
-    if (url === '/status') {
-      const stats = transport.getStats();
-      const gossipStats = gossip.getStats();
-      const cState = consensus.getState();
-      const cStats = consensus.getStats();
-
-      // Peer info for diagnostics
-      const transportPeers = transport.getConnectedPeers();
-      const gossipPeers = gossip.peerManager.getActivePeers().map(p => ({
-        id: p.id?.slice(0, 16),
-        publicKey: p.publicKey?.slice(0, 16),
-      }));
-
-      res.writeHead(200);
-      return res.end(JSON.stringify({
-        nodeId,
-        uptime: Date.now() - startTime,
-        transport: {
-          connections: stats.connections,
-          messagesSent: stats.messagesSent,
-          messagesReceived: stats.messagesReceived,
-          peerIds: transportPeers.map(p => p.slice(0, 16)),
-        },
-        gossip: {
-          total: gossipStats.total,
-          active: gossipStats.active,
-          peers: gossipPeers,
-        },
-        consensus: {
-          ...cState,
-          totalWeight: cStats.totalWeight,
-          blocksFinalized: cStats.blocksFinalized,
-        },
-      }));
-    }
-
-    // Peers
-    if (url === '/peers') {
-      const peers = transport.getConnectedPeers();
-      res.writeHead(200);
-      return res.end(JSON.stringify({
-        count: peers.length,
-        peers: peers.map(p => ({ id: p.slice(0, 24) + '...' })),
-      }));
-    }
-
-    // Consensus
-    if (url === '/consensus') {
-      const cStats = consensusGossip.getStats();
-      const cState = consensus.getState();
-      res.writeHead(200);
-      return res.end(JSON.stringify({ state: cState, bridge: cStats }));
-    }
-
-    // Propose block (for testing consensus)
-    if (url === '/propose' && req.method === 'POST') {
-      try {
-        const slotInfo = slotManager.getSlotInfo();
-        const testBlock = {
-          type: 'JUDGMENT',
-          slot: slotInfo.slot,
-          timestamp: Date.now(),
-          previous_hash: '0'.repeat(64),
-          proposer: keypair.publicKey,
-          judgments: [{
-            id: `jdg_test_${Date.now()}`,
-            itemHash: `item_${Date.now()}`,
-            globalScore: Math.round(50 + Math.random() * 50),
-            verdict: 'WAG',
-          }],
-          merkle_root: '0'.repeat(64),
-        };
-        testBlock.hash = hashBlock(testBlock);
-
-        // Propose to local consensus
-        consensus.proposeBlock(testBlock);
-
-        // Broadcast via gossip bridge
-        await consensusGossip.proposeBlock(testBlock);
-
-        res.writeHead(200);
-        return res.end(JSON.stringify({
-          success: true,
-          blockHash: testBlock.hash,
-          slot: testBlock.slot,
-          validators: consensus.validators.size,
-        }));
-      } catch (err) {
-        res.writeHead(500);
-        return res.end(JSON.stringify({ error: err.message }));
-      }
-    }
-
-    // 404
-    res.writeHead(404);
-    res.end(JSON.stringify({ error: 'Not Found', path: url }));
-  };
-
-  // Create transport
-  const transport = new WebSocketTransport({
-    port,
-    host,
-    publicKey: keypair.publicKey,
-    privateKey: keypair.privateKey,
-    heartbeatInterval: 61800, // φ-aligned
-    httpHandler, // HTTP API on same port as WS
-  });
-
-  // Create gossip protocol
-  const gossip = new GossipProtocol({
-    publicKey: keypair.publicKey,
-    privateKey: keypair.privateKey,
-    address: `${host}:${port}`,
-    sendFn: transport.getSendFn(),
-    onMessage: (message) => {
-      if (message.type !== 'HEARTBEAT' && verbose) {
-        console.log(chalk.blue(`  [MSG] `) + chalk.gray(`${message.type}: ${JSON.stringify(message.payload).slice(0, 60)}...`));
-      }
-    },
-  });
-
-  // Create consensus engine (Layer 4: φ-BFT)
-  const consensus = new ConsensusEngine({
-    publicKey: keypair.publicKey,
-    privateKey: keypair.privateKey,
-    eScore: 50, // Default E-Score (0-100 scale)
-    burned: 0, // Default burn
-    uptime: 1.0, // Full uptime initially
-  });
-
-  // Create slot manager for leader selection
-  const slotManager = new SlotManager();
-
-  // Create consensus-gossip bridge
-  const consensusGossip = new ConsensusGossip({
-    consensus,
-    gossip,
-  });
-
-  // Wire consensus events
-  consensus.on('block:proposed', (event) => {
-    if (verbose) {
-      console.log(chalk.yellow(`  [PROP] `) + `Block proposed: ${chalk.cyan(event.blockHash.slice(0, 16))}... slot ${event.slot}`);
-    }
-  });
-
-  consensus.on('block:finalized', (event) => {
-    console.log(chalk.green(`  [FIN]  `) + `Block finalized: ${chalk.cyan(event.blockHash.slice(0, 16))}...`);
-  });
-
-  consensus.on('vote:cast', (event) => {
-    if (verbose) {
-      console.log(chalk.magenta(`  [VOTE] `) + `Voted ${event.decision} on ${chalk.cyan(event.blockHash.slice(0, 16))}...`);
-    }
-  });
-
-  consensusGossip.on('error', ({ source, error }) => {
-    console.log(chalk.red(`  [C-ERR] `) + `${source}: ${error}`);
-  });
-
-  // Wire events
-  transport.on('peer:connected', ({ peerId, publicKey, inbound }) => {
-    const direction = inbound ? chalk.magenta('←') : chalk.green('→');
-    const id = (publicKey || peerId || '').slice(0, 12);
-    console.log(chalk.green('  [PEER] ') + `${direction} Connected: ${chalk.cyan(id)}...`);
-    // Note: For inbound connections, publicKey is available here.
-    // For outbound connections, publicKey is NOT available yet (peer:identified has it).
-    if (publicKey) {
-      gossip.addPeer(createPeerInfo({ publicKey, address: '' }));
-      consensus.registerValidator({ publicKey, eScore: 50, burned: 0, uptime: 1.0 });
-    }
-  });
-
-  transport.on('peer:identified', ({ publicKey }) => {
-    if (verbose) {
-      console.log(chalk.blue('  [ID]   ') + `Verified: ${chalk.cyan(publicKey.slice(0, 12))}...`);
-    }
-    // CRITICAL: For outbound connections, peer:connected fires before identity exchange
-    // so publicKey is not available there. We MUST add the peer here too.
-    // addPeer is idempotent, so calling it twice for inbound connections is safe.
-    gossip.addPeer(createPeerInfo({ publicKey, address: '' }));
-    consensus.registerValidator({ publicKey, eScore: 50, burned: 0, uptime: 1.0 });
-  });
-
-  // CRITICAL: Route incoming messages to gossip protocol
-  transport.on('message', ({ message, peerId }) => {
-    gossip.handleMessage(message, peerId).catch(err => {
-      console.log(chalk.red('  [MSG-ERR] ') + `${err.message}`);
-    });
-  });
-
-  // Track required outbound connections for auto-reconnect
-  const requiredPeers = new Set(); // addresses we should stay connected to
-
-  transport.on('peer:disconnected', ({ peerId, code, reason }) => {
-    const id = (peerId || '').slice(0, 12);
-    console.log(chalk.red('  [PEER] ') + `Disconnected: ${chalk.gray(id)}... code=${code} reason=${reason || 'none'}`);
-    // Remove validator to keep consensus accurate
-    if (peerId) {
-      consensus.removeValidator(peerId);
-    }
-  });
-
-  transport.on('peer:error', ({ error }) => {
-    console.log(chalk.red('  [ERR]  ') + error.message);
-  });
-
-  // Start server
-  if (startServer) {
-    try {
-      await transport.startServer();
-      console.log(chalk.green('  [OK]   ') + `Server listening on ${chalk.bold(`${host}:${port}`)}`);
-
-      // Register self as validator
-      consensus.registerValidator({
-        publicKey: keypair.publicKey,
-        eScore: 50, // Default E-Score
-        burned: 0,
-        uptime: 1.0,
-      });
-      console.log(chalk.green('  [OK]   ') + `Registered as validator`);
-
-      // Start consensus engine (transitions from INITIALIZING to PARTICIPATING)
-      consensus.start();
-      console.log(chalk.green('  [OK]   ') + `Consensus engine started (φ-BFT)`);
-
-      // Start consensus-gossip bridge
-      consensusGossip.start();
-      console.log(chalk.green('  [OK]   ') + `Consensus bridge started`);
-    } catch (err) {
-      console.error(chalk.red('  [FAIL] ') + `Could not start server: ${err.message}`);
-      process.exit(1);
-    }
-  }
 
   // Collect peer addresses from --connect flags AND CYNIC_SEED_NODES env var
   const peerAddresses = [...(options.connect || [])];
@@ -381,90 +97,252 @@ export async function startCommand(options) {
     }
   }
 
-  // Connect to initial peers
+  // We need a reference to the node inside the httpHandler closure,
+  // but the node needs httpHandler at construction. Use a mutable ref.
+  let node = null;
+  const startTime = Date.now();
+
+  // Build HTTP handler (closure over node ref)
+  const httpHandler = (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Content-Type', 'application/json');
+
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204);
+      return res.end();
+    }
+
+    const url = req.url.split('?')[0];
+
+    if (url === '/') {
+      res.writeHead(200);
+      return res.end(JSON.stringify({
+        name: 'CYNIC Node',
+        version: '0.1.0',
+        nodeId,
+        greek: 'κυνικός',
+        endpoints: ['/health', '/status', '/peers', '/consensus', '/propose'],
+      }));
+    }
+
+    if (url === '/health') {
+      const status = node ? node.getStatus() : {};
+      const peers = node ? node.getConnectedPeers() : [];
+      res.writeHead(200);
+      return res.end(JSON.stringify({
+        status: 'healthy',
+        nodeId,
+        uptime: Date.now() - startTime,
+        peers: peers.length,
+        state: node?.state || 'OFFLINE',
+        phi: { maxConfidence: PHI_INV },
+      }));
+    }
+
+    if (url === '/status') {
+      const status = node ? node.getStatus() : {};
+      res.writeHead(200);
+      return res.end(JSON.stringify({
+        nodeId,
+        uptime: Date.now() - startTime,
+        ...status,
+      }));
+    }
+
+    if (url === '/peers') {
+      const peers = node ? node.getConnectedPeers() : [];
+      res.writeHead(200);
+      return res.end(JSON.stringify({
+        count: peers.length,
+        peers: peers.map(p => ({ id: p.slice(0, 24) + '...' })),
+      }));
+    }
+
+    if (url === '/consensus') {
+      const status = node ? node.getStatus() : {};
+      res.writeHead(200);
+      return res.end(JSON.stringify({
+        consensus: status.consensus || null,
+      }));
+    }
+
+    if (url === '/propose' && req.method === 'POST') {
+      if (!node || !node.isParticipating) {
+        res.writeHead(503);
+        return res.end(JSON.stringify({
+          error: 'Node not participating in consensus',
+          state: node?.state || 'OFFLINE',
+        }));
+      }
+
+      try {
+        const testBlock = {
+          type: 'JUDGMENT',
+          slot: 0, // Will be set by consensus
+          timestamp: Date.now(),
+          previous_hash: '0'.repeat(64),
+          proposer: keypair.publicKey,
+          judgments: [{
+            id: `jdg_test_${Date.now()}`,
+            itemHash: `item_${Date.now()}`,
+            globalScore: Math.round(50 + Math.random() * 50),
+            verdict: 'WAG',
+          }],
+          merkle_root: '0'.repeat(64),
+        };
+        testBlock.hash = hashBlock(testBlock);
+
+        const record = node.proposeBlock(testBlock);
+
+        res.writeHead(200);
+        return res.end(JSON.stringify({
+          success: !!record,
+          blockHash: testBlock.hash,
+          validators: node.getValidatorCount(),
+        }));
+      } catch (err) {
+        res.writeHead(500);
+        return res.end(JSON.stringify({ error: err.message }));
+      }
+    }
+
+    res.writeHead(404);
+    res.end(JSON.stringify({ error: 'Not Found', path: url }));
+  };
+
+  // Create CYNICNetworkNode — replaces manual transport/gossip/consensus creation
+  node = new CYNICNetworkNode({
+    publicKey: keypair.publicKey,
+    privateKey: keypair.privateKey,
+    port,
+    host,
+    httpHandler,
+    seedNodes: peerAddresses.map(a => a.startsWith('ws') ? a : `wss://${a}`),
+    eScore: 50,
+    anchoringEnabled: options.anchor || false,
+    anchorInterval: options.anchorInterval ? parseInt(options.anchorInterval) : undefined,
+  });
+
+  // Wire event logging
+  node.on('peer:connected', ({ peerId, publicKey, address }) => {
+    const id = (publicKey || peerId || '').slice(0, 12);
+    console.log(chalk.green('  [PEER] ') + `Connected: ${chalk.cyan(id)}...`);
+  });
+
+  node.on('peer:disconnected', ({ peerId, code, reason }) => {
+    const id = (peerId || '').slice(0, 12);
+    console.log(chalk.red('  [PEER] ') + `Disconnected: ${chalk.gray(id)}... code=${code} reason=${reason || 'none'}`);
+  });
+
+  node.on('peer:error', ({ error }) => {
+    console.log(chalk.red('  [ERR]  ') + error.message);
+  });
+
+  node.on('block:finalized', ({ blockHash }) => {
+    console.log(chalk.green('  [FIN]  ') + `Block finalized: ${chalk.cyan(blockHash.slice(0, 16))}...`);
+  });
+
+  if (verbose) {
+    node.on('block:produced', ({ block }) => {
+      console.log(chalk.yellow('  [PROP] ') + `Block produced: ${chalk.cyan(block?.hash?.slice(0, 16) || '?')}...`);
+    });
+
+    node.on('consensus:started', ({ slot }) => {
+      console.log(chalk.blue('  [CONS] ') + `Consensus started at slot ${slot}`);
+    });
+
+    node.on('heartbeat:received', ({ nodeId: hbNodeId, eScore }) => {
+      console.log(chalk.gray('  [HB]   ') + `from ${hbNodeId?.slice(0, 8)} eScore=${eScore}`);
+    });
+  }
+
+  // Start the node
+  try {
+    await node.start();
+    console.log(chalk.green('  [OK]   ') + `Server listening on ${chalk.bold(`${host}:${port}`)}`);
+    console.log(chalk.green('  [OK]   ') + `CYNICNetworkNode started (Phase 2: full features)`);
+  } catch (err) {
+    console.error(chalk.red('  [FAIL] ') + `Could not start node: ${err.message}`);
+    process.exit(1);
+  }
+
+  // Connect to initial peers (beyond seed nodes which discovery handles)
   if (peerAddresses.length > 0) {
     console.log(chalk.gray('\n  Connecting to peers...'));
     for (const address of peerAddresses) {
       try {
-        const wsAddress = address.startsWith('ws') ? address : `ws://${address}`;
-        const peerId = `peer_${Date.now()}`;
-        await transport.connect({
-          id: peerId,
-          address: wsAddress,
-        });
-        // Track for auto-reconnect
-        requiredPeers.add(wsAddress);
+        const wsAddress = address.startsWith('ws') ? address : `wss://${address}`;
+        await node.connectToPeer({ id: `peer_${Date.now()}`, address: wsAddress });
         console.log(chalk.green('  [OK]   ') + `Connected to ${chalk.cyan(address)}`);
       } catch (err) {
         console.log(chalk.red('  [FAIL] ') + `Could not connect to ${address}: ${err.message}`);
-        // Still track for auto-reconnect (peer may come up later)
-        const wsAddress = address.startsWith('ws') ? address : `ws://${address}`;
-        requiredPeers.add(wsAddress);
       }
     }
   }
 
-  // Track start time
-  const startTime = Date.now();
+  // Track required peers for auto-reconnect (normalized addresses)
+  const requiredPeers = new Set();
+  for (const address of peerAddresses) {
+    requiredPeers.add(address.startsWith('ws') ? address : `wss://${address}`);
+  }
 
-  // Daemon mode: keep alive without interactive REPL
+  // Daemon mode
   if (options.daemon) {
     console.log(chalk.green('\n  [OK]   ') + `Running in daemon mode (no interactive REPL)`);
     console.log(chalk.gray('  ─────────────────────────────────────────────────\n'));
 
-    // Keep process alive - the server event loop handles everything
-    // Log heartbeat every φ minutes (61.8 seconds) in verbose mode
+    // Verbose heartbeat logging
     if (verbose) {
       setInterval(() => {
-        const stats = transport.getStats();
-        const gossipStats = gossip.getStats();
-        const uptime = Date.now() - startTime;
+        const info = node.getInfo();
+        const status = node.getStatus();
+        const peers = node.getConnectedPeers();
         console.log(
           chalk.gray(`  [♥] `) +
-          `uptime=${formatUptime(uptime)} ` +
-          `peers=${stats.connections.connected} ` +
-          `msgs=${stats.messagesSent}/${stats.messagesReceived} ` +
-          `gossip=${gossipStats.active}/${gossipStats.total}`
+          `uptime=${formatUptime(info.uptime)} ` +
+          `state=${info.state} ` +
+          `peers=${peers.length} ` +
+          `eScore=${info.eScore} ` +
+          `blocks=${info.stats.blocksFinalized || 0}`
         );
-      }, 61800); // φ-aligned heartbeat
+      }, 61800);
     }
 
-    // Auto-reconnect loop: check every 30s if specific required peers are missing
-    // Uses address-level tracking to reconnect only to lost peers (not all)
-    // This prevents the duplicate_connection storm while ensuring full mesh
+    // Auto-reconnect loop with FIXED address matching
     if (requiredPeers.size > 0) {
       setInterval(async () => {
+        // Access the underlying transport for address-level connection check
+        const transport = node._transport?.transport;
+        if (!transport) return;
+
         for (const address of requiredPeers) {
-          if (transport.hasConnectionToAddress(address)) continue; // This peer is fine
+          if (transport.hasConnectionToAddress(address)) continue;
+
           try {
-            const peerId = `peer_${Date.now()}`;
-            await transport.connect({ id: peerId, address });
+            await node.connectToPeer({ id: `peer_${Date.now()}`, address });
             console.log(chalk.green('  [RECONN] ') + `Reconnected to ${address}`);
           } catch {
             // Unreachable - will retry next cycle
           }
         }
-      }, 30000); // Check every 30s
+      }, 30000);
     }
   }
 
-  // HTTP API is now served on the same port as WebSocket (via httpHandler)
-  // No separate API server needed
-
+  // Interactive mode
   if (!options.daemon) {
-    // Interactive mode
     console.log(chalk.gray('\n  ─────────────────────────────────────────────────'));
     console.log(chalk.bold('  Commands:'));
     console.log(chalk.gray('    /peers    ') + 'List connected peers');
     console.log(chalk.gray('    /stats    ') + 'Show statistics');
-    console.log(chalk.gray('    /slot     ') + 'Show current slot info');
     console.log(chalk.gray('    /consensus') + 'Show consensus status');
     console.log(chalk.gray('    /connect <addr>  ') + 'Connect to peer');
     console.log(chalk.gray('    /broadcast <msg> ') + 'Broadcast message');
     console.log(chalk.gray('    /quit     ') + 'Shutdown node');
     console.log(chalk.gray('  ─────────────────────────────────────────────────\n'));
 
-    // Setup readline for interactive commands
     const rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout,
@@ -481,7 +359,7 @@ export async function startCommand(options) {
 
         switch (cmd) {
           case 'peers': {
-            const peers = transport.getConnectedPeers();
+            const peers = node.getConnectedPeers();
             console.log(chalk.bold(`\n  Connected Peers (${peers.length}):`));
             if (peers.length === 0) {
               console.log(chalk.gray('    No peers connected'));
@@ -495,43 +373,31 @@ export async function startCommand(options) {
           }
 
           case 'stats': {
-            const stats = transport.getStats();
-            const gossipStats = gossip.getStats();
-            const uptime = Date.now() - startTime;
+            const info = node.getInfo();
+            const status = node.getStatus();
 
             console.log(chalk.bold('\n  Node Statistics:'));
-            console.log(chalk.gray('    Uptime:       ') + formatUptime(uptime));
-            console.log(chalk.gray('    Connections:  ') + `${stats.connections.connected} active, ${stats.connections.connecting} pending`);
-            console.log(chalk.gray('    Messages:     ') + `${stats.messagesSent} sent, ${stats.messagesReceived} received`);
-            console.log(chalk.gray('    Bandwidth:    ') + `${formatBytes(stats.bytesOut)} out, ${formatBytes(stats.bytesIn)} in`);
-            console.log(chalk.gray('    Gossip Peers: ') + `${gossipStats.total} (${gossipStats.active} active)`);
-            console.log();
-            break;
-          }
-
-          case 'slot': {
-            const slotInfo = slotManager.getSlotInfo();
-            console.log(chalk.bold('\n  Slot Information:'));
-            console.log(chalk.gray('    Current Slot:     ') + chalk.yellow(slotInfo.slot));
-            console.log(chalk.gray('    Epoch:            ') + slotInfo.epoch);
-            console.log(chalk.gray('    Slot in Epoch:    ') + `${slotInfo.slotInEpoch}/${slotInfo.slotsPerEpoch}`);
-            console.log(chalk.gray('    Time to Next:     ') + `${slotInfo.msUntilNext}ms`);
+            console.log(chalk.gray('    State:        ') + chalk.yellow(info.state));
+            console.log(chalk.gray('    Uptime:       ') + formatUptime(info.uptime));
+            console.log(chalk.gray('    E-Score:      ') + info.eScore);
+            console.log(chalk.gray('    Peers:        ') + node.getConnectedPeers().length);
+            console.log(chalk.gray('    Blocks:       ') + `${info.stats.blocksProposed} proposed, ${info.stats.blocksFinalized} finalized`);
+            console.log(chalk.gray('    Messages:     ') + `${info.stats.messagesSent} sent, ${info.stats.messagesReceived} received`);
+            if (status.transport?.stats) {
+              console.log(chalk.gray('    Bandwidth:    ') + `${formatBytes(status.transport.stats.bytesOut || 0)} out, ${formatBytes(status.transport.stats.bytesIn || 0)} in`);
+            }
             console.log();
             break;
           }
 
           case 'consensus': {
-            const cStats = consensusGossip.getStats();
-            const cState = consensus.getState();
+            const status = node.getStatus();
+            const cons = status.consensus || {};
             console.log(chalk.bold('\n  Consensus Status:'));
-            console.log(chalk.gray('    State:            ') + chalk.yellow(cState.state));
-            console.log(chalk.gray('    Latest Slot:      ') + cState.latestSlot);
-            console.log(chalk.gray('    Finalized Slot:   ') + cState.finalizedSlot);
-            console.log(chalk.gray('    Pending Blocks:   ') + cState.pendingBlocks);
-            console.log(chalk.bold('  Bridge Statistics:'));
-            console.log(chalk.gray('    Proposals:        ') + `${cStats.proposalsBroadcast} sent, ${cStats.proposalsReceived} received`);
-            console.log(chalk.gray('    Votes:            ') + `${cStats.votesBroadcast} sent, ${cStats.votesReceived} received`);
-            console.log(chalk.gray('    Finality:         ') + `${cStats.finalityBroadcast} sent, ${cStats.finalityReceived} received`);
+            console.log(chalk.gray('    Current Slot:     ') + (cons.currentSlot ?? 'N/A'));
+            console.log(chalk.gray('    Finalized Slot:   ') + (cons.lastFinalizedSlot ?? 'N/A'));
+            console.log(chalk.gray('    Validators:       ') + (cons.validators ?? 'N/A'));
+            console.log(chalk.gray('    Stats:            ') + JSON.stringify(cons.stats || {}).slice(0, 80));
             console.log();
             break;
           }
@@ -540,9 +406,10 @@ export async function startCommand(options) {
             if (args.length === 0) {
               console.log(chalk.red('  Usage: /connect <address>'));
             } else {
-              const address = args[0].startsWith('ws') ? args[0] : `ws://${args[0]}`;
+              const address = args[0].startsWith('ws') ? args[0] : `wss://${args[0]}`;
               try {
-                await transport.connect({ id: `peer_${Date.now()}`, address });
+                await node.connectToPeer({ id: `peer_${Date.now()}`, address });
+                requiredPeers.add(address);
                 console.log(chalk.green('  Connected to ') + chalk.cyan(address));
               } catch (err) {
                 console.log(chalk.red('  Failed: ') + err.message);
@@ -562,8 +429,8 @@ export async function startCommand(options) {
                 verdict: 'WAG',
                 timestamp: Date.now(),
               };
-              const sent = await gossip.broadcastJudgment(judgment);
-              console.log(chalk.green(`  Broadcast to ${sent} peer(s)`));
+              await node.broadcastJudgment(judgment);
+              console.log(chalk.green('  Broadcast sent'));
             }
             break;
           }
@@ -572,8 +439,7 @@ export async function startCommand(options) {
           case 'exit':
           case 'q': {
             console.log(chalk.yellow('\n  Shutting down...'));
-            consensusGossip.stop();
-            await transport.stopServer();
+            await node.stop();
             console.log(chalk.green('  Goodbye!\n'));
             process.exit(0);
             break;
@@ -591,8 +457,7 @@ export async function startCommand(options) {
 
     rl.on('close', async () => {
       console.log(chalk.yellow('\n  Shutting down...'));
-      consensusGossip.stop();
-      await transport.stopServer();
+      await node.stop();
       process.exit(0);
     });
   }
@@ -600,14 +465,12 @@ export async function startCommand(options) {
   // Graceful shutdown
   process.on('SIGINT', async () => {
     console.log(chalk.yellow('\n  Received SIGINT, shutting down...'));
-    consensusGossip.stop();
-    await transport.stopServer();
+    await node.stop();
     process.exit(0);
   });
 
   process.on('SIGTERM', async () => {
-    consensusGossip.stop();
-    await transport.stopServer();
+    await node.stop();
     process.exit(0);
   });
 }

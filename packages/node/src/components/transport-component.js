@@ -61,6 +61,7 @@ export class TransportComponent extends EventEmitter {
         publicKey: this._publicKey,
         privateKey: this._privateKey,
         ssl: this._config.ssl,
+        httpHandler: options.httpHandler || null,
       });
     }
 
