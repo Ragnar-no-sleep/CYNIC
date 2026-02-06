@@ -9,7 +9,7 @@
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { CYNICNetworkNode, NetworkState } from '../src/network/network-node.js';
-import { generateKeyPair } from '@cynic/protocol';
+import { generateKeypair } from '@cynic/identity';
 
 // Skip in CI or when P2P tests not enabled
 const runP2PTests = process.env.CYNIC_P2P_TESTS === 'true';
@@ -22,7 +22,7 @@ describe.skipIf(!runP2PTests)('Multi-Node Integration', () => {
    * Create a test node with unique keys and port
    */
   function createTestNode(index, seedNodes = []) {
-    const keys = generateKeyPair();
+    const keys = generateKeypair();
     return new CYNICNetworkNode({
       publicKey: keys.publicKey,
       privateKey: keys.privateKey,

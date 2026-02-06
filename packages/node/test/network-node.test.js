@@ -6,7 +6,7 @@
  * Tests multi-node orchestration.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { CYNICNetworkNode, NetworkState } from '../src/network/network-node.js';
 
 // Mock crypto for key generation
@@ -223,5 +223,84 @@ describe('NetworkState', () => {
     expect(NetworkState.ONLINE).toBe('ONLINE');
     expect(NetworkState.PARTICIPATING).toBe('PARTICIPATING');
     expect(NetworkState.ERROR).toBe('ERROR');
+  });
+});
+
+describe('State Sync', () => {
+  let node;
+
+  beforeEach(() => {
+    node = new CYNICNetworkNode({
+      publicKey: 'test-public-key-0123456789abcdef',
+      privateKey: 'test-private-key-0123456789abcdef',
+      enabled: false,
+    });
+  });
+
+  afterEach(async () => {
+    if (node) {
+      await node.stop();
+    }
+  });
+
+  it('tracks peer slots from heartbeats', async () => {
+    // Simulate receiving a heartbeat
+    const heartbeat = {
+      type: 'HEARTBEAT',
+      nodeId: 'peer-node-id',
+      eScore: 75,
+      slot: 100,
+      finalizedSlot: 95,
+      state: 'PARTICIPATING',
+      timestamp: Date.now(),
+    };
+
+    // Access the private method directly for testing
+    await node._handleHeartbeat(heartbeat, 'peer-id-123');
+
+    // Check that peer slot is tracked
+    const peerInfo = node._peerSlots.get('peer-id-123');
+    expect(peerInfo).toBeDefined();
+    expect(peerInfo.finalizedSlot).toBe(95);
+    expect(peerInfo.eScore).toBe(75);
+  });
+
+  it('calculates behindBy correctly', async () => {
+    // Simulate multiple peer heartbeats
+    await node._handleHeartbeat({
+      type: 'HEARTBEAT',
+      finalizedSlot: 100,
+      eScore: 50,
+    }, 'peer-1');
+
+    await node._handleHeartbeat({
+      type: 'HEARTBEAT',
+      finalizedSlot: 150,
+      eScore: 60,
+    }, 'peer-2');
+
+    // Run sync check (node starts at slot 0)
+    node._checkStateSync();
+
+    // Should be behind by the highest peer slot
+    expect(node._syncState.behindBy).toBe(150);
+  });
+
+  it('emits sync:needed when significantly behind', async () => {
+    const events = [];
+    node.on('sync:needed', (e) => events.push(e));
+
+    // Simulate peer far ahead
+    await node._handleHeartbeat({
+      type: 'HEARTBEAT',
+      finalizedSlot: 100, // >10 slots ahead
+      eScore: 50,
+    }, 'peer-1');
+
+    node._checkStateSync();
+
+    expect(events.length).toBe(1);
+    expect(events[0].behindBy).toBe(100);
+    expect(events[0].bestPeer).toBe('peer-1');
   });
 });

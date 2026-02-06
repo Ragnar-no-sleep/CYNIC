@@ -97,7 +97,12 @@ export class CYNICNetworkNode extends EventEmitter {
       lastSyncSlot: 0,
       syncing: false,
       behindBy: 0,
+      syncInProgress: false,
+      lastSyncAttempt: 0,
     };
+
+    // Track peer finalized slots (from heartbeats)
+    this._peerSlots = new Map(); // peerId → { finalizedSlot, lastSeen }
 
     // Stats
     this._stats = {
@@ -418,16 +423,76 @@ export class CYNICNetworkNode extends EventEmitter {
    * @private
    */
   _checkStateSync() {
-    // Compare our finalized slot with network
-    const ourSlot = this._consensus.lastFinalizedSlot;
-
-    // TODO: Compare with peers' reported slots from heartbeats
-    // For now, just track our progress
+    const ourSlot = this._consensus?.lastFinalizedSlot || 0;
     this._syncState.lastSyncSlot = ourSlot;
 
-    if (this._syncState.behindBy > 10 && this._state !== NetworkState.SYNCING) {
-      this._state = NetworkState.SYNCING;
-      this.emit('sync:needed', { behindBy: this._syncState.behindBy });
+    // Find the highest finalized slot among peers
+    let highestPeerSlot = ourSlot;
+    let bestPeer = null;
+
+    for (const [peerId, peerInfo] of this._peerSlots) {
+      // Only consider recent heartbeats (within 60s)
+      if (Date.now() - peerInfo.lastSeen < 60000) {
+        if (peerInfo.finalizedSlot > highestPeerSlot) {
+          highestPeerSlot = peerInfo.finalizedSlot;
+          bestPeer = peerId;
+        }
+      }
+    }
+
+    // Calculate how far behind we are
+    this._syncState.behindBy = highestPeerSlot - ourSlot;
+
+    // If we're significantly behind (>10 slots), start syncing
+    if (this._syncState.behindBy > 10 && !this._syncState.syncInProgress) {
+      if (this._state !== NetworkState.SYNCING) {
+        this._state = NetworkState.SYNCING;
+        log.info('Node is behind network', { ourSlot, highestPeerSlot, behindBy: this._syncState.behindBy });
+      }
+
+      // Request state sync from the best peer
+      if (bestPeer) {
+        this._requestStateSync(bestPeer, ourSlot);
+      }
+
+      this.emit('sync:needed', { behindBy: this._syncState.behindBy, bestPeer });
+    } else if (this._syncState.behindBy <= 10 && this._state === NetworkState.SYNCING) {
+      // We've caught up
+      this._state = NetworkState.ONLINE;
+      this._syncState.syncInProgress = false;
+      log.info('Sync complete - caught up with network', { slot: ourSlot });
+      this.emit('sync:complete', { slot: ourSlot });
+    }
+  }
+
+  /**
+   * Request state sync from a peer
+   * @private
+   * @param {string} peerId - Peer to request from
+   * @param {number} fromSlot - Slot to start sync from
+   */
+  async _requestStateSync(peerId, fromSlot) {
+    // Debounce sync requests (min 5s between attempts)
+    if (Date.now() - this._syncState.lastSyncAttempt < 5000) {
+      return;
+    }
+
+    this._syncState.syncInProgress = true;
+    this._syncState.lastSyncAttempt = Date.now();
+
+    log.info('Requesting state sync', { peerId: peerId.slice(0, 16), fromSlot });
+
+    try {
+      await this._transport.sendTo(peerId, {
+        type: 'STATE_REQUEST',
+        fromSlot,
+        nodeId: this._publicKey.slice(0, 32),
+        timestamp: Date.now(),
+      });
+      this._stats.messagesSent++;
+    } catch (error) {
+      log.warn('State sync request failed', { peerId: peerId.slice(0, 16), error: error.message });
+      this._syncState.syncInProgress = false;
     }
   }
 
@@ -484,6 +549,10 @@ export class CYNICNetworkNode extends EventEmitter {
         await this._handleStateResponse(message, peerId);
         break;
 
+      case 'BLOCK_REQUEST':
+        await this._handleBlockRequest(message, peerId);
+        break;
+
       case 'VALIDATOR_UPDATE':
         await this._handleValidatorUpdate(message, peerId);
         break;
@@ -501,20 +570,32 @@ export class CYNICNetworkNode extends EventEmitter {
    * @private
    */
   async _handleHeartbeat(message, peerId) {
-    const { eScore, slot, finalizedSlot, state } = message;
+    const { eScore, slot, finalizedSlot, state, nodeId } = message;
 
-    // Update peer's E-Score
-    if (eScore) {
+    // Track peer's finalized slot
+    this._peerSlots.set(peerId, {
+      finalizedSlot: finalizedSlot || 0,
+      slot: slot || 0,
+      state: state || 'UNKNOWN',
+      eScore: eScore || 50,
+      lastSeen: Date.now(),
+    });
+
+    // Update peer's E-Score in consensus
+    if (eScore && this._consensus) {
       this._consensus.registerValidator({
         publicKey: peerId,
         eScore,
       });
     }
 
-    // Check if we're behind
-    if (finalizedSlot > this._consensus.lastFinalizedSlot) {
-      this._syncState.behindBy = finalizedSlot - this._consensus.lastFinalizedSlot;
-    }
+    // Emit for monitoring
+    this.emit('heartbeat:received', {
+      peerId,
+      nodeId,
+      finalizedSlot,
+      eScore,
+    });
   }
 
   /**
@@ -539,15 +620,56 @@ export class CYNICNetworkNode extends EventEmitter {
    * @private
    */
   async _handleStateResponse(message, peerId) {
-    const { finalizedSlot } = message;
+    const { finalizedSlot, blocks, stateRoot } = message;
+    const ourSlot = this._consensus.lastFinalizedSlot;
 
-    // Use this to sync up if we're behind
-    if (finalizedSlot > this._consensus.lastFinalizedSlot) {
-      // TODO: Request missing blocks
-      log.info('State response indicates we are behind', {
-        our: this._consensus.lastFinalizedSlot,
-        theirs: finalizedSlot,
+    this._syncState.syncInProgress = false;
+
+    // If they have blocks we need
+    if (finalizedSlot > ourSlot && blocks && blocks.length > 0) {
+      log.info('Received state sync response', {
+        ourSlot,
+        theirSlot: finalizedSlot,
+        blocksReceived: blocks.length,
       });
+
+      // Process received blocks
+      let processedCount = 0;
+      for (const block of blocks) {
+        try {
+          // Verify and apply block
+          if (block.slot > ourSlot) {
+            // In a real implementation, we'd validate and apply each block
+            // For now, just count them
+            processedCount++;
+          }
+        } catch (error) {
+          log.warn('Failed to process sync block', { slot: block.slot, error: error.message });
+        }
+      }
+
+      this.emit('sync:blocks_received', {
+        fromPeer: peerId,
+        blocksReceived: blocks.length,
+        blocksProcessed: processedCount,
+      });
+    } else if (finalizedSlot > ourSlot) {
+      // They're ahead but didn't send blocks - request them
+      log.info('Peer is ahead but no blocks received, requesting blocks', {
+        ourSlot,
+        theirSlot: finalizedSlot,
+      });
+
+      await this._transport.sendTo(peerId, {
+        type: 'BLOCK_REQUEST',
+        fromSlot: ourSlot + 1,
+        toSlot: finalizedSlot,
+        nodeId: this._publicKey.slice(0, 32),
+        timestamp: Date.now(),
+      });
+      this._stats.messagesSent++;
+    } else {
+      log.debug('State response - we are caught up', { ourSlot, theirSlot: finalizedSlot });
     }
   }
 
@@ -563,6 +685,40 @@ export class CYNICNetworkNode extends EventEmitter {
     } else if (action === 'REMOVE' && validator?.publicKey) {
       this._consensus.removeValidator(validator.publicKey);
     }
+  }
+
+  /**
+   * Handle block request from peer (for sync)
+   * @private
+   */
+  async _handleBlockRequest(message, peerId) {
+    const { fromSlot, toSlot } = message;
+
+    log.info('Block request received', { fromPeer: peerId.slice(0, 16), fromSlot, toSlot });
+
+    // TODO: In a real implementation, we'd retrieve blocks from storage
+    // For now, send an empty response acknowledging the request
+    const blocks = [];
+
+    // Would be something like:
+    // const blocks = await this._storage.getBlocks(fromSlot, toSlot);
+
+    await this._transport.sendTo(peerId, {
+      type: 'STATE_RESPONSE',
+      fromSlot,
+      finalizedSlot: this._consensus.lastFinalizedSlot,
+      blocks,
+      stateRoot: null, // Would be computed from state
+      timestamp: Date.now(),
+    });
+    this._stats.messagesSent++;
+
+    this.emit('sync:blocks_sent', {
+      toPeer: peerId,
+      fromSlot,
+      toSlot,
+      blocksSent: blocks.length,
+    });
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
