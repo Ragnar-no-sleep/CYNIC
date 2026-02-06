@@ -92,6 +92,7 @@ export class WebSocketTransport extends EventEmitter {
 
     // Connections: peerId -> { ws, state, queue, reconnectAttempts, address }
     this.connections = new Map();
+    this._stopped = false;
 
     // Address to peerId mapping
     this.addressToPeer = new Map();
@@ -200,6 +201,7 @@ export class WebSocketTransport extends EventEmitter {
    * @returns {Promise<void>}
    */
   async stopServer() {
+    this._stopped = true;
     this._stopHeartbeat();
 
     // Close all connections
@@ -569,10 +571,11 @@ export class WebSocketTransport extends EventEmitter {
     }
 
     // Auto-reconnect for outbound connections only if:
-    // 1. It was an outbound connection (we initiated it)
-    // 2. Close code wasn't 1000 (normal close)
-    // 3. Connection wasn't intentionally closed (duplicate detection, shutdown, etc.)
-    if (conn.isOutbound && code !== 1000 && !wasIntentionallyClosed) {
+    // 1. Server is not stopped
+    // 2. It was an outbound connection (we initiated it)
+    // 3. Close code wasn't 1000 (normal close)
+    // 4. Connection wasn't intentionally closed (duplicate detection, shutdown, etc.)
+    if (!this._stopped && conn.isOutbound && code !== 1000 && !wasIntentionallyClosed) {
       this._scheduleReconnect(conn);
     } else {
       // Clean up connection
@@ -594,6 +597,9 @@ export class WebSocketTransport extends EventEmitter {
    * @private
    */
   _scheduleReconnect(conn) {
+    // Don't reconnect if server is stopped
+    if (this._stopped) return;
+
     conn.state = ConnectionState.RECONNECTING;
     conn.reconnectAttempts++;
 
@@ -610,7 +616,7 @@ export class WebSocketTransport extends EventEmitter {
     });
 
     setTimeout(() => {
-      if (conn.state === ConnectionState.RECONNECTING) {
+      if (!this._stopped && conn.state === ConnectionState.RECONNECTING) {
         this._connectToPeer(conn).catch(() => {
           // Will retry via disconnect handler
         });
