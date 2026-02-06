@@ -93,6 +93,7 @@ export class WebSocketTransport extends EventEmitter {
     // Connections: peerId -> { ws, state, queue, reconnectAttempts, address }
     this.connections = new Map();
     this._stopped = false;
+    this._reconnectTimers = new Set();
 
     // Address to peerId mapping
     this.addressToPeer = new Map();
@@ -204,6 +205,12 @@ export class WebSocketTransport extends EventEmitter {
     this._stopped = true;
     this._stopHeartbeat();
 
+    // Cancel all pending reconnect timers
+    for (const timer of this._reconnectTimers) {
+      clearTimeout(timer);
+    }
+    this._reconnectTimers.clear();
+
     // Close all connections
     for (const [peerId, conn] of this.connections) {
       this._closeConnection(peerId, 'server_shutdown');
@@ -291,6 +298,8 @@ export class WebSocketTransport extends EventEmitter {
    * @private
    */
   _connectToPeer(conn) {
+    if (this._stopped) return Promise.resolve();
+
     return new Promise((resolve, reject) => {
       const wsUrl = conn.address.startsWith('ws')
         ? conn.address
@@ -615,13 +624,15 @@ export class WebSocketTransport extends EventEmitter {
       delayMs: delay,
     });
 
-    setTimeout(() => {
+    const timer = setTimeout(() => {
+      this._reconnectTimers.delete(timer);
       if (!this._stopped && conn.state === ConnectionState.RECONNECTING) {
         this._connectToPeer(conn).catch(() => {
           // Will retry via disconnect handler
         });
       }
     }, delay);
+    this._reconnectTimers.add(timer);
   }
 
   /**
