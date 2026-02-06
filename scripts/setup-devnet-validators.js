@@ -1,13 +1,12 @@
 #!/usr/bin/env node
 /**
- * Setup Devnet Validators
+ * Setup Devnet Validators - Generate, Airdrop, Register On-Chain
  *
- * Generates 5 Solana keypairs, airdrops SOL, registers on-chain.
- * Idempotent - safe to run multiple times.
+ * Idempotent: skips already-registered validators, reuses existing keypair files.
  *
- * Usage: node scripts/setup-devnet-validators.js
+ * Usage: node scripts/setup-devnet-validators.js [count=5]
  *
- * "The pack registers on-chain" - κυνικός
+ * "The pack hunts together"
  */
 
 import { existsSync, mkdirSync } from 'fs';
@@ -25,18 +24,18 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const ROOT = join(__dirname, '..');
 
-const VALIDATOR_COUNT = 5;
+const VALIDATOR_COUNT = parseInt(process.argv[2] || '5', 10);
 const VALIDATORS_DIR = join(ROOT, 'validators');
 const AUTHORITY_PATH = join(ROOT, 'deploy-wallet.json');
-const AIRDROP_SOL = 1;
-const AIRDROP_LAMPORTS = AIRDROP_SOL * 1_000_000_000;
-const RPC_URL = process.env.HELIUS_RPC || SolanaCluster.DEVNET;
+const AIRDROP_LAMPORTS = 1_000_000_000; // 1 SOL
+const AIRDROP_DELAY_MS = 2000; // Devnet rate-limit buffer
 
 async function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((r) => setTimeout(r, ms));
 }
 
-async function airdropWithRetry(connection, pubkey, lamports, maxRetries = 3) {
+async function airdropWithRetry(connection, PublicKeyClass, pubkeyBase58, lamports, maxRetries = 3) {
+  const pubkey = new PublicKeyClass(pubkeyBase58);
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       const sig = await connection.requestAirdrop(pubkey, lamports);
@@ -44,175 +43,135 @@ async function airdropWithRetry(connection, pubkey, lamports, maxRetries = 3) {
       return sig;
     } catch (err) {
       if (attempt === maxRetries) throw err;
-      const delay = 2000 * attempt; // linear backoff
-      console.log(`    Airdrop attempt ${attempt} failed, retrying in ${delay / 1000}s...`);
+      const delay = AIRDROP_DELAY_MS * Math.pow(2, attempt - 1);
+      console.log(`  Airdrop attempt ${attempt} failed, retrying in ${delay}ms...`);
       await sleep(delay);
     }
   }
 }
 
 async function main() {
-  console.log('═══════════════════════════════════════════════════════════');
-  console.log('  CYNIC Multi-Validator Devnet Setup');
-  console.log('  "The pack registers on-chain"');
-  console.log('═══════════════════════════════════════════════════════════\n');
+  console.log('═══════════════════════════════════════════════════');
+  console.log('   CYNIC Devnet Validator Setup');
+  console.log(`   Registering ${VALIDATOR_COUNT} validators on Solana devnet`);
+  console.log('═══════════════════════════════════════════════════\n');
 
-  // ── Check authority wallet ─────────────────────────────────────────────
+  // 1. Check authority wallet
   if (!existsSync(AUTHORITY_PATH)) {
-    console.error('ERROR: deploy-wallet.json not found at:', AUTHORITY_PATH);
-    console.error('');
-    console.error('Generate one with:');
-    console.error('  solana-keygen new --outfile deploy-wallet.json');
-    console.error('  solana airdrop 2 --keypair deploy-wallet.json --url devnet');
+    console.error('ERROR: deploy-wallet.json not found.');
+    console.error('Create one with: solana-keygen new -o deploy-wallet.json');
     process.exit(1);
   }
 
   const authorityWallet = loadWalletFromFile(AUTHORITY_PATH);
   console.log('Authority:', authorityWallet.publicKey);
-  console.log('RPC:      ', RPC_URL);
-  console.log('');
 
-  // ── Create program client ──────────────────────────────────────────────
+  // 2. Create program client (authority signs add_validator TXs)
   const client = new CynicProgramClient({
-    cluster: RPC_URL,
+    cluster: SolanaCluster.DEVNET,
     wallet: authorityWallet,
   });
 
-  // Verify program is initialized
+  // 3. Check program state
   const state = await client.getState();
   if (!state) {
-    console.error('ERROR: CYNIC program not initialized on-chain.');
+    console.error('ERROR: CYNIC program not initialized on devnet.');
     console.error('Run: node scripts/initialize.js');
     process.exit(1);
   }
-  console.log('On-chain state:');
-  console.log('  Authority:      ', state.authority);
-  console.log('  Validator count:', state.validatorCount);
-  console.log('  Root count:     ', state.rootCount);
-  console.log('');
+  console.log(`On-chain state: ${state.validatorCount} validators registered`);
+  console.log();
 
-  // ── Generate / load validator keypairs ──────────────────────────────────
+  // 4. Lazy-load @solana/web3.js for airdrop
+  const { Connection, PublicKey } = await import('@solana/web3.js');
+  const connection = new Connection(SolanaCluster.DEVNET, 'confirmed');
+
+  // 5. Ensure validators/ directory
   if (!existsSync(VALIDATORS_DIR)) {
     mkdirSync(VALIDATORS_DIR, { recursive: true });
+    console.log('Created validators/ directory');
   }
 
-  const validators = [];
-
-  console.log('── VALIDATOR KEYPAIRS ──────────────────────────────────────\n');
+  // 6. Generate or load keypairs, airdrop, register
+  const wallets = [];
 
   for (let i = 0; i < VALIDATOR_COUNT; i++) {
-    const path = join(VALIDATORS_DIR, `validator-${i}.json`);
-
+    const keypairPath = join(VALIDATORS_DIR, `validator-${i}.json`);
     let wallet;
-    if (existsSync(path)) {
-      wallet = loadWalletFromFile(path);
-      console.log(`  [${i}] Loaded existing:  ${wallet.publicKey}`);
+
+    console.log(`── Validator ${i} ──────────────────────────────────`);
+
+    // Generate or load keypair
+    if (existsSync(keypairPath)) {
+      wallet = loadWalletFromFile(keypairPath);
+      console.log(`  Loaded:     ${wallet.publicKey}`);
     } else {
       const { wallet: newWallet, secretKey } = generateWallet();
-      saveWalletToFile(secretKey, path);
+      saveWalletToFile(secretKey, keypairPath);
       wallet = newWallet;
-      console.log(`  [${i}] Generated new:    ${wallet.publicKey}`);
+      console.log(`  Generated:  ${wallet.publicKey}`);
     }
+    wallets.push(wallet);
 
-    validators.push({ index: i, wallet, path });
-  }
-  console.log('');
-
-  // ── Airdrop SOL ────────────────────────────────────────────────────────
-  console.log('── AIRDROP ────────────────────────────────────────────────\n');
-
-  // Lazy-load @solana/web3.js for airdrop (ProgramClient handles its own)
-  const { Connection, PublicKey } = await import('@solana/web3.js');
-  const connection = new Connection(RPC_URL, 'confirmed');
-
-  for (const { index, wallet } of validators) {
+    // Check balance and airdrop if needed
     const pubkey = new PublicKey(wallet.publicKey);
     const balance = await connection.getBalance(pubkey);
-    const balanceSol = balance / 1_000_000_000;
+    const balanceSol = balance / 1e9;
 
-    if (balanceSol >= 0.5) {
-      console.log(`  [${index}] Balance: ${balanceSol.toFixed(3)} SOL (sufficient)`);
-      continue;
-    }
-
-    try {
-      console.log(`  [${index}] Airdropping ${AIRDROP_SOL} SOL...`);
-      await airdropWithRetry(connection, pubkey, AIRDROP_LAMPORTS);
-      const newBalance = await connection.getBalance(pubkey);
-      console.log(`  [${index}] Balance: ${(newBalance / 1_000_000_000).toFixed(3)} SOL`);
-    } catch (err) {
-      console.error(`  [${index}] Airdrop failed: ${err.message}`);
-      console.error('         (Devnet may be rate-limiting. Try again later.)');
-    }
-
-    // Rate limit: 2s between airdrops
-    await sleep(2000);
-  }
-  console.log('');
-
-  // ── Register validators on-chain ──────────────────────────────────────
-  console.log('── ON-CHAIN REGISTRATION ──────────────────────────────────\n');
-
-  let registered = 0;
-  let skipped = 0;
-  let failed = 0;
-
-  for (const { index, wallet } of validators) {
-    const pubkey = wallet.publicKey;
-
-    // Idempotent: skip if already registered
-    const alreadyRegistered = await client.isValidator(pubkey);
-    if (alreadyRegistered) {
-      console.log(`  [${index}] Already registered: ${pubkey.slice(0, 20)}...`);
-      skipped++;
-      continue;
-    }
-
-    try {
-      console.log(`  [${index}] Registering: ${pubkey.slice(0, 20)}...`);
-      const { signature } = await client.addValidator(pubkey);
-      console.log(`  [${index}] TX: ${signature.slice(0, 32)}...`);
-      registered++;
-    } catch (err) {
-      console.error(`  [${index}] Registration FAILED: ${err.message}`);
-      if (err.logs) {
-        err.logs.forEach(log => console.error(`         ${log}`));
+    if (balanceSol < 0.5) {
+      console.log(`  Balance:    ${balanceSol.toFixed(4)} SOL (low, requesting airdrop...)`);
+      try {
+        const sig = await airdropWithRetry(connection, PublicKey, wallet.publicKey, AIRDROP_LAMPORTS);
+        const newBalance = await connection.getBalance(pubkey);
+        console.log(`  Airdrop:    +1 SOL (now ${(newBalance / 1e9).toFixed(4)} SOL)`);
+        console.log(`  Airdrop TX: ${sig}`);
+      } catch (err) {
+        console.log(`  Airdrop:    FAILED (${err.message}) — may need manual funding`);
       }
-      failed++;
+      await sleep(AIRDROP_DELAY_MS);
+    } else {
+      console.log(`  Balance:    ${balanceSol.toFixed(4)} SOL (sufficient)`);
     }
 
-    // Small delay between TXs
-    await sleep(500);
+    // Register on-chain if not already
+    const alreadyRegistered = await client.isValidator(wallet.publicKey);
+    if (alreadyRegistered) {
+      console.log(`  On-chain:   Already registered`);
+    } else {
+      try {
+        const { signature } = await client.addValidator(wallet.publicKey);
+        console.log(`  Registered: TX ${signature}`);
+      } catch (err) {
+        console.error(`  Register:   FAILED — ${err.message}`);
+        if (err.logs) {
+          err.logs.forEach((l) => console.error(`    ${l}`));
+        }
+      }
+    }
+    console.log();
   }
-  console.log('');
 
-  // ── Verify final state ────────────────────────────────────────────────
-  console.log('── VERIFICATION ───────────────────────────────────────────\n');
-
+  // 7. Verify final state
+  console.log('── Verification ──────────────────────────────────');
   const finalState = await client.getState();
-  console.log('  Validator count:', finalState.validatorCount);
-  console.log('  Validators:');
-  for (let i = 0; i < finalState.validators.length; i++) {
-    console.log(`    [${i}] ${finalState.validators[i]}`);
+  console.log(`  Validators on-chain: ${finalState.validatorCount}`);
+  for (const v of finalState.validators) {
+    const match = wallets.find((w) => w.publicKey === v);
+    console.log(`    ${v}${match ? '' : ' (external)'}`);
   }
-  console.log('');
+  console.log();
 
-  // ── Summary ───────────────────────────────────────────────────────────
-  const success = finalState.validatorCount >= VALIDATOR_COUNT;
-
-  console.log('═══════════════════════════════════════════════════════════');
-  console.log(`  ${success ? 'SETUP COMPLETE' : 'SETUP PARTIAL'}`);
-  console.log(`  Registered: ${registered} new, ${skipped} existed, ${failed} failed`);
-  console.log(`  On-chain:   ${finalState.validatorCount} / ${VALIDATOR_COUNT} validators`);
-  console.log('═══════════════════════════════════════════════════════════\n');
-
-  if (!success) {
-    console.error('WARNING: Not all validators registered. Check errors above.');
-    process.exit(1);
+  const registered = wallets.filter((w) => finalState.validators.includes(w.publicKey)).length;
+  if (registered === VALIDATOR_COUNT) {
+    console.log(`All ${VALIDATOR_COUNT} validators registered on devnet.`);
+  } else {
+    console.log(`${registered}/${VALIDATOR_COUNT} validators registered. Check errors above.`);
   }
+
+  console.log('\nSetup complete.');
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error('Fatal error:', err);
   process.exit(1);
 });

@@ -571,6 +571,7 @@ async function handleAnchorFailed(event, blockStore) {
  * @param {Object} options.repositories - Pre-created repositories (or will be created from persistence)
  * @param {Object} [options.sharedMemory] - SharedMemory instance
  * @param {Function} [options.saveState] - saveState function from collective-singleton
+ * @param {Object} [options.judge] - CYNICJudge instance (for feeding feedback back to Bayesian trackers)
  * @param {string} [options.sessionId] - Current session ID
  * @param {string} [options.userId] - Current user ID
  * @returns {Object} Control object with wireFeedbackProcessor and stop functions
@@ -590,6 +591,7 @@ export function startEventListeners(options = {}) {
     repositories: providedRepos,
     sharedMemory,
     saveState,
+    judge,
     sessionId,
     userId,
     blockStore,
@@ -650,11 +652,14 @@ export function startEventListeners(options = {}) {
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Wire USER_FEEDBACK events (from hook feedback)
+  // WS1: Close the feedback loop — feedback now feeds BACK to Judge's Bayesian trackers
   // ─────────────────────────────────────────────────────────────────────────────
   const unsubUserFeedback = globalEventBus.subscribe(
     EventType.USER_FEEDBACK,
     (event) => {
       const feedbackData = event.payload || {};
+
+      // 1. Persist feedback to DB (existing behavior)
       handleFeedbackProcessed(
         { scoreDelta: feedbackData.scoreDelta || 0 },
         repositories,
@@ -663,6 +668,32 @@ export function startEventListeners(options = {}) {
       ).catch((err) => {
         log.error('User feedback handler threw unexpectedly', { error: err.message });
       });
+
+      // 2. WS1: Feed back to Judge's Bayesian trackers
+      // This closes the loop: Judge → Judgment → Feedback → Judge learns
+      if (judge?.recordFeedback) {
+        try {
+          judge.recordFeedback({
+            judgment: {
+              id: feedbackData.judgmentId,
+              item: feedbackData.item || { type: feedbackData.itemType || 'unknown' },
+              dimensions: feedbackData.dimensions,
+              dimensionScores: feedbackData.dimensionScores,
+              qScore: feedbackData.qScore,
+              global_score: feedbackData.qScore,
+            },
+            outcome: feedbackData.outcome || 'partial',
+            actualScore: feedbackData.actualScore,
+            dimensions: feedbackData.dimensionCorrections,
+          });
+          log.debug('Feedback fed to Judge Bayesian trackers', {
+            judgmentId: feedbackData.judgmentId,
+            outcome: feedbackData.outcome,
+          });
+        } catch (err) {
+          log.debug('Judge.recordFeedback failed (non-blocking)', { error: err.message });
+        }
+      }
     }
   );
   _unsubscribers.push(unsubUserFeedback);
