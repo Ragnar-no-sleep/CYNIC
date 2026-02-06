@@ -20,7 +20,7 @@
 
 'use strict';
 
-import { describe, it, beforeEach } from 'node:test';
+import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'events';
 import { SolanaAnchoringManager } from '../src/network/solana-anchoring.js';
@@ -30,6 +30,10 @@ describe('SolanaAnchoringManager - Deep Tests', () => {
 
   beforeEach(() => {
     manager = null;
+  });
+
+  afterEach(() => {
+    if (manager) manager.cleanup();
   });
 
   // ==================== 1. Constructor & defaults (~4) ====================
