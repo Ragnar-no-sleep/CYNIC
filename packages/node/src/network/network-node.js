@@ -229,9 +229,9 @@ export class CYNICNetworkNode extends EventEmitter {
     }
 
     // BlockProducer events
-    for (const event of ['block:produced']) {
-      this._blockProducer.on(event, (data) => this.emit(event, data));
-    }
+    this._blockProducer.on('block:produced', (data) => this.emit('block:produced', data));
+    this._blockProducer.on('started', (data) => this.emit('blockProducer:started', data));
+    this._blockProducer.on('stopped', (data) => this.emit('blockProducer:stopped', data));
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

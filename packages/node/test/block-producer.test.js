@@ -417,8 +417,8 @@ describe('BlockProducer', () => {
     it('syncs validators on new epoch', () => {
       producer = new BlockProducer({ publicKey: mockPublicKey });
       const mockGetValidators = vi.fn(() => [
-        { publicKey: 'val-1' },
-        { publicKey: 'val-2' },
+        { publicKey: 'val-1', eScore: 60, burned: 0, uptime: 1.0 },
+        { publicKey: 'val-2', eScore: 80, burned: 99, uptime: 0.9 },
       ]);
       producer.wire({ getValidators: mockGetValidators });
       producer.start();
@@ -430,6 +430,101 @@ describe('BlockProducer', () => {
 
       // Called once on start() and once on epoch boundary
       expect(mockGetValidators).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('_syncValidators (format conversion)', () => {
+    it('converts ValidatorManager format to SlotManager {id, weight} format', () => {
+      producer = new BlockProducer({ publicKey: mockPublicKey });
+      producer.wire({
+        getValidators: () => [
+          { publicKey: 'val-1', eScore: 60, burned: 0, uptime: 1.0 },
+          { publicKey: 'val-2', eScore: 80, burned: 99, uptime: 0.9 },
+        ],
+      });
+
+      const spy = vi.spyOn(producer._slotManager, 'setValidators');
+      producer._syncValidators();
+
+      expect(spy).toHaveBeenCalledTimes(1);
+      const validators = spy.mock.calls[0][0];
+
+      // val-1: 60 * sqrt(1) * 1.0 = 60
+      expect(validators[0]).toEqual({ id: 'val-1', weight: 60 });
+      // val-2: 80 * sqrt(100) * 0.9 = 80 * 10 * 0.9 = 720
+      expect(validators[1]).toEqual({ id: 'val-2', weight: 720 });
+    });
+
+    it('adds self to validator set if not present', () => {
+      producer = new BlockProducer({ publicKey: mockPublicKey });
+      producer.wire({
+        getValidators: () => [
+          { publicKey: 'other-validator', eScore: 50, burned: 0, uptime: 1.0 },
+        ],
+      });
+
+      const spy = vi.spyOn(producer._slotManager, 'setValidators');
+      producer._syncValidators();
+
+      const validators = spy.mock.calls[0][0];
+      expect(validators.length).toBe(2);
+      expect(validators.find(v => v.id === mockPublicKey)).toBeDefined();
+      expect(validators.find(v => v.id === mockPublicKey).weight).toBe(50);
+    });
+
+    it('does not duplicate self if already in validator set', () => {
+      producer = new BlockProducer({ publicKey: mockPublicKey });
+      producer.wire({
+        getValidators: () => [
+          { publicKey: mockPublicKey, eScore: 75, burned: 0, uptime: 1.0 },
+        ],
+      });
+
+      const spy = vi.spyOn(producer._slotManager, 'setValidators');
+      producer._syncValidators();
+
+      const validators = spy.mock.calls[0][0];
+      expect(validators.length).toBe(1);
+      expect(validators[0].id).toBe(mockPublicKey);
+    });
+
+    it('handles empty validator set (adds self only)', () => {
+      producer = new BlockProducer({ publicKey: mockPublicKey });
+      producer.wire({ getValidators: () => [] });
+
+      const spy = vi.spyOn(producer._slotManager, 'setValidators');
+      producer._syncValidators();
+
+      const validators = spy.mock.calls[0][0];
+      expect(validators.length).toBe(1);
+      expect(validators[0].id).toBe(mockPublicKey);
+    });
+
+    it('handles null getValidators gracefully', () => {
+      producer = new BlockProducer({ publicKey: mockPublicKey });
+      // No getValidators wired
+
+      const spy = vi.spyOn(producer._slotManager, 'setValidators');
+      producer._syncValidators();
+
+      const validators = spy.mock.calls[0][0];
+      expect(validators.length).toBe(1); // Just self
+    });
+
+    it('defaults missing burned/uptime fields', () => {
+      producer = new BlockProducer({ publicKey: mockPublicKey });
+      producer.wire({
+        getValidators: () => [
+          { publicKey: 'val-1', eScore: 50 }, // No burned/uptime
+        ],
+      });
+
+      const spy = vi.spyOn(producer._slotManager, 'setValidators');
+      producer._syncValidators();
+
+      const validators = spy.mock.calls[0][0];
+      // weight = 50 * sqrt(0+1) * 1.0 = 50
+      expect(validators[0].weight).toBe(50);
     });
   });
 

@@ -59,7 +59,7 @@ export class BlockProducer extends EventEmitter {
    * Wire external dependencies
    * @param {Object} deps
    * @param {Function} deps.proposeBlock - (block) => record
-   * @param {Function} deps.getValidators - () => Array<{publicKey}>
+   * @param {Function} deps.getValidators - () => Array<{publicKey, eScore, burned, uptime}>
    */
   wire({ proposeBlock, getValidators }) {
     if (proposeBlock) this._proposeBlock = proposeBlock;
@@ -178,14 +178,19 @@ export class BlockProducer extends EventEmitter {
    */
   _syncValidators() {
     const validators = this._getValidators?.() || [];
-    const validatorKeys = validators.map(v => v.publicKey);
+
+    // Convert ValidatorManager format → SlotManager format {id, weight}
+    const slotValidators = validators.map(v => ({
+      id: v.publicKey,
+      weight: v.eScore * Math.sqrt((v.burned || 0) + 1) * (v.uptime || 1.0),
+    }));
 
     // Ensure self is always in the validator set
-    if (!validatorKeys.includes(this._publicKey)) {
-      validatorKeys.push(this._publicKey);
+    if (!slotValidators.find(v => v.id === this._publicKey)) {
+      slotValidators.push({ id: this._publicKey, weight: 50 });
     }
 
-    this._slotManager.setValidators(validatorKeys);
+    this._slotManager.setValidators(slotValidators);
   }
 
   /**
