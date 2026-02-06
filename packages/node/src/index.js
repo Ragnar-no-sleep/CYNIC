@@ -166,6 +166,7 @@ export {
   startEventListeners,
   stopEventListeners,
   getListenerStats,
+  cleanupOldEventData,
 } from './collective-singleton.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════

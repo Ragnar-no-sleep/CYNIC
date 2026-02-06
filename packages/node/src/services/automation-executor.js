@@ -533,11 +533,30 @@ export class AutomationExecutor {
         // Function may not exist
       }
 
+      // AXE 2+: Cleanup dog_events and collective_snapshots tables
+      // These grow fast and need periodic cleanup (7 days for events, 3 days for snapshots)
+      let dogEventsDeleted = 0;
+      let snapshotsDeleted = 0;
+      try {
+        const dogResult = await this.pool.query(
+          `DELETE FROM dog_events WHERE created_at < NOW() - INTERVAL '7 days' RETURNING id`
+        );
+        dogEventsDeleted = dogResult?.rowCount || 0;
+
+        const snapResult = await this.pool.query(
+          `DELETE FROM collective_snapshots WHERE created_at < NOW() - INTERVAL '3 days' RETURNING id`
+        );
+        snapshotsDeleted = snapResult?.rowCount || 0;
+      } catch (e) {
+        // Tables may not exist yet
+        log.trace('Event data cleanup skipped', { error: e.message });
+      }
+
       this.stats.cleanupRuns++;
       this.stats.lastCleanup = Date.now();
 
-      if (eventsDeleted > 0) {
-        log.debug('Cleanup completed', { eventsDeleted });
+      if (eventsDeleted > 0 || dogEventsDeleted > 0 || snapshotsDeleted > 0) {
+        log.debug('Cleanup completed', { eventsDeleted, dogEventsDeleted, snapshotsDeleted });
       }
     } catch (err) {
       this.stats.errors++;

@@ -708,9 +708,70 @@ export function getListenerStats() {
   return { ..._stats, running: _started };
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// CLEANUP (AXE 2+: Prevent table bloat)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Clean up old event data from dog_events and collective_snapshots tables.
+ * These tables grow fast and need periodic cleanup.
+ *
+ * Default retention: 7 days for dog_events, 3 days for snapshots.
+ *
+ * @param {Object} persistence - PersistenceManager instance
+ * @param {Object} [options] - Cleanup options
+ * @param {number} [options.dogEventsRetentionDays=7] - Days to retain dog events
+ * @param {number} [options.snapshotsRetentionDays=3] - Days to retain snapshots
+ * @returns {Promise<{dogEventsDeleted: number, snapshotsDeleted: number}>}
+ */
+export async function cleanupOldEventData(persistence, options = {}) {
+  const {
+    dogEventsRetentionDays = 7,
+    snapshotsRetentionDays = 3,
+  } = options;
+
+  const result = {
+    dogEventsDeleted: 0,
+    snapshotsDeleted: 0,
+  };
+
+  if (!persistence?.query) {
+    log.debug('Cleanup skipped - no persistence query available');
+    return result;
+  }
+
+  try {
+    // Clean up old dog_events
+    const dogEventsResult = await persistence.query(
+      `DELETE FROM dog_events WHERE created_at < NOW() - INTERVAL '${dogEventsRetentionDays} days' RETURNING id`
+    );
+    result.dogEventsDeleted = dogEventsResult?.rowCount || 0;
+
+    // Clean up old collective_snapshots
+    const snapshotsResult = await persistence.query(
+      `DELETE FROM collective_snapshots WHERE created_at < NOW() - INTERVAL '${snapshotsRetentionDays} days' RETURNING id`
+    );
+    result.snapshotsDeleted = snapshotsResult?.rowCount || 0;
+
+    if (result.dogEventsDeleted > 0 || result.snapshotsDeleted > 0) {
+      log.info('Event data cleanup complete', {
+        dogEventsDeleted: result.dogEventsDeleted,
+        snapshotsDeleted: result.snapshotsDeleted,
+        dogEventsRetentionDays,
+        snapshotsRetentionDays,
+      });
+    }
+  } catch (err) {
+    log.warn('Event data cleanup failed', { error: err.message });
+  }
+
+  return result;
+}
+
 export default {
   startEventListeners,
   stopEventListeners,
   isRunning,
   getListenerStats,
+  cleanupOldEventData,
 };

@@ -36,7 +36,7 @@ import { getHumanLearning } from './symbiosis/human-learning.js';
 import { getHumanAccountant } from './symbiosis/human-accountant.js';
 import { getHumanEmergence } from './symbiosis/human-emergence.js';
 import { wireAmbientConsensus } from './agents/collective/ambient-consensus.js';
-import { startEventListeners, stopEventListeners } from './services/event-listeners.js';
+import { startEventListeners, stopEventListeners, cleanupOldEventData } from './services/event-listeners.js';
 
 const log = createLogger('CollectiveSingleton');
 
@@ -654,8 +654,19 @@ async function _initializeBackground(persistence) {
  * @returns {Promise<CollectivePack>} The singleton CollectivePack instance
  */
 export async function getCollectivePackAsync(options = {}) {
-  // If already initialized, return immediately
+  // If already initialized but persistence provided and event listeners not started,
+  // start them now (fixes the case where constructor called without persistence first)
   if (_globalPack) {
+    if (options.persistence && !_eventListeners) {
+      _eventListeners = startEventListeners({
+        persistence: options.persistence,
+        sharedMemory: _sharedMemory,
+        saveState,
+        sessionId: options.sessionId,
+        userId: options.userId,
+      });
+      log.info('EventListeners started on subsequent call with persistence (AXE 2 fix)');
+    }
     return _globalPack;
   }
 
@@ -1202,7 +1213,7 @@ export function _resetForTesting() {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // AXE 2: Re-export event listener functions for external use
-export { startEventListeners, stopEventListeners } from './services/event-listeners.js';
+export { startEventListeners, stopEventListeners, cleanupOldEventData } from './services/event-listeners.js';
 export { getListenerStats } from './services/event-listeners.js';
 
 export default {
@@ -1220,4 +1231,5 @@ export default {
   // AXE 2: Event listeners
   startEventListeners,
   stopEventListeners,
+  cleanupOldEventData,
 };
