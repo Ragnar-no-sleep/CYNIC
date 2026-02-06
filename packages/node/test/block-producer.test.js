@@ -10,6 +10,7 @@ import { describe, it, beforeEach, afterEach, mock } from 'node:test';
 import assert from 'node:assert';
 import { BlockProducer } from '../src/network/block-producer.js';
 import { globalEventBus, EventType } from '@cynic/core';
+import { calculateVoteWeight } from '@cynic/protocol';
 
 const mockPublicKey = 'test-producer-key-0123456789abcdef';
 
@@ -450,10 +451,12 @@ describe('BlockProducer', () => {
       assert.strictEqual(spy.mock.callCount(), 1);
       const validators = spy.mock.calls[0].arguments[0];
 
-      // val-1: 60 * sqrt(1) * 1.0 = 60
-      assert.deepStrictEqual(validators[0], { id: 'val-1', weight: 60 });
-      // val-2: 80 * sqrt(100) * 0.9 = 80 * 10 * 0.9 = 720
-      assert.deepStrictEqual(validators[1], { id: 'val-2', weight: 720 });
+      // val-1: eScore=60, burned=0, uptime=1.0 → 60 * max(log_φ(1),1) * 1.0 = 60
+      const expectedW1 = calculateVoteWeight({ eScore: 60, burned: 0, uptime: 1.0 });
+      assert.deepStrictEqual(validators[0], { id: 'val-1', weight: expectedW1 });
+      // val-2: eScore=80, burned=99, uptime=0.9 → protocol formula (log_φ)
+      const expectedW2 = calculateVoteWeight({ eScore: 80, burned: 99, uptime: 0.9 });
+      assert.deepStrictEqual(validators[1], { id: 'val-2', weight: expectedW2 });
     });
 
     it('adds self to validator set if not present', () => {
@@ -524,8 +527,9 @@ describe('BlockProducer', () => {
       producer._syncValidators();
 
       const validators = spy.mock.calls[0].arguments[0];
-      // weight = 50 * sqrt(0+1) * 1.0 = 50
-      assert.strictEqual(validators[0].weight, 50);
+      // weight = 50 * max(log_φ(0+1), 1) * 1.0 = 50 * 1 * 1 = 50
+      const expectedWeight = calculateVoteWeight({ eScore: 50, burned: 0, uptime: 1.0 });
+      assert.strictEqual(validators[0].weight, expectedWeight);
     });
   });
 

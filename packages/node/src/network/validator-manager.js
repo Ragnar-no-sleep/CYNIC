@@ -15,6 +15,7 @@
 
 import { EventEmitter } from 'events';
 import { createLogger } from '@cynic/core';
+import { calculateVoteWeight } from '@cynic/protocol';
 
 const log = createLogger('ValidatorManager');
 
@@ -52,6 +53,7 @@ export class ValidatorManager extends EventEmitter {
     this._selfPublicKey = options.selfPublicKey;
     this._config = { ...DEFAULT_CONFIG, ...options.config };
     this._validators = new Map(); // publicKey -> ValidatorInfo
+    this._eScoreProvider = options.eScoreProvider || null;
 
     this._stats = {
       validatorsAdded: 0,
@@ -63,6 +65,9 @@ export class ValidatorManager extends EventEmitter {
     this._syncToConsensus = null;
     this._removeFromConsensus = null;
   }
+
+  /** @param {Function} fn - (publicKey) => number|null */
+  set eScoreProvider(fn) { this._eScoreProvider = fn; }
 
   /**
    * Wire consensus callbacks
@@ -300,6 +305,45 @@ export class ValidatorManager extends EventEmitter {
   }
 
   /**
+   * Refresh E-Scores from the provider for all active validators
+   * @returns {number} Number of validators updated
+   */
+  refreshEScores() {
+    if (!this._eScoreProvider) return 0;
+
+    let updated = 0;
+    for (const [publicKey, validator] of this._validators) {
+      if (validator.status !== 'active') continue;
+
+      try {
+        const newScore = this._eScoreProvider(publicKey);
+        if (newScore != null && newScore !== validator.eScore) {
+          const oldScore = validator.eScore;
+          validator.eScore = newScore;
+          updated++;
+
+          if (validator.eScore < this._config.minEScore) {
+            this.removeValidator(publicKey, 'escore_below_minimum');
+            continue;
+          }
+
+          this._syncToConsensus?.({
+            publicKey,
+            eScore: validator.eScore,
+            burned: validator.burned,
+            uptime: validator.uptime,
+          });
+
+          this.emit('validator:escore_updated', { publicKey, oldScore, newScore });
+        }
+      } catch (err) {
+        log.warn('eScoreProvider error', { publicKey: publicKey.slice(0, 16), error: err.message });
+      }
+    }
+    return updated;
+  }
+
+  /**
    * Evict the lowest E-Score validator to make room
    * @private
    * @param {number} newEScore - Incoming validator's E-Score
@@ -389,16 +433,32 @@ export class ValidatorManager extends EventEmitter {
 
   /**
    * Calculate total voting weight for φ-BFT consensus
+   * Uses protocol-aligned formula: eScore × max(log_φ(burned+1), 1) × uptime
    * @returns {number}
    */
   getTotalVotingWeight() {
     let total = 0;
     for (const validator of this._validators.values()) {
       if (validator.status === 'active') {
-        total += validator.eScore * Math.sqrt(validator.burned + 1) * validator.uptime;
+        total += calculateVoteWeight({
+          eScore: validator.eScore,
+          burned: validator.burned,
+          uptime: validator.uptime,
+        });
       }
     }
     return total;
+  }
+
+  /**
+   * Get voting weight for a specific validator
+   * @param {string} publicKey
+   * @returns {number} Weight (0 if not found or not active)
+   */
+  getValidatorWeight(publicKey) {
+    const v = this._validators.get(publicKey);
+    if (!v || v.status !== 'active') return 0;
+    return calculateVoteWeight({ eScore: v.eScore, burned: v.burned, uptime: v.uptime });
   }
 
   /**

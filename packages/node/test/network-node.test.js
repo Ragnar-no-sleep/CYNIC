@@ -9,6 +9,7 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
 import { CYNICNetworkNode, NetworkState } from '../src/network/network-node.js';
+import { calculateVoteWeight } from '@cynic/protocol';
 
 // Mock crypto for key generation
 const mockPublicKey = 'test-public-key-0123456789abcdef';
@@ -339,14 +340,15 @@ describe('Validator Set Management', () => {
 
   it('calculates total voting weight', () => {
     node.addValidator({ publicKey: 'v1', eScore: 50, burned: 0 });
-    node.addValidator({ publicKey: 'v2', eScore: 100, burned: 99 }); // sqrt(100) = 10
+    node.addValidator({ publicKey: 'v2', eScore: 100, burned: 99 });
 
     const weight = node.getTotalVotingWeight();
 
-    // v1: 50 * 1 * 1 = 50
-    // v2: 100 * 10 * 1 = 1000
-    // Total: 1050
-    assert.strictEqual(weight, 1050);
+    // Uses protocol formula: eScore × max(log_φ(burned+1), 1) × uptime
+    const expected =
+      calculateVoteWeight({ eScore: 50, burned: 0, uptime: 1 }) +
+      calculateVoteWeight({ eScore: 100, burned: 99, uptime: 1 });
+    assert.ok(Math.abs(weight - expected) < 0.001);
   });
 
   it('checks supermajority correctly (61.8%)', () => {

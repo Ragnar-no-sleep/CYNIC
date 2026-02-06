@@ -16,7 +16,7 @@
 import crypto from 'crypto';
 import { EventEmitter } from 'events';
 import { createLogger, globalEventBus, EventType } from '@cynic/core';
-import { SlotManager } from '@cynic/protocol';
+import { SlotManager, calculateVoteWeight } from '@cynic/protocol';
 
 const log = createLogger('BlockProducer');
 
@@ -182,7 +182,7 @@ export class BlockProducer extends EventEmitter {
     // Convert ValidatorManager format → SlotManager format {id, weight}
     const slotValidators = validators.map(v => ({
       id: v.publicKey,
-      weight: v.eScore * Math.sqrt((v.burned || 0) + 1) * (v.uptime || 1.0),
+      weight: calculateVoteWeight({ eScore: v.eScore, burned: v.burned || 0, uptime: v.uptime || 1.0 }),
     }));
 
     // Ensure self is always in the validator set

@@ -100,7 +100,10 @@ export class CYNICNetworkNode extends EventEmitter {
 
     // Extracted SRP components (always created)
     this._forkDetector = new ForkDetector();
-    this._validatorManager = new ValidatorManager({ selfPublicKey: this._publicKey });
+    this._validatorManager = new ValidatorManager({
+      selfPublicKey: this._publicKey,
+      eScoreProvider: options.eScoreProvider || null,
+    });
     this._anchoringManager = new SolanaAnchoringManager({
       enabled: options.anchoringEnabled ?? false,
       cluster: options.solanaCluster || 'devnet',
@@ -213,7 +216,7 @@ export class CYNICNetworkNode extends EventEmitter {
 
     // ValidatorManager events
     for (const event of ['validator:added', 'validator:updated', 'validator:removed',
-      'validator:penalized', 'validator:rewarded', 'validator:inactive']) {
+      'validator:penalized', 'validator:rewarded', 'validator:inactive', 'validator:escore_updated']) {
       this._validatorManager.on(event, (data) => this.emit(event, data));
     }
 
@@ -443,6 +446,9 @@ export class CYNICNetworkNode extends EventEmitter {
     }
 
     this._validatorManager.applyPenaltyDecay();
+
+    // Refresh E-Scores from provider
+    this._validatorManager.refreshEScores();
   }
 
   /** @private */
