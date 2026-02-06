@@ -406,25 +406,19 @@ export async function startCommand(options) {
       }, 61800); // φ-aligned heartbeat
     }
 
-    // Auto-reconnect loop: check required peers every 30s
+    // Auto-reconnect loop: try all required peers every 30s
+    // Always attempts all peers - transport rejects duplicates with "already connected"
+    // This handles the case where we have enough total peers but lost a specific required one
+    // (e.g., after rolling deploys where connections shift to different peers)
     if (requiredPeers.size > 0) {
       setInterval(async () => {
-        const stats = transport.getStats();
-        const connectedCount = stats.connections.connected;
-
-        // If we have fewer connections than required peers, try to reconnect
-        if (connectedCount < requiredPeers.size) {
-          for (const address of requiredPeers) {
-            try {
-              const peerId = `peer_${Date.now()}`;
-              await transport.connect({ id: peerId, address });
-              console.log(chalk.green('  [RECONN] ') + `Reconnected to ${address}`);
-            } catch (err) {
-              // Already connected or failed - either way, continue
-              if (!err.message.includes('already')) {
-                console.log(chalk.yellow('  [RECONN] ') + `${address}: ${err.message}`);
-              }
-            }
+        for (const address of requiredPeers) {
+          try {
+            const peerId = `peer_${Date.now()}`;
+            await transport.connect({ id: peerId, address });
+            console.log(chalk.green('  [RECONN] ') + `Reconnected to ${address}`);
+          } catch {
+            // Already connected or unreachable - either way, continue
           }
         }
       }, 30000); // Check every 30s
