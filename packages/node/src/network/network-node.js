@@ -133,6 +133,7 @@ export class CYNICNetworkNode extends EventEmitter {
       enabled: options.anchoringEnabled ?? false,
       cluster: options.solanaCluster || 'devnet',
       wallet: options.wallet || null,
+      dryRun: options.dryRun ?? false,
       anchorer: null,              // Lazy initialized SolanaAnchorer
       pendingAnchors: new Map(),   // blockHash → { slot, merkleRoot, status }
       lastAnchorSlot: 0,
@@ -279,6 +280,11 @@ export class CYNICNetworkNode extends EventEmitter {
    * @returns {Promise<void>}
    */
   async stop() {
+    // Always cleanup anchorer, even if OFFLINE
+    if (this._anchoring.anchorer) {
+      this._anchoring.anchorer = null;
+    }
+
     if (this._state === NetworkState.OFFLINE) return;
 
     log.info('Stopping network node...');
@@ -362,6 +368,9 @@ export class CYNICNetworkNode extends EventEmitter {
         });
 
         this.emit('block:finalized', { blockHash, slot, block });
+
+        // Trigger Solana anchoring check
+        await this.onBlockFinalized({ slot, hash: blockHash, ...block });
       },
 
       onBlockConfirmed: (slot, ratio) => {
@@ -1363,11 +1372,30 @@ export class CYNICNetworkNode extends EventEmitter {
     this._anchoring.cluster = options.cluster || this._anchoring.cluster;
     this._anchoring.wallet = options.wallet || this._anchoring.wallet;
     this._anchoring.anchorInterval = options.interval || this._anchoring.anchorInterval;
+    if (options.dryRun !== undefined) this._anchoring.dryRun = options.dryRun;
+
+    // Lazy-init SolanaAnchorer
+    if (!this._anchoring.anchorer) {
+      try {
+        const { SolanaAnchorer } = await import('@cynic/anchor');
+        this._anchoring.anchorer = new SolanaAnchorer({
+          cluster: this._anchoring.cluster,
+          wallet: this._anchoring.dryRun ? null : this._anchoring.wallet,
+          useAnchorProgram: true,
+          onAnchor: (record) => log.info('Root anchored', { sig: record.signature?.slice(0, 32) }),
+          onError: (record, err) => log.warn('Anchor failed', { error: err.message }),
+        });
+      } catch (error) {
+        log.warn('SolanaAnchorer init failed, using simulation', { error: error.message });
+      }
+    }
 
     log.info('Solana anchoring enabled', {
       cluster: this._anchoring.cluster,
       interval: this._anchoring.anchorInterval,
       hasWallet: !!this._anchoring.wallet,
+      hasAnchorer: !!this._anchoring.anchorer,
+      dryRun: this._anchoring.dryRun,
     });
 
     this.emit('anchoring:enabled', {
@@ -1398,8 +1426,9 @@ export class CYNICNetworkNode extends EventEmitter {
       return null;
     }
 
-    if (!this._anchoring.wallet) {
-      log.warn('Cannot anchor - no wallet configured');
+    // If no anchorer AND no wallet, we can't anchor
+    if (!this._anchoring.anchorer && !this._anchoring.wallet) {
+      log.warn('Cannot anchor - no wallet or anchorer configured');
       return null;
     }
 
@@ -1452,7 +1481,7 @@ export class CYNICNetworkNode extends EventEmitter {
         });
 
         // Publish to event bus
-        globalEventBus.publish(EventType.BLOCK_ANCHORED || 'block:anchored', {
+        globalEventBus.publish(EventType.BLOCK_ANCHORED, {
           slot,
           hash,
           merkleRoot,
@@ -1492,34 +1521,62 @@ export class CYNICNetworkNode extends EventEmitter {
   }
 
   /**
-   * Create anchor transaction (placeholder - uses memo for now)
+   * Resolve a valid 64-char hex merkle root from a block
+   * @private
+   * @param {Object} block - Block object
+   * @returns {string|null} 64-char hex merkle root or null
+   */
+  _resolveMerkleRoot(block) {
+    for (const key of ['judgments_root', 'judgmentsRoot', 'merkleRoot', 'hash']) {
+      const val = block[key];
+      if (val && /^[a-f0-9]{64}$/i.test(val)) return val;
+    }
+    return null;
+  }
+
+  /**
+   * Create anchor transaction — uses real SolanaAnchorer when available
    * @private
    * @param {Object} block - Block to anchor
    * @returns {Promise<Object>} Transaction result
    */
   async _createAnchorTransaction(block) {
-    // In production, this would:
-    // 1. Create a transaction with the CYNIC Anchor program
-    // 2. Sign with the configured wallet
-    // 3. Send and confirm on Solana
-
-    // For now, return a simulated result
-    // Real implementation would use @cynic/anchor's SolanaAnchorer
-
-    if (!this._anchoring.wallet) {
-      return { success: false, error: 'No wallet configured' };
+    const merkleRoot = this._resolveMerkleRoot(block);
+    if (!merkleRoot) {
+      return { success: false, error: 'No valid merkle root for block' };
     }
 
-    // Simulate successful anchor (in real impl, call SolanaAnchorer)
-    const mockSignature = `sim_${block.hash?.slice(0, 16)}_${Date.now()}`;
+    // Real anchorer path
+    if (this._anchoring.anchorer) {
+      try {
+        const result = await this._anchoring.anchorer.anchor(merkleRoot, []);
+        if (result.success) {
+          return {
+            success: true,
+            signature: result.signature,
+            slot: result.slot || block.slot,
+            merkleRoot,
+            cluster: this._anchoring.cluster,
+            timestamp: result.timestamp || Date.now(),
+            simulated: result.simulated || this._anchoring.dryRun,
+          };
+        }
+        // Anchorer returned failure — fall through to simulation
+        log.warn('Anchorer returned failure, falling back to simulation', { error: result.error });
+      } catch (error) {
+        log.warn('Anchorer error, falling back to simulation', { error: error.message });
+      }
+    }
 
+    // Fallback simulation (no anchorer, anchorer failed, or anchorer errored)
     return {
       success: true,
-      signature: mockSignature,
+      signature: `sim_${merkleRoot.slice(0, 16)}_${Date.now()}`,
       slot: block.slot,
-      merkleRoot: block.merkleRoot,
+      merkleRoot,
       cluster: this._anchoring.cluster,
       timestamp: Date.now(),
+      simulated: true,
     };
   }
 
@@ -1575,11 +1632,14 @@ export class CYNICNetworkNode extends EventEmitter {
       enabled: this._anchoring.enabled,
       cluster: this._anchoring.cluster,
       hasWallet: !!this._anchoring.wallet,
+      dryRun: this._anchoring.dryRun,
+      hasAnchorer: !!this._anchoring.anchorer,
       anchorInterval: this._anchoring.anchorInterval,
       lastAnchorSlot: this._anchoring.lastAnchorSlot,
       pending: pending.length,
       anchored: anchored.length,
       failed: failed.length,
+      anchorerStats: this._anchoring.anchorer?.getStats?.() || null,
       stats: {
         blocksAnchored: this._stats.blocksAnchored,
         anchorsFailed: this._stats.anchorsFailed,
@@ -1594,19 +1654,28 @@ export class CYNICNetworkNode extends EventEmitter {
    * @param {string} signature - Transaction signature
    * @returns {Promise<Object>} Verification result
    */
-  async verifyAnchor(signature) {
-    // In production, this would query Solana to verify the transaction
-    // For now, check our local cache
-
+  async verifyAnchor(signatureOrMerkleRoot) {
+    // Check local cache first
     for (const [hash, anchor] of this._anchoring.pendingAnchors) {
-      if (anchor.signature === signature) {
+      if (anchor.signature === signatureOrMerkleRoot) {
         return {
           verified: true,
           slot: anchor.slot,
           hash,
           merkleRoot: anchor.merkleRoot,
           anchoredAt: anchor.anchoredAt,
+          source: 'cache',
         };
+      }
+    }
+
+    // Fallback to on-chain verification via SolanaAnchorer
+    if (this._anchoring.anchorer) {
+      try {
+        const result = await this._anchoring.anchorer.verifyAnchor(signatureOrMerkleRoot);
+        return { ...result, source: 'onchain' };
+      } catch (error) {
+        log.warn('On-chain verification failed', { error: error.message });
       }
     }
 

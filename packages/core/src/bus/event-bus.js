@@ -72,6 +72,7 @@ export const EventType = {
   NODE_STOPPED: 'node:stopped',
   BLOCK_FINALIZED: 'block:finalized',
   BLOCK_PROPOSED: 'block:proposed',
+  BLOCK_ANCHORED: 'block:anchored',
   METRICS_REPORTED: 'metrics:reported',
   PEER_CONNECTED: 'peer:connected',
   PEER_DISCONNECTED: 'peer:disconnected',

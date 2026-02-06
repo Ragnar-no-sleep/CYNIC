@@ -542,6 +542,10 @@ describe('State Sync', () => {
   });
 });
 
+// Valid 64-char hex merkle root for anchoring tests
+const validMerkleRoot = 'a'.repeat(64);
+const validMerkleRoot2 = 'b'.repeat(64);
+
 describe('Solana Anchoring', () => {
   let node;
 
@@ -567,26 +571,28 @@ describe('Solana Anchoring', () => {
     expect(status.enabled).toBe(false);
     expect(status.cluster).toBe('devnet');
     expect(status.anchorInterval).toBe(100);
+    expect(status.dryRun).toBe(false);
+    expect(status.hasAnchorer).toBe(false);
   });
 
-  it('enables anchoring', () => {
-    node.enableAnchoring({ wallet: 'mock-wallet-keypair' });
+  it('enables anchoring', async () => {
+    await node.enableAnchoring({ wallet: 'mock-wallet-keypair' });
 
     const status = node.getAnchoringStatus();
     expect(status.enabled).toBe(true);
     expect(status.hasWallet).toBe(true);
   });
 
-  it('disables anchoring', () => {
-    node.enableAnchoring({ wallet: 'mock-wallet' });
+  it('disables anchoring', async () => {
+    await node.enableAnchoring({ wallet: 'mock-wallet' });
     expect(node.getAnchoringStatus().enabled).toBe(true);
 
     node.disableAnchoring();
     expect(node.getAnchoringStatus().enabled).toBe(false);
   });
 
-  it('shouldAnchor returns true for slots at interval', () => {
-    node.enableAnchoring({ wallet: 'mock-wallet' });
+  it('shouldAnchor returns true for slots at interval', async () => {
+    await node.enableAnchoring({ wallet: 'mock-wallet' });
 
     // Interval is 100, so slot 100, 200, 300 should anchor
     expect(node.shouldAnchor(100)).toBe(true);
@@ -603,13 +609,13 @@ describe('Solana Anchoring', () => {
     expect(node.shouldAnchor(100)).toBe(false);
   });
 
-  it('anchors block and tracks status', async () => {
-    node.enableAnchoring({ wallet: 'mock-wallet' });
+  it('anchors block and tracks status (fallback simulation)', async () => {
+    await node.enableAnchoring({ wallet: 'mock-wallet' });
 
     const block = {
       slot: 100,
-      hash: 'block-hash-100-abcd1234efgh5678',
-      merkleRoot: 'merkle-root-xyz',
+      hash: validMerkleRoot,
+      merkleRoot: validMerkleRoot,
     };
 
     const events = [];
@@ -619,6 +625,7 @@ describe('Solana Anchoring', () => {
 
     expect(result.success).toBe(true);
     expect(result.signature).toContain('sim_'); // Simulated signature
+    expect(result.simulated).toBe(true);
     expect(events.length).toBe(1);
     expect(events[0].slot).toBe(100);
 
@@ -629,20 +636,37 @@ describe('Solana Anchoring', () => {
     expect(status.stats.blocksAnchored).toBe(1);
   });
 
-  it('returns null when anchoring without wallet', async () => {
-    node.enableAnchoring({}); // No wallet
+  it('returns null when anchoring without wallet or anchorer', async () => {
+    await node.enableAnchoring({}); // No wallet, anchorer init may fail gracefully
 
-    const result = await node.anchorBlock({ slot: 100, hash: 'hash' });
+    // Ensure no anchorer either
+    node._anchoring.anchorer = null;
+
+    const result = await node.anchorBlock({ slot: 100, hash: validMerkleRoot });
 
     expect(result).toBeNull();
   });
 
-  it('tracks pending, anchored, and failed counts', async () => {
-    node.enableAnchoring({ wallet: 'mock-wallet' });
+  it('fails when block has no valid merkle root', async () => {
+    await node.enableAnchoring({ wallet: 'mock-wallet' });
 
-    // Anchor a block
-    await node.anchorBlock({ slot: 100, hash: 'hash-100', merkleRoot: 'root-100' });
-    await node.anchorBlock({ slot: 200, hash: 'hash-200', merkleRoot: 'root-200' });
+    const result = await node.anchorBlock({
+      slot: 100,
+      hash: 'not-a-valid-hex',
+      merkleRoot: 'also-not-valid',
+    });
+
+    // Should fail because no 64-char hex found
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('merkle root');
+  });
+
+  it('tracks pending, anchored, and failed counts', async () => {
+    await node.enableAnchoring({ wallet: 'mock-wallet' });
+
+    // Anchor blocks with valid merkle roots
+    await node.anchorBlock({ slot: 100, hash: validMerkleRoot, merkleRoot: validMerkleRoot });
+    await node.anchorBlock({ slot: 200, hash: validMerkleRoot2, merkleRoot: validMerkleRoot2 });
 
     const status = node.getAnchoringStatus();
     expect(status.anchored).toBe(2);
@@ -650,30 +674,30 @@ describe('Solana Anchoring', () => {
   });
 
   it('getAnchorStatus returns anchor info for hash', async () => {
-    node.enableAnchoring({ wallet: 'mock-wallet' });
+    await node.enableAnchoring({ wallet: 'mock-wallet' });
 
-    const hash = 'unique-block-hash-12345';
-    await node.anchorBlock({ slot: 100, hash, merkleRoot: 'root' });
+    await node.anchorBlock({ slot: 100, hash: validMerkleRoot, merkleRoot: validMerkleRoot });
 
-    const anchorInfo = node.getAnchorStatus(hash);
+    const anchorInfo = node.getAnchorStatus(validMerkleRoot);
     expect(anchorInfo).not.toBeNull();
     expect(anchorInfo.status).toBe('anchored');
     expect(anchorInfo.slot).toBe(100);
   });
 
-  it('verifyAnchor finds signature in cache', async () => {
-    node.enableAnchoring({ wallet: 'mock-wallet' });
+  it('verifyAnchor finds signature in cache with source: cache', async () => {
+    await node.enableAnchoring({ wallet: 'mock-wallet' });
 
     const result = await node.anchorBlock({
       slot: 100,
-      hash: 'hash-for-verify',
-      merkleRoot: 'root',
+      hash: validMerkleRoot,
+      merkleRoot: validMerkleRoot,
     });
 
     const verification = await node.verifyAnchor(result.signature);
     expect(verification.verified).toBe(true);
     expect(verification.slot).toBe(100);
-    expect(verification.hash).toBe('hash-for-verify');
+    expect(verification.hash).toBe(validMerkleRoot);
+    expect(verification.source).toBe('cache');
   });
 
   it('verifyAnchor returns false for unknown signature', async () => {
@@ -683,7 +707,7 @@ describe('Solana Anchoring', () => {
   });
 
   it('onBlockFinalized triggers anchoring when shouldAnchor', async () => {
-    node.enableAnchoring({ wallet: 'mock-wallet' });
+    await node.enableAnchoring({ wallet: 'mock-wallet' });
 
     const events = [];
     node.on('block:anchored', (e) => events.push(e));
@@ -691,8 +715,8 @@ describe('Solana Anchoring', () => {
     // Slot 100 should trigger anchor (interval = 100)
     await node.onBlockFinalized({
       slot: 100,
-      hash: 'finalized-block-hash',
-      merkleRoot: 'merkle-root',
+      hash: validMerkleRoot,
+      merkleRoot: validMerkleRoot,
     });
 
     expect(events.length).toBe(1);
@@ -706,5 +730,112 @@ describe('Solana Anchoring', () => {
     });
 
     expect(node._slotHashes.get(50)?.hash).toBe('block-hash-50');
+  });
+
+  it('dryRun mode creates node without real wallet in anchorer', () => {
+    const dryNode = new CYNICNetworkNode({
+      publicKey: 'test-public-key-0123456789abcdef',
+      privateKey: 'test-private-key-0123456789abcdef',
+      enabled: false,
+      dryRun: true,
+      wallet: 'mock-wallet',
+    });
+
+    expect(dryNode._anchoring.dryRun).toBe(true);
+    expect(dryNode._anchoring.wallet).toBe('mock-wallet');
+
+    const status = dryNode.getAnchoringStatus();
+    expect(status.dryRun).toBe(true);
+  });
+
+  it('cleans up anchorer on stop()', async () => {
+    await node.enableAnchoring({ wallet: 'mock-wallet' });
+
+    // Manually set an anchorer for test purposes
+    node._anchoring.anchorer = { getStats: () => ({}) };
+    expect(node._anchoring.anchorer).not.toBeNull();
+
+    await node.stop();
+
+    expect(node._anchoring.anchorer).toBeNull();
+  });
+
+  it('getAnchoringStatus includes anchorerStats', async () => {
+    await node.enableAnchoring({ wallet: 'mock-wallet' });
+
+    // Without real anchorer, anchorerStats should be null
+    const status = node.getAnchoringStatus();
+    // May or may not have anchorer depending on @cynic/anchor availability
+    if (status.hasAnchorer) {
+      expect(status.anchorerStats).not.toBeNull();
+    } else {
+      expect(status.anchorerStats).toBeNull();
+    }
+  });
+});
+
+describe('_resolveMerkleRoot', () => {
+  let node;
+
+  beforeEach(() => {
+    node = new CYNICNetworkNode({
+      publicKey: 'test-public-key-0123456789abcdef',
+      privateKey: 'test-private-key-0123456789abcdef',
+      enabled: false,
+    });
+  });
+
+  it('resolves judgments_root first (highest priority)', () => {
+    const root = 'a'.repeat(64);
+    const result = node._resolveMerkleRoot({
+      judgments_root: root,
+      merkleRoot: 'b'.repeat(64),
+      hash: 'c'.repeat(64),
+    });
+    expect(result).toBe(root);
+  });
+
+  it('resolves judgmentsRoot second', () => {
+    const root = 'b'.repeat(64);
+    const result = node._resolveMerkleRoot({
+      judgmentsRoot: root,
+      merkleRoot: 'c'.repeat(64),
+      hash: 'd'.repeat(64),
+    });
+    expect(result).toBe(root);
+  });
+
+  it('resolves merkleRoot third', () => {
+    const root = 'c'.repeat(64);
+    const result = node._resolveMerkleRoot({
+      merkleRoot: root,
+      hash: 'd'.repeat(64),
+    });
+    expect(result).toBe(root);
+  });
+
+  it('resolves hash as fallback', () => {
+    const root = 'd'.repeat(64);
+    const result = node._resolveMerkleRoot({ hash: root });
+    expect(result).toBe(root);
+  });
+
+  it('returns null when no valid 64-char hex found', () => {
+    const result = node._resolveMerkleRoot({
+      hash: 'not-hex',
+      merkleRoot: 'too-short',
+    });
+    expect(result).toBeNull();
+  });
+
+  it('returns null for empty block', () => {
+    expect(node._resolveMerkleRoot({})).toBeNull();
+  });
+
+  it('rejects non-hex 64-char strings', () => {
+    const result = node._resolveMerkleRoot({
+      hash: 'g'.repeat(64), // 'g' is not hex
+    });
+    expect(result).toBeNull();
   });
 });
