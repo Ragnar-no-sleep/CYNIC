@@ -24,6 +24,7 @@
     "./orchestration/decision-tracer.js": "./src/orchestration/decision-tracer.js",
     "./orchestration/circuit-breaker.js": "./src/orchestration/circuit-breaker.js",
     "./orchestration/routing-config.js": "./src/orchestration/routing-config.js",
+    "./orchestration/kabbalistic-router.js": "./src/orchestration/kabbalistic-router.js",
     "./agents": "./src/agents/index.js",
     "./agents/collective": "./src/agents/collective/index.js",
     "./agents/neuronal-consensus": "./src/agents/neuronal-consensus.js",
@@ -35,7 +36,9 @@
     "./inference": "./src/inference/index.js"
   },
   "scripts": {
-    "test": "node --test test/*.test.js",
+    "test": "node --test --test-concurrency=4 test/*.test.js",
+    "test:seq": "node --test --test-concurrency=1 test/*.test.js",
+    "test:fast": "node --test --test-concurrency=8 --test-force-exit test/*.test.js",
     "start": "node bin/cynic.js start"
   },
   "dependencies": {
