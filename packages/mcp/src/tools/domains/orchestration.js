@@ -17,7 +17,7 @@
 
 'use strict';
 
-import { PHI, PHI_INV, THRESHOLDS, createLogger, getCircuitBreakerRegistry, CircuitState } from '@cynic/core';
+import { PHI, PHI_INV, THRESHOLDS, createLogger, getCircuitBreakerRegistry, CircuitState, globalEventBus, EventType } from '@cynic/core';
 import {
   UnifiedOrchestrator,
   createUnifiedOrchestrator,
@@ -554,6 +554,35 @@ For lightweight routing only, use brain_keter.`,
         autoInvokeSkill,
       });
 
+      // ═══════════════════════════════════════════════════════════════════
+      // FIX: Ensure real judgment fires JUDGMENT_CREATED for P2P forwarding
+      // DogOrchestrator may return mock votes (0 dogs on remote MCP).
+      // Call Judge directly to guarantee 36-dimension scoring + event emission.
+      // "Le chien juge TOUJOURS" - κυνικός
+      // ═══════════════════════════════════════════════════════════════════
+      let realJudgment = result.judgment || null;
+      if (requestJudgment && options.judge) {
+        try {
+          const item = {
+            type: eventType || 'tool_use',
+            content,
+            context: context,
+          };
+          const judgeResult = options.judge.judge(item, { type: eventType });
+          if (judgeResult?.qScore !== undefined) {
+            realJudgment = {
+              qScore: judgeResult.qScore,
+              verdict: judgeResult.verdict,
+              reasoning: judgeResult.reasoning,
+            };
+            // Judge.evaluate() calls globalEventBus.publish(JUDGMENT_CREATED)
+            // which bus-subscriptions catches and forwards to network nodes
+          }
+        } catch (err) {
+          log.debug('Direct judge evaluation failed', { error: err.message });
+        }
+      }
+
       // Format response
       return {
         success: result.outcome === DecisionOutcome.ALLOW ||
@@ -567,12 +596,8 @@ For lightweight routing only, use brain_keter.`,
         // Intervention level
         intervention: result.intervention,
 
-        // Judgment (if requested)
-        judgment: result.judgment ? {
-          qScore: result.judgment.qScore,
-          verdict: result.judgment.verdict,
-          reasoning: result.judgment.reasoning,
-        } : null,
+        // Judgment (real Judge result preferred over Dog mock votes)
+        judgment: realJudgment,
 
         // Synthesis (if requested)
         synthesis: result.synthesis,
