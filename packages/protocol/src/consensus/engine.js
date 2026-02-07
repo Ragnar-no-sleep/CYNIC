@@ -961,6 +961,7 @@ export class ConsensusEngine extends EventEmitter {
             event: 'block:finalized',
             blockHash: record.hash,
             slot: record.slot,
+            block: record.block,
             confirmations: record.confirmations,
             status: 'FINALIZED',
             probability: 1.0,

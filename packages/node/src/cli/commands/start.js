@@ -283,7 +283,7 @@ export async function startCommand(options) {
           await blockStore.storeBlock({
             slot,
             hash: blockHash || block?.hash,
-            proposer: block?.proposer,
+            proposer: block?.proposer || keypair.publicKey?.slice(0, 128) || 'unknown',
             merkle_root: block?.merkle_root || block?.judgments_root,
             judgments: block?.judgments || [],
             judgment_count: block?.judgment_count || block?.judgments?.length || 0,
