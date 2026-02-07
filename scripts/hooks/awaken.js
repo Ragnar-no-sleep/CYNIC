@@ -958,7 +958,7 @@ async function main() {
         name: ecosystem.currentProject.name,
         path: ecosystem.currentProject.path,
         type: ecosystem.currentProject.type || 'unknown',
-        branch: ecosystem.currentProject.branch || 'main',
+        branch: ecosystem.currentProject.gitState?.branch || 'main',
       };
     }
 
@@ -966,7 +966,7 @@ async function main() {
       output.ecosystem = ecosystem.projects.map(p => ({
         name: p.name,
         path: p.path,
-        branch: p.branch,
+        branch: p.gitState?.branch || 'main',
         status: p.status || 'ok',
         isCurrent: p.path === ecosystem.currentProject?.path,
       }));
