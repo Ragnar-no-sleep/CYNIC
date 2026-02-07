@@ -745,14 +745,6 @@ async function main() {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // CHECKPOINT: Update pendingOutput with local-only results before MCP calls
-    // If deadline fires during brain/MCP calls, this is what gets flushed
-    // ═══════════════════════════════════════════════════════════════════════════
-    if (injections.length > 0) {
-      pendingOutput = { continue: true, message: injections.join('\n\n') };
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════════
     // BRAIN CONSCIOUSNESS: Unified thinking before Claude processes
     // "Le cerveau pense AVANT que Claude ne réponde"
     // ═══════════════════════════════════════════════════════════════════════════
@@ -1143,6 +1135,14 @@ async function main() {
    ${c(ANSI.yellow, '*sniff*')} Les erreurs augmentent.
    ${c(ANSI.dim, 'Peut-être revenir en arrière et réessayer?')}`);
       }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CHECKPOINT: Flush local results to pendingOutput before MCP-dependent sections
+    // If deadline fires during orchestration/routing, this is what gets output
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (injections.length > 0) {
+      pendingOutput = { continue: true, message: injections.join('\n\n') };
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -1556,7 +1556,7 @@ async function main() {
     }
 
     // Output result — mark as sent so deadline doesn't double-output
-    if (outputSent) return; // deadline already flushed
+    if (outputSent) { process.exit(0); return; } // deadline already flushed
     outputSent = true;
 
     if (injections.length === 0) {
@@ -1568,13 +1568,16 @@ async function main() {
       });
     }
 
+    // Exit promptly — AmbientConsensus timers would keep process alive for 5s+
+    process.exit(0);
+
   } catch (error) {
-    // Log error for debugging, but don't block
     logger.error('Hook failed', { error: error.message });
     if (!outputSent) {
       outputSent = true;
       safeOutput({ continue: true });
     }
+    process.exit(0);
   }
 }
 
