@@ -8,7 +8,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node scripts/hooks/awaken.js 2>/dev/null || true",
+            "command": "node scripts/hooks/awaken.js || true",
             "timeout": 15
           }
         ]
@@ -20,7 +20,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node scripts/hooks/sleep.js 2>/dev/null || true",
+            "command": "node scripts/hooks/sleep.js || true",
             "timeout": 10
           }
         ]
@@ -32,7 +32,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node scripts/hooks/perceive.js 2>/dev/null || true",
+            "command": "node scripts/hooks/perceive.js || true",
             "timeout": 10
           }
         ]
@@ -44,7 +44,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node scripts/hooks/guard.js 2>/dev/null || true",
+            "command": "node scripts/hooks/guard.js || true",
             "timeout": 5
           }
         ]
@@ -56,7 +56,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node scripts/hooks/observe.js 2>/dev/null || true",
+            "command": "node scripts/hooks/observe.js || true",
             "timeout": 5
           }
         ]
@@ -66,7 +66,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node scripts/hooks/auto-wire.js 2>/dev/null || true",
+            "command": "node scripts/hooks/auto-wire.js || true",
             "timeout": 3
           }
         ]
@@ -78,12 +78,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node scripts/hooks/ralph-loop.js 2>/dev/null",
+            "command": "node scripts/hooks/ralph-loop.js",
             "timeout": 30
           },
           {
             "type": "command",
-            "command": "node scripts/hooks/digest.js 2>/dev/null || true",
+            "command": "node scripts/hooks/digest.js || true",
             "timeout": 30
           }
         ]
@@ -95,7 +95,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node scripts/hooks/spawn.js start 2>/dev/null || true",
+            "command": "node scripts/hooks/spawn.js start || true",
             "timeout": 5
           }
         ]
@@ -107,7 +107,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node scripts/hooks/spawn.js stop 2>/dev/null || true",
+            "command": "node scripts/hooks/spawn.js stop || true",
             "timeout": 5
           }
         ]
@@ -119,7 +119,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node scripts/hooks/error.js 2>/dev/null || true",
+            "command": "node scripts/hooks/error.js || true",
             "timeout": 5
           }
         ]
@@ -131,7 +131,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node scripts/hooks/notify.js 2>/dev/null || true",
+            "command": "node scripts/hooks/notify.js || true",
             "timeout": 5
           }
         ]
