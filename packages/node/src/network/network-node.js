@@ -363,7 +363,11 @@ export class CYNICNetworkNode extends EventEmitter {
     this._transport.wireEvents({
       onPeerConnected: (peerId, publicKey, address) => {
         this._stats.peersConnected = this._transport.getConnectedPeers().length;
-        this._consensus.registerValidator({
+        // Route through ValidatorManager (not directly to consensus engine)
+        // so that activity tracking and inactivity cleanup work correctly.
+        // Direct consensus.registerValidator() creates shadow validators that
+        // the ValidatorManager can't clean up, diluting consensus weight.
+        this._validatorManager.addValidator({
           publicKey: publicKey || peerId,
           eScore: 50,
         });
