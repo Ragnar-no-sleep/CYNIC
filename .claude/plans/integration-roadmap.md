@@ -575,6 +575,8 @@ PHI_INV_4 = 0.145898033750315 // φ⁻⁴ - Indirect connections
     - Wallet loading from `CYNIC_SOLANA_KEY` env var
     - BlockStore wired to AnchoringManager for retry sweeps
     - `wireAnchoringStore()` + `setAnchoringWallet()` APIs
+    - **CONFIRMED LIVE**: 20+ real TXs on devnet, payer `2k8eHZhW...`, 0.31 SOL remaining
+    - Program `G3Yana4uk...` AnchorRoot instructions verified on-chain
 - Cross-node E-Score sharing (remote validator score ingestion)
 
 **PHASE 3: CONNECT (Next)**:
@@ -585,4 +587,4 @@ PHI_INV_4 = 0.145898033750315 // φ⁻⁴ - Indirect connections
 ---
 
 *"φ distrusts φ" - Max confidence 61.8%*
-*Last updated: 2026-02-06*
+*Last updated: 2026-02-07*
