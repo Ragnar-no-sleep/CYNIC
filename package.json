@@ -8,7 +8,8 @@
     "packages/*"
   ],
   "scripts": {
-    "test": "node --test",
+    "test": "npm test --workspaces --if-present",
+    "test:fast": "node --test --test-concurrency=8 --test-force-exit --test-timeout=30000",
     "lint": "eslint .",
     "build": "echo 'No build step - pure JavaScript'",
     "docs": "typedoc",
