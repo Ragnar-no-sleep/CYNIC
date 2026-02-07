@@ -16,6 +16,7 @@ import {
   ANCHOR_CONSTANTS,
   DEFAULT_CONFIG,
   CYNIC_PROGRAM,
+  SolanaCluster,
 } from './constants.js';
 import { CynicWallet } from './wallet.js';
 import { CynicProgramClient } from './program-client.js';
@@ -62,7 +63,7 @@ export class SolanaAnchorer {
    * @param {string} [config.programId] - CYNIC program ID
    */
   constructor(config = {}) {
-    this.cluster = config.cluster || DEFAULT_CONFIG.cluster;
+    this.cluster = SolanaAnchorer._resolveCluster(config.cluster) || DEFAULT_CONFIG.cluster;
     this.wallet = config.wallet;
     this.onAnchor = config.onAnchor;
     this.onError = config.onError;
@@ -90,6 +91,26 @@ export class SolanaAnchorer {
       lastAnchorTime: null,
       lastSignature: null,
     };
+  }
+
+  /**
+   * Resolve cluster name to URL
+   * @param {string} cluster - Cluster name or URL
+   * @returns {string|null}
+   * @private
+   */
+  static _resolveCluster(cluster) {
+    if (!cluster) return null;
+    if (cluster.startsWith('http://') || cluster.startsWith('https://')) return cluster;
+    const map = {
+      devnet: SolanaCluster.DEVNET,
+      testnet: SolanaCluster.TESTNET,
+      mainnet: SolanaCluster.MAINNET,
+      'mainnet-beta': SolanaCluster.MAINNET,
+      localnet: SolanaCluster.LOCALNET,
+      localhost: SolanaCluster.LOCALNET,
+    };
+    return map[cluster.toLowerCase()] || null;
   }
 
   /**
