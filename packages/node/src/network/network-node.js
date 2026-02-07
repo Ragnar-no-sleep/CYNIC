@@ -482,7 +482,15 @@ export class CYNICNetworkNode extends EventEmitter {
       hops: 0,
     };
 
-    gossip.broadcast(message).catch(() => {});
+    gossip.broadcast(message).then(sent => {
+      // Diagnostic: confirm heartbeats are actually being sent to peers
+      if (sent === 0 && this._stats.peersConnected > 0) {
+        log.warn('Heartbeat broadcast reached 0 peers despite connections', {
+          peersConnected: this._stats.peersConnected,
+          gossipPeers: gossip.peerManager?.getActivePeers?.()?.length || 'unknown',
+        });
+      }
+    }).catch(() => {});
   }
 
   /** @private */
@@ -527,6 +535,22 @@ export class CYNICNetworkNode extends EventEmitter {
       const liveScore = this._eScoreProviderInstance.calculator.calculate().score;
       if (Math.abs(liveScore - this._eScore) > 0.5) {
         this.setEScore(liveScore);
+      }
+    }
+
+    // Diagnostic: log validator lastSeen ages before inactivity check
+    const allValidators = this._validatorManager.getValidators();
+    const now = Date.now();
+    for (const v of allValidators) {
+      if (v.publicKey === this._publicKey) continue;
+      const age = Math.round((now - v.lastSeen) / 1000);
+      if (age > 60) {
+        log.warn('Validator lastSeen stale before check', {
+          pk: v.publicKey.slice(0, 16),
+          age: `${age}s`,
+          status: v.status,
+          hbCount: this._hbCounters?.[`hb_${v.publicKey.slice(0, 8)}`] || 0,
+        });
       }
     }
 
@@ -644,7 +668,25 @@ export class CYNICNetworkNode extends EventEmitter {
 
     // Guard: skip malformed heartbeats (missing essential fields)
     if (eScore === undefined && nodeId === undefined) {
+      log.warn('Malformed heartbeat (no eScore or nodeId)', { from: peerId?.slice(0, 16) });
       return;
+    }
+
+    // Diagnostic: log heartbeat receipt at INFO level (visible on Render)
+    // Throttle: only log every 5th heartbeat per peer to avoid noise
+    const hbKey = `hb_${peerId?.slice(0, 8)}`;
+    this._hbCounters = this._hbCounters || {};
+    this._hbCounters[hbKey] = (this._hbCounters[hbKey] || 0) + 1;
+    if (this._hbCounters[hbKey] % 5 === 1) {
+      const existingValidator = this._validatorManager.getValidator(peerId);
+      log.info('Heartbeat received', {
+        from: peerId?.slice(0, 16),
+        eScore,
+        count: this._hbCounters[hbKey],
+        validatorExists: !!existingValidator,
+        validatorStatus: existingValidator?.status || 'none',
+        lastSeenAge: existingValidator ? Math.round((Date.now() - existingValidator.lastSeen) / 1000) + 's' : 'N/A',
+      });
     }
 
     this._stateSyncManager.updatePeer(peerId, { finalizedSlot, finalizedHash, slot, state, eScore });
