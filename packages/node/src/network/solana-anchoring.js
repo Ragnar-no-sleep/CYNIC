@@ -125,7 +125,9 @@ export class SolanaAnchoringManager extends EventEmitter {
       return null;
     }
 
-    const { slot, hash, merkleRoot } = block;
+    const { slot, hash } = block;
+    // Resolve merkle root early for logging (handles snake_case/camelCase)
+    const resolvedRoot = this.resolveMerkleRoot(block);
 
     // Preserve existing retryCount if re-anchoring
     const existing = this._pendingAnchors.get(hash);
@@ -133,7 +135,7 @@ export class SolanaAnchoringManager extends EventEmitter {
 
     this._pendingAnchors.set(hash, {
       slot,
-      merkleRoot,
+      merkleRoot: resolvedRoot,
       status: 'pending',
       retryCount: currentRetryCount,
       queuedAt: existing?.queuedAt || Date.now(),
@@ -142,7 +144,7 @@ export class SolanaAnchoringManager extends EventEmitter {
     log.info('Anchoring block to Solana', {
       slot,
       hash: hash?.slice(0, 16),
-      merkleRoot: merkleRoot?.slice(0, 16),
+      merkleRoot: resolvedRoot?.slice(0, 16),
       cluster: this._cluster,
     });
 
@@ -152,7 +154,7 @@ export class SolanaAnchoringManager extends EventEmitter {
       if (result.success) {
         this._pendingAnchors.set(hash, {
           slot,
-          merkleRoot,
+          merkleRoot: resolvedRoot,
           status: 'anchored',
           signature: result.signature,
           anchoredAt: Date.now(),
@@ -169,13 +171,13 @@ export class SolanaAnchoringManager extends EventEmitter {
         });
 
         this.emit('block:anchored', {
-          slot, hash, merkleRoot,
+          slot, hash, merkleRoot: resolvedRoot,
           signature: result.signature,
           cluster: this._cluster,
         });
 
         globalEventBus.publish(EventType.BLOCK_ANCHORED, {
-          slot, hash, merkleRoot,
+          slot, hash, merkleRoot: resolvedRoot,
           signature: result.signature,
           cluster: this._cluster,
           timestamp: Date.now(),
@@ -190,7 +192,7 @@ export class SolanaAnchoringManager extends EventEmitter {
 
       this._pendingAnchors.set(hash, {
         slot,
-        merkleRoot,
+        merkleRoot: resolvedRoot,
         status: 'failed',
         retryCount: nextRetryCount,
         error: error.message,
@@ -222,7 +224,7 @@ export class SolanaAnchoringManager extends EventEmitter {
   resolveMerkleRoot(block) {
     const ZERO_ROOT = '0'.repeat(64);
     // Prefer real merkle root (non-zero = block has judgments)
-    for (const key of ['judgments_root', 'judgmentsRoot', 'merkleRoot']) {
+    for (const key of ['judgments_root', 'judgmentsRoot', 'merkle_root', 'merkleRoot']) {
       const val = block[key];
       if (val && /^[a-f0-9]{64}$/i.test(val) && val !== ZERO_ROOT) return val;
     }
