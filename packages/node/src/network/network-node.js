@@ -709,6 +709,13 @@ export class CYNICNetworkNode extends EventEmitter {
    * Emits locally for BlockProducer AND broadcasts to peers via gossip.
    */
   async submitJudgment(judgment) {
+    log.info('Judgment received via API', {
+      id: judgment.id,
+      qScore: judgment.qScore ?? judgment.globalScore,
+      verdict: judgment.verdict,
+      pending: this._blockProducer.pendingCount,
+    });
+
     // Emit on local bus → BlockProducer collects it
     globalEventBus.emit(EventType.JUDGMENT_CREATED, {
       id: judgment.id || `jdg_ext_${Date.now().toString(36)}`,
@@ -827,6 +834,7 @@ export class CYNICNetworkNode extends EventEmitter {
       consensus: this._consensus?.getInfo() || null,
       discovery: this._discovery?.getStats() || null,
       sync: this._stateSyncManager.syncState,
+      pendingJudgments: this._blockProducer.pendingCount,
     };
   }
 

@@ -32,6 +32,8 @@ services:
           type: redis
           name: cynic-redis
           property: connectionString
+      - key: CYNIC_NETWORK_NODES
+        value: https://cynic-node-daemon.onrender.com
     autoDeploy: true
 
   # ===========================================================================
