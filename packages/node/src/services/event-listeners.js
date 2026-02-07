@@ -475,7 +475,7 @@ async function handleBlockFinalized(event, blockStore) {
       await blockStore.storeBlock({
         slot,
         hash: blockHash || block?.hash,
-        proposer: block?.proposer,
+        proposer: block?.proposer || 'unknown',
         merkle_root: block?.merkleRoot || block?.judgments_root,
         judgments: block?.judgments,
         judgment_count: block?.judgmentCount || block?.judgments?.length || 0,

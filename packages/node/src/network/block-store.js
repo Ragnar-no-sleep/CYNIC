@@ -66,7 +66,7 @@ export class BlockStore extends EventEmitter {
           [
             block.slot,
             block.hash || block.block_hash,
-            block.proposer,
+            block.proposer || 'unknown',
             block.merkle_root || block.judgments_root || null,
             JSON.stringify(block.judgments || []),
             block.judgment_count || (block.judgments?.length || 0),
