@@ -135,6 +135,7 @@ export class CYNICNode {
     // FIX #3: Now wired with ResidualDetector for THE_UNNAMEABLE dimension discovery
     this._judge = new CYNICJudge({
       residualDetector: this.residualDetector,
+      calibrationTracker: options.calibrationTracker || null,
     });
 
     // ═══════════════════════════════════════════════════════════════════════

@@ -105,6 +105,7 @@ export class CYNICJudge {
     this.learningService = options.learningService || null;
     this.selfSkeptic = options.selfSkeptic || null;
     this.residualDetector = options.residualDetector || null;
+    this.calibrationTracker = options.calibrationTracker || null;
     this.applySkepticism = options.applySkepticism !== false; // Default true
     this.includeUnnameable = options.includeUnnameable !== false; // Default true
 
@@ -594,6 +595,22 @@ export class CYNICJudge {
       // Reasoning path for trajectory extraction
       reasoningPath: reasoningPath,
     }, { source: 'CYNICJudge', id: judgment.id });
+
+    // Record prediction for calibration tracking
+    // CalibrationTracker monitors: "When CYNIC says 60% confidence, is it right 60% of the time?"
+    if (this.calibrationTracker) {
+      try {
+        this.calibrationTracker.record({
+          predicted: judgment.qVerdict?.verdict || judgment.verdict,
+          confidence: judgment.confidence,
+          actual: null, // Filled later by feedback loop
+          judgmentId: judgment.id,
+          itemType: item.type || item.itemType || 'unknown',
+        });
+      } catch (err) {
+        log.debug('Calibration record failed', { error: err.message });
+      }
+    }
 
     return judgment;
   }

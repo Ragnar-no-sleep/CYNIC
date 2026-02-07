@@ -36,8 +36,10 @@ export class JudgeComponent extends EventEmitter {
   constructor(options = {}) {
     super();
 
-    // Initialize judge
-    this._judge = new CYNICJudge();
+    // Initialize judge (with calibration tracker for confidence monitoring)
+    this._judge = new CYNICJudge({
+      calibrationTracker: options.calibrationTracker || null,
+    });
 
     // Initialize residual detector with governance callback (WS6)
     this._residualDetector = new ResidualDetector({
