@@ -233,6 +233,14 @@ let _networkNode = null;
  */
 let _solanaWatcher = null;
 
+/**
+ * EWC++ Consolidation Service singleton
+ * Prevents catastrophic forgetting by locking high-Fisher patterns
+ * Runs daily consolidation: RETRIEVE→JUDGE→DISTILL→CONSOLIDATE
+ * @type {import('@cynic/persistence').EWCConsolidationService|null}
+ */
+let _ewcService = null;
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // DEFAULT OPTIONS
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -778,6 +786,14 @@ export async function getCollectivePackAsync(options = {}) {
         log.warn('Could not initialize Q-Learning', { error: err.message });
       }
 
+      // L-GAP-3: Wire PostgreSQL pool to UnifiedSignalStore
+      // The store is created in sync init (getCollectivePack) without a pool.
+      // Now that persistence is available, wire it so signals persist to unified_signals table.
+      if (_unifiedBridge?.store && !_unifiedBridge.store._persistencePool) {
+        _unifiedBridge.store._persistencePool = options.persistence;
+        log.info('UnifiedSignalStore wired to PostgreSQL (L-GAP-3 closed)');
+      }
+
       // Restore Dog track records from consensus_votes (AXE 2: close persistence loop)
       try {
         if (pack.ambientConsensus?.restoreFromDatabase) {
@@ -856,6 +872,20 @@ export async function getCollectivePackAsync(options = {}) {
         } catch (err) {
           log.warn('Could not start LearningScheduler', { error: err.message });
         }
+      }
+    }
+
+    // EWC++ Consolidation: Prevent catastrophic forgetting
+    // Fisher scores lock important patterns, daily consolidation cycle
+    if (options.persistence && !_ewcService) {
+      try {
+        const { createEWCService } = await import('@cynic/persistence');
+        _ewcService = createEWCService({ db: options.persistence });
+        _ewcService.startScheduler();
+        log.info('EWC++ consolidation scheduler started (daily cycle)');
+      } catch (err) {
+        log.warn('EWC++ service startup failed (non-blocking)', { error: err.message });
+        _ewcService = null;
       }
     }
 
@@ -1333,6 +1363,8 @@ export function getSingletonStatus() {
     qLearningStats: _qLearningService?.getStats?.() || null,
     networkState: _networkNode?.state || null,
     solanaWatcherRunning: _solanaWatcher?._isRunning || false,
+    ewcServiceRunning: !!_ewcService?.consolidationTimer,
+    ewcStats: _ewcService?.stats || null,
   };
 }
 
@@ -1392,6 +1424,12 @@ export function _resetForTesting() {
   if (_solanaWatcher) {
     resetSolanaWatcher();
     _solanaWatcher = null;
+  }
+
+  // EWC++: Stop consolidation scheduler
+  if (_ewcService) {
+    _ewcService.stopScheduler();
+    _ewcService = null;
   }
 
   log.warn('Singletons reset (testing only)');
