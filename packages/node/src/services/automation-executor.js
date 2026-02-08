@@ -21,6 +21,7 @@
 import { createLogger, PHI_INV } from '@cynic/core';
 import { EventBus, EventType, getEventBus } from './event-bus.js';
 import { PatternLearning } from '@cynic/persistence';
+import { getResidualGovernance } from '../judge/residual-governance.js';
 
 const log = createLogger('AutomationExecutor');
 
@@ -75,8 +76,15 @@ export class AutomationExecutor {
     this.pool = options.pool;
     this.eventBus = options.eventBus || getEventBus();
 
-    // Dimension governance
+    // Dimension governance (auto-create from singleton if pool available)
     this.residualGovernance = options.residualGovernance || null;
+    if (!this.residualGovernance && this.pool) {
+      try {
+        this.residualGovernance = getResidualGovernance({ pool: this.pool });
+      } catch (e) {
+        log.debug('ResidualGovernance auto-create failed (non-blocking)', { error: e.message });
+      }
+    }
     this.collectivePack = options.collectivePack || null;
 
     // Pattern learning (auto-create from pool if not injected)

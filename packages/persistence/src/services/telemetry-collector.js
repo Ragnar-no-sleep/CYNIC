@@ -121,7 +121,7 @@ export class TelemetryCollector extends EventEmitter {
     super();
 
     this.name = options.name || 'cynic';
-    this.flushInterval = options.flushInterval || 60000; // 1 minute
+    this.flushInterval = options.flushInterval ?? 60000; // 1 minute (0 = disabled)
     this.maxBufferSize = options.maxBufferSize || 10000;
     this.persist = options.persist !== false;
     this.pool = options.pool || null;

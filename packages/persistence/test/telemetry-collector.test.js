@@ -32,6 +32,7 @@ describe('TelemetryCollector', () => {
     collector = new TelemetryCollector({
       name: 'test',
       flushInterval: 0, // Disable auto-flush for tests
+      alertsEnabled: false, // Disable threshold timer to prevent process hang
       persist: false,
     });
   });
@@ -44,7 +45,7 @@ describe('TelemetryCollector', () => {
 
   describe('constructor', () => {
     it('should create instance with defaults', () => {
-      const c = new TelemetryCollector({ flushInterval: 0 });
+      const c = new TelemetryCollector({ flushInterval: 0, alertsEnabled: false });
       assert.ok(c);
       assert.strictEqual(c.name, 'cynic');
       assert.ok(c.sessionId);
@@ -53,17 +54,17 @@ describe('TelemetryCollector', () => {
     });
 
     it('should accept custom name', () => {
-      const c = new TelemetryCollector({ name: 'custom', flushInterval: 0 });
+      const c = new TelemetryCollector({ name: 'custom', flushInterval: 0, alertsEnabled: false });
       assert.strictEqual(c.name, 'custom');
     });
 
     it('should generate session ID', () => {
-      const c = new TelemetryCollector({ flushInterval: 0 });
+      const c = new TelemetryCollector({ flushInterval: 0, alertsEnabled: false });
       assert.ok(c.sessionId.startsWith('sess_'));
     });
 
     it('should accept custom session ID', () => {
-      const c = new TelemetryCollector({ sessionId: 'test-session', flushInterval: 0 });
+      const c = new TelemetryCollector({ sessionId: 'test-session', flushInterval: 0, alertsEnabled: false });
       assert.strictEqual(c.sessionId, 'test-session');
     });
   });
@@ -286,15 +287,17 @@ describe('TelemetryCollector', () => {
 
 describe('createTelemetryCollector()', () => {
   it('should create TelemetryCollector instance', () => {
-    const collector = createTelemetryCollector({ flushInterval: 0 });
+    const collector = createTelemetryCollector({ flushInterval: 0, alertsEnabled: false });
     assert.ok(collector instanceof TelemetryCollector);
+    collector.destroy?.();
   });
 });
 
 describe('getTelemetry()', () => {
   it('should return singleton instance', () => {
-    const c1 = getTelemetry({ flushInterval: 0 });
+    const c1 = getTelemetry({ flushInterval: 0, alertsEnabled: false });
     const c2 = getTelemetry();
     assert.strictEqual(c1, c2);
+    c1.destroy?.();
   });
 });
