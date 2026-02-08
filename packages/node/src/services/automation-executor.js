@@ -622,6 +622,14 @@ export class AutomationExecutor {
         log.trace('Event data cleanup skipped', { error: e.message });
       }
 
+      // AXE 2+: Cleanup dog_signals and consensus_votes (migration 029 functions)
+      try {
+        await this.pool.query(`DELETE FROM dog_signals WHERE created_at < NOW() - INTERVAL '7 days'`);
+        await this.pool.query(`DELETE FROM consensus_votes WHERE created_at < NOW() - INTERVAL '14 days'`);
+      } catch (e) {
+        log.trace('Signal/vote cleanup skipped', { error: e.message });
+      }
+
       // Migration 033: Cleanup consciousness metrics tables (30-day retention)
       let consciousnessMetricsCleaned = 0;
       try {

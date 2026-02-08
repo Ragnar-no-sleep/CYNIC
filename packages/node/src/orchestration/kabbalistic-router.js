@@ -287,7 +287,10 @@ export class KabbalisticRouter {
     this._currentEpisodeId = null;
 
     // D1: DPO weight cache (loaded from routing_weights table)
-    this._dpoWeights = null;
+    // Per-context: { contextType → { dog → weight } }
+    this._dpoWeightsByContext = null;
+    this._dpoFisherByContext = null;
+    this._dpoWeights = null;  // Fallback: averaged across contexts
     this._dpoFisher = null;
     this._dpoWeightsTTL = 5 * 60 * 1000; // 5 minutes
     this._dpoWeightsLastLoad = 0;
@@ -463,7 +466,7 @@ export class KabbalisticRouter {
 
     // D1: Reorder by blended weights (Q + DPO), skip if Thompson explored
     if (!thompsonExplored) {
-      const blended = this.getBlendedWeights();
+      const blended = this.getBlendedWeights(taskType);
       if (blended && Object.keys(blended).length > 0) {
         const securityFirst = ['PreToolUse', 'security', 'deployment'].includes(taskType);
 
@@ -1492,22 +1495,40 @@ export class KabbalisticRouter {
     if (!this.persistence || !this.persistence.query) return null;
     try {
       const result = await this.persistence.query(
-        'SELECT dog_name, weight, confidence, fisher_score FROM routing_weights WHERE service_id = $1',
+        'SELECT dog_name, context_type, weight, fisher_score FROM routing_weights WHERE service_id = $1',
         ['default']
       );
       if (result && result.rows && result.rows.length > 0) {
+        // Per-context weights (preserves DPO per-dog:context_type differentiation)
+        const byCtx = {};
+        const fisherByCtx = {};
+        // Fallback averages (for unknown contexts)
         const agg = {};
         const fisherAgg = {};
+
         for (const row of result.rows) {
           const dog = (row.dog_name || '').toLowerCase();
+          const ctx = row.context_type || 'general';
+          const w = parseFloat(row.weight) || 0.5;
+          const f = parseFloat(row.fisher_score) || 0;
+
+          // Per-context
+          if (!byCtx[ctx]) byCtx[ctx] = {};
+          byCtx[ctx][dog] = w;
+          if (!fisherByCtx[ctx]) fisherByCtx[ctx] = {};
+          fisherByCtx[ctx][dog] = f;
+
+          // Aggregate fallback
           if (!agg[dog]) agg[dog] = { sum: 0, count: 0 };
-          agg[dog].sum += parseFloat(row.weight) || 0.5;
+          agg[dog].sum += w;
           agg[dog].count += 1;
-          // Track Fisher scores per dog
           if (!fisherAgg[dog]) fisherAgg[dog] = { sum: 0, count: 0 };
-          fisherAgg[dog].sum += parseFloat(row.fisher_score) || 0;
+          fisherAgg[dog].sum += f;
           fisherAgg[dog].count += 1;
         }
+
+        this._dpoWeightsByContext = byCtx;
+        this._dpoFisherByContext = fisherByCtx;
         this._dpoWeights = {};
         this._dpoFisher = {};
         for (const [dog, data] of Object.entries(agg)) {
@@ -1517,7 +1538,10 @@ export class KabbalisticRouter {
           this._dpoFisher[dog] = data.count > 0 ? data.sum / data.count : 0;
         }
         this._dpoWeightsLastLoad = Date.now();
-        log.info('DPO weights loaded', { dogs: Object.keys(this._dpoWeights).length, withFisher: Object.keys(this._dpoFisher).length });
+        log.info('DPO weights loaded', {
+          dogs: Object.keys(this._dpoWeights).length,
+          contexts: Object.keys(byCtx).length,
+        });
         return this._dpoWeights;
       }
     } catch (err) {
@@ -1640,10 +1664,14 @@ export class KabbalisticRouter {
   // D1: BLENDED WEIGHTS (Q-Learning + DPO + Thompson)
   // ===========================================================================
 
-  getBlendedWeights() {
+  getBlendedWeights(contextType) {
     try {
       const qWeights = this.getLearnedWeights();
-      const dpoWeights = this._dpoWeights;
+      // Use context-specific DPO weights when available, fall back to averaged
+      const dpoWeights = (contextType && this._dpoWeightsByContext?.[contextType])
+        || this._dpoWeights;
+      const dpoFisher = (contextType && this._dpoFisherByContext?.[contextType])
+        || this._dpoFisher;
       if (!qWeights && !dpoWeights) return null;
       const allDogs = ['guardian','analyst','architect','scout','scholar','sage','oracle','janitor','deployer','cartographer','cynic'];
       const blended = {};
@@ -1655,7 +1683,7 @@ export class KabbalisticRouter {
         // Fisher modulates trust in learned weights:
         // fisher=0 → PHI_INV_2 (0.382) trust in learned (default)
         // fisher=1 → PHI_INV (0.618) trust in learned (max)
-        const fisher = this._dpoFisher?.[dog] || 0;
+        const fisher = dpoFisher?.[dog] || 0;
         const learnedTrust = PHI_INV_2 + fisher * PHI_INV_3;
         blended[dog] = (1 - learnedTrust) * existingWeight + learnedTrust * learnedAvg;
         // D-GRAVE-1: Orchestration performance bias (±PHI_INV_3 from historical success)
