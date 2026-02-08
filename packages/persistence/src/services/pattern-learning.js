@@ -581,6 +581,282 @@ export class PatternLearning {
     return denominator === 0 ? 0 : dotProduct / denominator;
   }
 
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // DATA GRAVE QUERIES — Turn write-only sinks into learning sources
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Query dog behavioral patterns from dog_events table.
+   * Returns activity distribution and health breakdown per dog.
+   *
+   * @param {Object} [opts] - Options
+   * @param {number} [opts.hours=24] - Lookback window in hours
+   * @param {number} [opts.limit=20] - Max rows per sub-query
+   * @returns {Promise<Object>} { dogActivity, healthDistribution, window }
+   */
+  async queryDogBehavioralPatterns(opts = {}) {
+    const { hours = 24, limit = 20 } = opts;
+    const result = { dogActivity: [], healthDistribution: [], window: `${hours}h`, timestamp: Date.now() };
+    try {
+      const { rows: activity } = await this._pool.query(
+        `SELECT dog_name, event_type, COUNT(*) AS count
+         FROM dog_events
+         WHERE created_at > NOW() - ($1 || ' hours')::INTERVAL
+         GROUP BY dog_name, event_type
+         ORDER BY count DESC
+         LIMIT $2`,
+        [String(hours), limit]
+      );
+      result.dogActivity = activity.map(r => ({ dog: r.dog_name, eventType: r.event_type, count: parseInt(r.count) }));
+
+      const { rows: health } = await this._pool.query(
+        `SELECT dog_name, health, COUNT(*) AS count
+         FROM dog_events
+         WHERE created_at > NOW() - ($1 || ' hours')::INTERVAL
+         GROUP BY dog_name, health
+         ORDER BY count DESC
+         LIMIT $2`,
+        [String(hours), limit]
+      );
+      result.healthDistribution = health.map(r => ({ dog: r.dog_name, health: r.health, count: parseInt(r.count) }));
+    } catch (e) { log.debug('Dog behavioral query failed', { error: e.message }); }
+    return result;
+  }
+
+  /**
+   * Query inter-dog signal patterns from dog_signals table.
+   * Returns signal type distribution and top source dogs.
+   *
+   * @param {Object} [opts] - Options
+   * @param {number} [opts.hours=24] - Lookback window in hours
+   * @param {number} [opts.limit=20] - Max rows per sub-query
+   * @returns {Promise<Object>} { signalTypes, topSenders, window }
+   */
+  async queryDogSignalPatterns(opts = {}) {
+    const { hours = 24, limit = 20 } = opts;
+    const result = { signalTypes: [], topSenders: [], window: `${hours}h`, timestamp: Date.now() };
+    try {
+      const { rows: types } = await this._pool.query(
+        `SELECT signal_type, COUNT(*) AS count
+         FROM dog_signals
+         WHERE created_at > NOW() - ($1 || ' hours')::INTERVAL
+         GROUP BY signal_type
+         ORDER BY count DESC
+         LIMIT $2`,
+        [String(hours), limit]
+      );
+      result.signalTypes = types.map(r => ({ signalType: r.signal_type, count: parseInt(r.count) }));
+
+      const { rows: senders } = await this._pool.query(
+        `SELECT source_dog, COUNT(*) AS count
+         FROM dog_signals
+         WHERE created_at > NOW() - ($1 || ' hours')::INTERVAL
+         GROUP BY source_dog
+         ORDER BY count DESC
+         LIMIT $2`,
+        [String(hours), limit]
+      );
+      result.topSenders = senders.map(r => ({ dog: r.source_dog, count: parseInt(r.count) }));
+    } catch (e) { log.debug('Dog signal query failed', { error: e.message }); }
+    return result;
+  }
+
+  /**
+   * Query consensus quality metrics from consensus_votes table.
+   * Returns approval rate, average agreement, and veto frequency.
+   *
+   * @param {Object} [opts] - Options
+   * @param {number} [opts.hours=24] - Lookback window in hours
+   * @param {number} [opts.limit=20] - Max rows
+   * @returns {Promise<Object>} { approvalRate, avgAgreement, vetoRate, topicBreakdown, window }
+   */
+  async queryConsensusQuality(opts = {}) {
+    const { hours = 24, limit = 20 } = opts;
+    const result = { approvalRate: 0, avgAgreement: 0, vetoRate: 0, topicBreakdown: [], totalVotes: 0, window: `${hours}h`, timestamp: Date.now() };
+    try {
+      const { rows: [summary] } = await this._pool.query(
+        `SELECT
+           COUNT(*) AS total,
+           COUNT(*) FILTER (WHERE approved = true) AS approved_count,
+           AVG(agreement) AS avg_agreement,
+           COUNT(*) FILTER (WHERE guardian_veto = true) AS veto_count
+         FROM consensus_votes
+         WHERE created_at > NOW() - ($1 || ' hours')::INTERVAL`,
+        [String(hours)]
+      );
+      if (summary && parseInt(summary.total) > 0) {
+        const total = parseInt(summary.total);
+        result.totalVotes = total;
+        result.approvalRate = parseInt(summary.approved_count) / total;
+        result.avgAgreement = parseFloat(summary.avg_agreement) || 0;
+        result.vetoRate = parseInt(summary.veto_count) / total;
+      }
+
+      const { rows: topics } = await this._pool.query(
+        `SELECT topic, COUNT(*) AS count, AVG(agreement) AS avg_agreement,
+                COUNT(*) FILTER (WHERE approved = true) AS approved_count
+         FROM consensus_votes
+         WHERE created_at > NOW() - ($1 || ' hours')::INTERVAL
+         GROUP BY topic
+         ORDER BY count DESC
+         LIMIT $2`,
+        [String(hours), limit]
+      );
+      result.topicBreakdown = topics.map(r => ({
+        topic: r.topic, count: parseInt(r.count),
+        avgAgreement: parseFloat(r.avg_agreement) || 0,
+        approvalRate: parseInt(r.approved_count) / parseInt(r.count),
+      }));
+    } catch (e) { log.debug('Consensus quality query failed', { error: e.message }); }
+    return result;
+  }
+
+  /**
+   * Query collective state trends from collective_snapshots table.
+   * Returns average health, dog count trends, and memory load.
+   *
+   * @param {Object} [opts] - Options
+   * @param {number} [opts.hours=24] - Lookback window in hours
+   * @returns {Promise<Object>} { avgHealth, avgActiveDogs, avgMemoryLoad, avgMemoryFreshness, healthRatings, window }
+   */
+  async queryCollectiveTrends(opts = {}) {
+    const { hours = 24 } = opts;
+    const result = { avgHealth: 0, avgActiveDogs: 0, avgMemoryLoad: 0, avgMemoryFreshness: 0, healthRatings: [], totalSnapshots: 0, window: `${hours}h`, timestamp: Date.now() };
+    try {
+      const { rows: [agg] } = await this._pool.query(
+        `SELECT
+           COUNT(*) AS total,
+           AVG(average_health) AS avg_health,
+           AVG(active_dogs) AS avg_active_dogs,
+           AVG(memory_load) AS avg_memory_load,
+           AVG(memory_freshness) AS avg_memory_freshness
+         FROM collective_snapshots
+         WHERE created_at > NOW() - ($1 || ' hours')::INTERVAL`,
+        [String(hours)]
+      );
+      if (agg && parseInt(agg.total) > 0) {
+        result.totalSnapshots = parseInt(agg.total);
+        result.avgHealth = parseFloat(agg.avg_health) || 0;
+        result.avgActiveDogs = parseFloat(agg.avg_active_dogs) || 0;
+        result.avgMemoryLoad = parseFloat(agg.avg_memory_load) || 0;
+        result.avgMemoryFreshness = parseFloat(agg.avg_memory_freshness) || 0;
+      }
+
+      const { rows: ratings } = await this._pool.query(
+        `SELECT health_rating, COUNT(*) AS count
+         FROM collective_snapshots
+         WHERE created_at > NOW() - ($1 || ' hours')::INTERVAL
+         GROUP BY health_rating
+         ORDER BY count DESC`,
+        [String(hours)]
+      );
+      result.healthRatings = ratings.map(r => ({ rating: r.health_rating, count: parseInt(r.count) }));
+    } catch (e) { log.debug('Collective trends query failed', { error: e.message }); }
+    return result;
+  }
+
+  /**
+   * Query tool usage patterns from tool_usage table (telemetry).
+   * Returns success rates, latency stats, and top error tools.
+   *
+   * @param {Object} [opts] - Options
+   * @param {number} [opts.hours=24] - Lookback window in hours
+   * @param {number} [opts.limit=20] - Max rows
+   * @returns {Promise<Object>} { toolStats, errorHotspots, totalUsage, window }
+   */
+  async queryToolUsagePatterns(opts = {}) {
+    const { hours = 24, limit = 20 } = opts;
+    const result = { toolStats: [], errorHotspots: [], totalUsage: 0, window: `${hours}h`, timestamp: Date.now() };
+    try {
+      const { rows: stats } = await this._pool.query(
+        `SELECT tool_name,
+                COUNT(*) AS total,
+                COUNT(*) FILTER (WHERE success = true) AS successes,
+                AVG(latency_ms) AS avg_latency,
+                MAX(latency_ms) AS max_latency
+         FROM tool_usage
+         WHERE created_at > NOW() - ($1 || ' hours')::INTERVAL
+         GROUP BY tool_name
+         ORDER BY total DESC
+         LIMIT $2`,
+        [String(hours), limit]
+      );
+      result.toolStats = stats.map(r => ({
+        tool: r.tool_name, total: parseInt(r.total),
+        successRate: parseInt(r.successes) / parseInt(r.total),
+        avgLatency: Math.round(parseFloat(r.avg_latency) || 0),
+        maxLatency: parseInt(r.max_latency) || 0,
+      }));
+      result.totalUsage = result.toolStats.reduce((s, t) => s + t.total, 0);
+
+      const { rows: errors } = await this._pool.query(
+        `SELECT tool_name, error, COUNT(*) AS count
+         FROM tool_usage
+         WHERE created_at > NOW() - ($1 || ' hours')::INTERVAL
+           AND success = false AND error IS NOT NULL
+         GROUP BY tool_name, error
+         ORDER BY count DESC
+         LIMIT $2`,
+        [String(hours), limit]
+      );
+      result.errorHotspots = errors.map(r => ({ tool: r.tool_name, error: r.error, count: parseInt(r.count) }));
+    } catch (e) { log.debug('Tool usage query failed', { error: e.message }); }
+    return result;
+  }
+
+  /**
+   * Query calibration tracking patterns from calibration_tracking table.
+   * Returns accuracy by confidence bucket and context type.
+   *
+   * @param {Object} [opts] - Options
+   * @param {number} [opts.hours=24] - Lookback window in hours
+   * @param {number} [opts.limit=20] - Max rows
+   * @returns {Promise<Object>} { bucketAccuracy, contextAccuracy, totalPredictions, window }
+   */
+  async queryCalibrationPatterns(opts = {}) {
+    const { hours = 24, limit = 20 } = opts;
+    const result = { bucketAccuracy: [], contextAccuracy: [], totalPredictions: 0, window: `${hours}h`, timestamp: Date.now() };
+    try {
+      const { rows: buckets } = await this._pool.query(
+        `SELECT confidence_bucket,
+                COUNT(*) AS total,
+                COUNT(*) FILTER (WHERE predicted_outcome = actual_outcome) AS correct
+         FROM calibration_tracking
+         WHERE created_at > NOW() - ($1 || ' hours')::INTERVAL
+         GROUP BY confidence_bucket
+         ORDER BY confidence_bucket
+         LIMIT $2`,
+        [String(hours), limit]
+      );
+      result.bucketAccuracy = buckets.map(r => ({
+        bucket: parseFloat(r.confidence_bucket), total: parseInt(r.total),
+        accuracy: parseInt(r.correct) / parseInt(r.total),
+      }));
+      result.totalPredictions = buckets.reduce((s, r) => s + parseInt(r.total), 0);
+
+      const { rows: contexts } = await this._pool.query(
+        `SELECT context_type,
+                COUNT(*) AS total,
+                COUNT(*) FILTER (WHERE predicted_outcome = actual_outcome) AS correct,
+                AVG(predicted_confidence) AS avg_confidence
+         FROM calibration_tracking
+         WHERE created_at > NOW() - ($1 || ' hours')::INTERVAL
+         GROUP BY context_type
+         ORDER BY total DESC
+         LIMIT $2`,
+        [String(hours), limit]
+      );
+      result.contextAccuracy = contexts.map(r => ({
+        context: r.context_type, total: parseInt(r.total),
+        accuracy: parseInt(r.correct) / parseInt(r.total),
+        avgConfidence: parseFloat(r.avg_confidence) || 0,
+      }));
+    } catch (e) { log.debug('Calibration query failed', { error: e.message }); }
+    return result;
+  }
+
+
   // ═══════════════════════════════════════════════════════════════════════════
   // PATTERN REINFORCEMENT
   // ═══════════════════════════════════════════════════════════════════════════

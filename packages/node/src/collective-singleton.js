@@ -40,6 +40,7 @@ import { startEventListeners, stopEventListeners, cleanupOldEventData } from './
 import { getNetworkNode as getNetworkNodeSync, getNetworkNodeAsync, startNetworkNode, stopNetworkNode, isP2PEnabled } from './network-singleton.js';
 import { BlockStore } from './network/block-store.js';
 import { getErrorHandler } from './services/error-handler.js';
+import { getSolanaWatcher, resetSolanaWatcher } from './perception/solana-watcher.js';
 
 const log = createLogger('CollectiveSingleton');
 
@@ -224,6 +225,13 @@ let _eventListeners = null;
  * @type {CYNICNetworkNode|null}
  */
 let _networkNode = null;
+
+/**
+ * C2.1 (SOLANA x PERCEIVE): SolanaWatcher singleton
+ * Watches Solana blockchain events when SOLANA_CLUSTER or SOLANA_RPC_URL is set
+ * @type {import('./perception/solana-watcher.js').SolanaWatcher|null}
+ */
+let _solanaWatcher = null;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // DEFAULT OPTIONS
@@ -869,6 +877,28 @@ export async function getCollectivePackAsync(options = {}) {
       }
     }
 
+    // C2.1 (SOLANA × PERCEIVE): Initialize SolanaWatcher if Solana env vars present
+    if (!_solanaWatcher && (process.env.SOLANA_RPC_URL || process.env.SOLANA_CLUSTER)) {
+      try {
+        const cluster = process.env.SOLANA_CLUSTER || 'mainnet';
+        _solanaWatcher = getSolanaWatcher({
+          rpcUrl: process.env.SOLANA_RPC_URL || undefined,
+          cluster,
+          commitment: 'confirmed',
+        });
+        await _solanaWatcher.start();
+        log.info('SolanaWatcher started (C2.1)', { cluster });
+        try {
+          await _solanaWatcher.watchSlots();
+        } catch (slotErr) {
+          log.warn('SolanaWatcher slot subscription failed (non-blocking)', { error: slotErr.message });
+        }
+      } catch (err) {
+        log.warn('SolanaWatcher initialization failed (non-blocking)', { error: err.message });
+        _solanaWatcher = null;
+      }
+    }
+
     // AXE 8 (AWARE): Activate ErrorHandler singleton with global error capture
     try {
       getErrorHandler({ captureGlobal: true });
@@ -1296,12 +1326,23 @@ export function getSingletonStatus() {
     sharedMemoryInitialized: !!_sharedMemory,
     qLearningInitialized: !!_qLearningService?._initialized,
     networkInitialized: !!_networkNode,
+    solanaWatcherInitialized: !!_solanaWatcher,
     isAwakened: _isAwakened,
     sharedMemoryStats: _sharedMemory?.stats || null,
     packStats: _globalPack?.getStats?.() || null,
     qLearningStats: _qLearningService?.getStats?.() || null,
     networkState: _networkNode?.state || null,
+    solanaWatcherRunning: _solanaWatcher?._isRunning || false,
   };
+}
+
+/**
+ * Get SolanaWatcher singleton (if initialized)
+ *
+ * @returns {import('./perception/solana-watcher.js').SolanaWatcher|null} Watcher or null
+ */
+export function getSolanaWatcherSingleton() {
+  return _solanaWatcher;
 }
 
 /**
@@ -1347,6 +1388,12 @@ export function _resetForTesting() {
     _networkNode = null;
   }
 
+  // C2.1: Reset SolanaWatcher
+  if (_solanaWatcher) {
+    resetSolanaWatcher();
+    _solanaWatcher = null;
+  }
+
   log.warn('Singletons reset (testing only)');
 }
 
@@ -1381,4 +1428,6 @@ export default {
   getNetworkNodeAsync,
   startNetworkNode,
   stopNetworkNode,
+  // C2.1: Solana perception
+  getSolanaWatcherSingleton,
 };

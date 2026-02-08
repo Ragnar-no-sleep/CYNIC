@@ -16,6 +16,9 @@
 
 import { EventEmitter } from 'events';
 import { PHI_INV, PHI_INV_2 } from '@cynic/core';
+import { createLogger } from '@cynic/core';
+
+const log = createLogger('EmergenceDetector');
 
 /**
  * Pattern categories for emergence
@@ -27,6 +30,9 @@ export const PatternCategory = {
   CODE_EVOLUTION: 'code_evolution',
   WORKFLOW_PATTERN: 'workflow_pattern',
   TIMING_PATTERN: 'timing_pattern',
+  DOG_BEHAVIOR: 'dog_behavior',
+  CONSENSUS_QUALITY: 'consensus_quality',
+  COLLECTIVE_TREND: 'collective_trend',
 };
 
 /**
@@ -149,15 +155,17 @@ export class EmergenceDetector extends EventEmitter {
         strategies,
         preferences,
         workflows,
+        dataGraves,
       ] = await Promise.all([
         this._analyzeRecurringMistakes(),
         this._analyzeSuccessfulStrategies(),
         this._analyzeUserPreferences(),
         this._analyzeWorkflowPatterns(),
+        this._analyzeDataGraves(),
       ]);
 
       // Process and store significant patterns
-      const allPatterns = [...mistakes, ...strategies, ...preferences, ...workflows];
+      const allPatterns = [...mistakes, ...strategies, ...preferences, ...workflows, ...dataGraves];
 
       for (const pattern of allPatterns) {
         await this._processPattern(pattern);
@@ -171,6 +179,7 @@ export class EmergenceDetector extends EventEmitter {
           strategies: strategies.length,
           preferences: preferences.length,
           workflows: workflows.length,
+          dataGraves: dataGraves.length,
         },
       });
     } catch (e) {
@@ -349,6 +358,164 @@ export class EmergenceDetector extends EventEmitter {
       }
     } catch (e) {
       // Table might not exist
+    }
+
+    return patterns;
+  }
+
+  /**
+   * Analyze data grave tables for emergent patterns.
+   * Queries dog_events, consensus_votes, collective_snapshots, and tool_usage.
+   * @private
+   */
+  async _analyzeDataGraves() {
+    const patterns = [];
+    if (!this.persistence?.pool) return patterns;
+
+    try {
+      const pool = this.persistence.pool;
+      const hours = Math.round(this.config.windowMs / (3600 * 1000));
+
+      // Dog behavioral patterns
+      try {
+        const { rows } = await pool.query(
+          `SELECT dog_name, event_type, COUNT(*) AS count
+           FROM dog_events
+           WHERE created_at > NOW() - ($1 || ' hours')::INTERVAL
+           GROUP BY dog_name, event_type
+           HAVING COUNT(*) >= $2
+           ORDER BY count DESC LIMIT 10`,
+          [String(hours), this.config.minOccurrences]
+        );
+        for (const row of rows) {
+          const count = parseInt(row.count);
+          patterns.push({
+            category: PatternCategory.DOG_BEHAVIOR,
+            key: `dog:${row.dog_name}:${row.event_type}`,
+            subject: `${row.dog_name} frequently performs ${row.event_type}`,
+            content: `Dog ${row.dog_name} has ${count} ${row.event_type} events in ${hours}h`,
+            occurrences: count,
+            significance: this._getSignificance(count),
+            confidence: Math.min(PHI_INV, count / 50),
+          });
+        }
+      } catch (e) { /* table may not exist */ }
+
+      // Consensus quality patterns
+      try {
+        const { rows: [summary] } = await pool.query(
+          `SELECT COUNT(*) AS total,
+                  COUNT(*) FILTER (WHERE approved = true) AS approved,
+                  AVG(agreement) AS avg_agreement,
+                  COUNT(*) FILTER (WHERE guardian_veto = true) AS vetoes
+           FROM consensus_votes
+           WHERE created_at > NOW() - ($1 || ' hours')::INTERVAL`,
+          [String(hours)]
+        );
+        if (summary && parseInt(summary.total) >= this.config.minOccurrences) {
+          const total = parseInt(summary.total);
+          const approvalRate = parseInt(summary.approved) / total;
+          const vetoRate = parseInt(summary.vetoes) / total;
+
+          if (approvalRate < PHI_INV_2) {
+            patterns.push({
+              category: PatternCategory.CONSENSUS_QUALITY,
+              key: 'consensus:low_approval',
+              subject: 'Consensus approval rate below phi-2',
+              content: `Approval rate ${Math.round(approvalRate * 100)}% across ${total} votes`,
+              occurrences: total,
+              significance: this._getSignificance(total),
+              confidence: Math.min(PHI_INV, total / 100),
+            });
+          }
+          if (vetoRate > PHI_INV_2) {
+            patterns.push({
+              category: PatternCategory.CONSENSUS_QUALITY,
+              key: 'consensus:high_veto',
+              subject: 'Guardian veto rate above phi-2',
+              content: `Veto rate ${Math.round(vetoRate * 100)}% across ${total} votes`,
+              occurrences: parseInt(summary.vetoes),
+              significance: this._getSignificance(parseInt(summary.vetoes)),
+              confidence: Math.min(PHI_INV, vetoRate),
+            });
+          }
+        }
+      } catch (e) { /* table may not exist */ }
+
+      // Collective health trends
+      try {
+        const { rows: [agg] } = await pool.query(
+          `SELECT COUNT(*) AS total,
+                  AVG(average_health) AS avg_health,
+                  AVG(memory_load) AS avg_load
+           FROM collective_snapshots
+           WHERE created_at > NOW() - ($1 || ' hours')::INTERVAL`,
+          [String(hours)]
+        );
+        if (agg && parseInt(agg.total) >= this.config.minOccurrences) {
+          const avgHealth = parseFloat(agg.avg_health) || 0;
+          const avgLoad = parseFloat(agg.avg_load) || 0;
+
+          if (avgHealth < PHI_INV_2) {
+            patterns.push({
+              category: PatternCategory.COLLECTIVE_TREND,
+              key: 'collective:degraded_health',
+              subject: 'Collective health below phi-2',
+              content: `Average health ${Math.round(avgHealth * 100)}% over ${parseInt(agg.total)} snapshots`,
+              occurrences: parseInt(agg.total),
+              significance: this._getSignificance(parseInt(agg.total)),
+              confidence: Math.min(PHI_INV, 1 - avgHealth),
+            });
+          }
+          if (avgLoad > PHI_INV) {
+            patterns.push({
+              category: PatternCategory.COLLECTIVE_TREND,
+              key: 'collective:high_memory_load',
+              subject: 'Memory load above phi-1',
+              content: `Average memory load ${Math.round(avgLoad * 100)}%`,
+              occurrences: parseInt(agg.total),
+              significance: this._getSignificance(parseInt(agg.total)),
+              confidence: Math.min(PHI_INV, avgLoad),
+            });
+          }
+        }
+      } catch (e) { /* table may not exist */ }
+
+      // Tool error hotspots
+      try {
+        const { rows } = await pool.query(
+          `SELECT tool_name, COUNT(*) AS total,
+                  COUNT(*) FILTER (WHERE success = false) AS failures
+           FROM tool_usage
+           WHERE created_at > NOW() - ($1 || ' hours')::INTERVAL
+           GROUP BY tool_name
+           HAVING COUNT(*) >= $2
+           ORDER BY total DESC LIMIT 10`,
+          [String(hours), this.config.minOccurrences]
+        );
+        for (const row of rows) {
+          const total = parseInt(row.total);
+          const failures = parseInt(row.failures);
+          const failRate = failures / total;
+          if (failRate > PHI_INV_2) {
+            patterns.push({
+              category: PatternCategory.RECURRING_MISTAKE,
+              key: `tool:failing:${row.tool_name}`,
+              subject: `Tool ${row.tool_name} has high failure rate`,
+              content: `${Math.round(failRate * 100)}% failure rate across ${total} uses`,
+              occurrences: failures,
+              significance: this._getSignificance(failures),
+              confidence: Math.min(PHI_INV, failRate),
+            });
+          }
+        }
+      } catch (e) { /* table may not exist */ }
+
+      if (patterns.length > 0) {
+        log.info('Data grave analysis found patterns', { count: patterns.length });
+      }
+    } catch (e) {
+      log.debug('Data grave analysis failed', { error: e.message });
     }
 
     return patterns;

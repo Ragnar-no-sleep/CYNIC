@@ -35,6 +35,7 @@ const INTERVALS = {
   GOALS: 8 * 60 * 1000,        // 8 minutes (Fibonacci) - goal progress
   NOTIFICATIONS: 21 * 60 * 1000, // 21 minutes (Fibonacci) - proactive insights
   GOVERNANCE: 34 * 60 * 1000,  // 34 minutes (F9 Fibonacci) - dimension governance
+  DATA_GRAVES: 21 * 60 * 1000, // 21 minutes (F8 Fibonacci) - data grave analysis
 };
 
 /**
@@ -112,6 +113,9 @@ export class AutomationExecutor {
       lastGoalUpdate: null,
       lastNotificationGen: null,
       lastGovernanceReview: null,
+      dataGraveRuns: 0,
+      lastDataGraveRun: null,
+      dataGraveFindings: 0,
     };
 
     log.debug('Automation executor created');
@@ -293,6 +297,15 @@ export class AutomationExecutor {
       });
     }, this.intervals.GOVERNANCE);
     this._intervalHandles.set('governance', governanceHandle);
+
+    // Data grave analysis interval (F8 = 21 min Fibonacci)
+    const dataGraveHandle = setInterval(() => {
+      this._analyzeDataGraves().catch((err) => {
+        this.stats.errors++;
+        log.error('Data grave analysis failed', { error: err.message });
+      });
+    }, this.intervals.DATA_GRAVES);
+    this._intervalHandles.set('dataGraves', dataGraveHandle);
 
     log.debug('Intervals started');
   }
@@ -902,6 +915,142 @@ export class AutomationExecutor {
       this.stats.errors++;
       log.error("Governance review failed", { error: err.message });
       throw err;
+    }
+  }
+
+  /**
+   * Analyze data grave tables for significant patterns.
+   * Runs every 21 minutes (Fibonacci F8).
+   * Logs findings above phi-2 threshold (0.382).
+   * @private
+   */
+  async _analyzeDataGraves() {
+    if (!this.pool) {
+      log.trace('No pool configured, skipping data grave analysis');
+      return;
+    }
+
+    const findings = [];
+
+    try {
+      // 1. Dog behavioral summary (last 24h)
+      try {
+        const { rows } = await this.pool.query(
+          `SELECT dog_name, COUNT(*) AS events,
+                  COUNT(DISTINCT event_type) AS unique_types,
+                  MODE() WITHIN GROUP (ORDER BY health) AS dominant_health
+           FROM dog_events
+           WHERE created_at > NOW() - INTERVAL '24 hours'
+           GROUP BY dog_name
+           ORDER BY events DESC LIMIT 11`
+        );
+        if (rows.length > 0) {
+          const unhealthy = rows.filter(r => r.dominant_health !== 'healthy' && r.dominant_health !== 'good');
+          if (unhealthy.length > 0) {
+            findings.push({ type: 'dog_health', message: `${unhealthy.length} dogs in non-healthy state: ${unhealthy.map(r => r.dog_name).join(', ')}`, severity: 'medium' });
+          }
+        }
+      } catch (e) { /* table may not exist */ }
+
+      // 2. Consensus quality (last 24h)
+      try {
+        const { rows: [cq] } = await this.pool.query(
+          `SELECT COUNT(*) AS total,
+                  AVG(agreement) AS avg_agreement,
+                  COUNT(*) FILTER (WHERE guardian_veto = true) AS vetoes
+           FROM consensus_votes
+           WHERE created_at > NOW() - INTERVAL '24 hours'`
+        );
+        if (cq && parseInt(cq.total) > 0) {
+          const avg = parseFloat(cq.avg_agreement) || 0;
+          const vetoes = parseInt(cq.vetoes);
+          if (avg < PHI_INV * 0.618) {
+            findings.push({ type: 'consensus', message: `Low consensus agreement: ${Math.round(avg * 100)}% avg across ${cq.total} votes`, severity: 'high' });
+          }
+          if (vetoes > 3) {
+            findings.push({ type: 'vetoes', message: `${vetoes} guardian vetoes in 24h`, severity: 'medium' });
+          }
+        }
+      } catch (e) { /* table may not exist */ }
+
+      // 3. Tool failure hotspots (last 24h)
+      try {
+        const { rows } = await this.pool.query(
+          `SELECT tool_name,
+                  COUNT(*) AS total,
+                  COUNT(*) FILTER (WHERE success = false) AS fails,
+                  AVG(latency_ms) AS avg_latency
+           FROM tool_usage
+           WHERE created_at > NOW() - INTERVAL '24 hours'
+           GROUP BY tool_name
+           HAVING COUNT(*) >= 5
+           ORDER BY COUNT(*) FILTER (WHERE success = false) DESC
+           LIMIT 5`
+        );
+        for (const row of rows) {
+          const failRate = parseInt(row.fails) / parseInt(row.total);
+          if (failRate > 0.382) {
+            findings.push({ type: 'tool_failure', message: `${row.tool_name}: ${Math.round(failRate * 100)}% fail rate (${row.total} uses, avg ${Math.round(parseFloat(row.avg_latency))}ms)`, severity: failRate > 0.618 ? 'high' : 'medium' });
+          }
+        }
+      } catch (e) { /* table may not exist */ }
+
+      // 4. Signal volume anomaly (last 6h vs 24h)
+      try {
+        const { rows: [sig] } = await this.pool.query(
+          `SELECT
+             COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '6 hours') AS recent,
+             COUNT(*) AS total
+           FROM dog_signals
+           WHERE created_at > NOW() - INTERVAL '24 hours'`
+        );
+        if (sig && parseInt(sig.total) > 10) {
+          const recentRatio = parseInt(sig.recent) / parseInt(sig.total);
+          if (recentRatio > 0.618) {
+            findings.push({ type: 'signal_spike', message: `Signal spike: ${Math.round(recentRatio * 100)}% of 24h signals in last 6h (${sig.recent}/${sig.total})`, severity: 'medium' });
+          }
+        }
+      } catch (e) { /* table may not exist */ }
+
+      // 5. Calibration drift (last 24h)
+      try {
+        const { rows: [cal] } = await this.pool.query(
+          `SELECT COUNT(*) AS total,
+                  COUNT(*) FILTER (WHERE predicted_outcome = actual_outcome) AS correct,
+                  AVG(predicted_confidence) AS avg_confidence
+           FROM calibration_tracking
+           WHERE created_at > NOW() - INTERVAL '24 hours'`
+        );
+        if (cal && parseInt(cal.total) >= 5) {
+          const accuracy = parseInt(cal.correct) / parseInt(cal.total);
+          const avgConf = parseFloat(cal.avg_confidence) || 0;
+          const drift = Math.abs(accuracy - avgConf);
+          if (drift > 0.236) {
+            findings.push({ type: 'calibration_drift', message: `Calibration drift: accuracy ${Math.round(accuracy * 100)}% vs predicted ${Math.round(avgConf * 100)}% (drift: ${Math.round(drift * 100)}%)`, severity: drift > 0.382 ? 'high' : 'medium' });
+          }
+        }
+      } catch (e) { /* table may not exist */ }
+
+      this.stats.dataGraveRuns++;
+      this.stats.lastDataGraveRun = Date.now();
+      this.stats.dataGraveFindings += findings.length;
+
+      if (findings.length > 0) {
+        log.info('Data grave analysis findings', {
+          count: findings.length,
+          findings: findings.map(f => `[${f.severity}] ${f.type}: ${f.message}`),
+          runNumber: this.stats.dataGraveRuns,
+        });
+
+        this.eventBus.publish(EventType.AUTOMATION_TICK, {
+          subType: 'data_grave_analysis',
+          findings,
+          timestamp: Date.now(),
+        }, { source: 'AutomationExecutor' });
+      }
+    } catch (err) {
+      this.stats.errors++;
+      log.warn('Data grave analysis failed', { error: err.message });
     }
   }
 
