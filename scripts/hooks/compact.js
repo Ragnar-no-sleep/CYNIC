@@ -46,6 +46,9 @@ import {
   DEFAULT_CONTEXT_SIZE,
 } from '../../packages/core/src/context/index.js';
 
+// Cross-session context preservation
+import { saveTopItems } from './lib/context-preservation.js';
+
 // =============================================================================
 // φ CONSTANTS
 // =============================================================================
@@ -587,6 +590,28 @@ async function main() {
       }
     } catch (e) {
       // File preservation failed - continue
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CROSS-SESSION CONTEXT PRESERVATION (Fix 3 - Influence Matrix)
+    // Save top C-Score items for next session's awaken.js to inject
+    // "Le chien préserve les meilleures idées pour demain"
+    // ═══════════════════════════════════════════════════════════════════════════
+    try {
+      const topItems = scoredItems
+        .filter(item => item.cScore >= 61.8) // φ⁻¹ threshold
+        .slice(0, 5)
+        .map(item => ({
+          content: (item.text || '').slice(0, 200),
+          cScore: item.cScore,
+          category: item.contentType,
+          timestamp: Date.now(),
+        }));
+      if (topItems.length > 0) {
+        saveTopItems(topItems);
+      }
+    } catch (e) {
+      // Context preservation is best-effort
     }
 
     // ═══════════════════════════════════════════════════════════════════════════

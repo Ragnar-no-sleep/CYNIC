@@ -66,6 +66,9 @@ import {
 // Direct brain tool calls for implicit activation
 import { callBrainTool } from '../lib/index.js';
 
+// Consciousness read-back: cross-process persistence for self-awareness
+import { loadConsciousnessState } from './lib/consciousness-readback.js';
+
 // φ constants for Distance calculation (local to avoid coupling with brain-bridge)
 const PHI = 1.618033988749895;
 const PHI_INV = 0.618033988749895;
@@ -349,7 +352,7 @@ function generateLearningContext(prompt, profile) {
 // "La distance entre le chaos et le réel"
 // =============================================================================
 
-function calculateCYNICDistance({ brainThought, patterns, routing, tierDecision, emergentCount, localSignals }) {
+function calculateCYNICDistance({ brainThought, patterns, routing, tierDecision, emergentCount, localSignals, consciousnessState }) {
   // 7 layers mapped to the universal weight template (harmonized-structure.md §3):
   //   FOUND(φ)  GEN(φ⁻¹)  POWER(1.0)  PIVOT(φ)  EXPR(φ⁻²)  VISION(φ⁻¹)  RECUR(φ⁻¹)
   //   percep    judgment   memory      consensus economics   phi          residual
@@ -361,13 +364,19 @@ function calculateCYNICDistance({ brainThought, patterns, routing, tierDecision,
   // LOCAL FALLBACKS: When brain MCP is unavailable, local analysis
   // (intent detection, philosophy modules, temporal/error perception)
   // can satisfy deltas. D must be calculable without remote calls.
+  //
+  // δ_consciousness (Fix 1): Read-back from previous self-judgments/calibration.
+  // Boosts δ_judgment when CYNIC has recent self-awareness data.
 
   const conf = brainThought?.confidence || 0;
   const local = localSignals || {};
 
+  // Consciousness read-back enriches judgment delta
+  const hasConsciousnessReadback = consciousnessState != null;
+
   const deltas = [
     (brainThought !== null || local.intentDetected) ? 1 : 0, // δ_perception  (FOUNDATION: grounded — brain OR local intent)
-    (brainThought?.verdict || local.injectionsProduced) ? 1 : 0, // δ_judgment (GENERATION: flows — brain verdict OR local injections)
+    (brainThought?.verdict || local.injectionsProduced || hasConsciousnessReadback) ? 1 : 0, // δ_judgment (GENERATION: flows — brain verdict OR local injections OR consciousness read-back)
     (patterns?.patterns?.length || 0) > 0 ? 1 : 0,          // δ_memory      (POWER: does it transform?)
     routing?.suggestedAgent ? 1 : 0,                         // δ_consensus   (PIVOT: is it balanced?)
     tierDecision?.reason !== 'default' ? 1 : 0,              // δ_economics   (EXPRESSION: meaningful routing, not fallback)
@@ -391,7 +400,7 @@ function calculateCYNICDistance({ brainThought, patterns, routing, tierDecision,
   return { distance, level, breakdown };
 }
 
-function generateFramingDirective(D, brainThought, routing, patterns, promptType, profile) {
+function generateFramingDirective(D, brainThought, routing, patterns, promptType, profile, { consciousnessState, voteSummary } = {}) {
   // Only frame when CYNIC is awake (D >= φ⁻² = 38.2%)
   if (D.distance < PHI_INV_2) return null;
 
@@ -431,6 +440,27 @@ function generateFramingDirective(D, brainThought, routing, patterns, promptType
       'Netzach': 'explore', 'Hod': 'deploy', 'Yesod': 'connect', 'Malkhut': 'map',
     };
     lines.push(`   Lead: ${dog.icon} ${dog.name} (${dog.sefirah || '?'}) \u2014 ${MODES[dog.sefirah] || 'analyze'} mode`);
+  }
+
+  // Vote breakdown (Fix 2): Show disagreement when >=2 Dogs dissent
+  if (voteSummary && voteSummary.dissent >= 2) {
+    const voteEntries = voteSummary.votes.slice(0, 3)
+      .map(v => `${v.agent} ${v.decision}(${Math.round(v.confidence * 100)}%)`)
+      .join(', ');
+    lines.push(`   Votes: ${voteEntries} [${voteSummary.dissent} dissent]`);
+  }
+
+  // Consciousness read-back (Fix 1): Self-awareness from previous judgments
+  if (consciousnessState) {
+    if (consciousnessState.driftDetected) {
+      lines.push('   \u26A0\uFE0F Calibration drift detected. Increase verification.');
+    }
+    if (consciousnessState.lastSelfJudgmentScore != null && consciousnessState.lastSelfJudgmentScore < 50) {
+      lines.push('   \u26A0\uFE0F Recent self-modifications scored low. Extra scrutiny.');
+    }
+    if (consciousnessState.trend === 'declining') {
+      lines.push('   \u26A0\uFE0F Self-judgment trend: declining. Careful with changes.');
+    }
   }
 
   // Frame: approach directive (maps to dominant axiom)
@@ -741,6 +771,19 @@ async function main() {
       sessionState.recordPrompt({
         content: prompt.slice(0, 500),  // Truncate for storage
         intents: intentsPreview.map(i => i.intent),
+      });
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CONSCIOUSNESS READ-BACK: Load self-awareness from previous hooks
+    // "Le chien se souvient de ses propres jugements"
+    // ═══════════════════════════════════════════════════════════════════════════
+    const consciousnessState = loadConsciousnessState();
+    if (consciousnessState) {
+      logger.debug('Consciousness read-back', {
+        lastScore: consciousnessState.lastSelfJudgmentScore,
+        drift: consciousnessState.driftDetected,
+        trend: consciousnessState.trend,
       });
     }
 
@@ -1170,6 +1213,22 @@ async function main() {
     const routing = orchestration?.result?.routing || orchestration?.routing;
     const intervention = orchestration?.result?.intervention || orchestration?.intervention;
 
+    // Build vote summary from agentResults for LLM transparency (Fix 2)
+    const agentResults = orchestration?.result?.agentResults || orchestration?.agentResults || [];
+    let voteSummary = null;
+    if (agentResults.length >= 2) {
+      const votes = agentResults
+        .filter(r => !r.skipped && r.decision)
+        .map(r => ({
+          agent: (r.agent || '').replace('cynic-', ''),
+          decision: r.decision || 'APPROVE',
+          confidence: r.confidence || 0.5,
+        }));
+      const majorityDecision = votes[0]?.decision || 'APPROVE';
+      const dissentCount = votes.filter(v => v.decision !== majorityDecision).length;
+      voteSummary = { votes, dissent: dissentCount, majority: majorityDecision };
+    }
+
     // Handle KETER agent routing - AUTO-DISPATCH
     if (routing?.suggestedAgent) {
       const sefirah = routing.sefirah;
@@ -1423,6 +1482,7 @@ async function main() {
         routing,
         tierDecision,
         emergentCount: emergentPatternCount,
+        consciousnessState,
         localSignals: {
           intentDetected: intents.length > 0 || skillTriggers.length > 0,
           injectionsProduced: injections.length > 0,
@@ -1432,7 +1492,8 @@ async function main() {
 
       framingDirective = generateFramingDirective(
         cynicDistance, brainThought, routing, patterns,
-        detectPromptType(prompt), profile
+        detectPromptType(prompt), profile,
+        { consciousnessState, voteSummary },
       );
 
       logger.debug('CYNIC Distance', {

@@ -372,13 +372,34 @@ class AutoOrchestrator {
         }
       }
 
+      // Build vote summary from agentResults for LLM transparency
+      const agentResults = result?.agentResults || [];
+      let voteSummary = null;
+      if (agentResults.length >= 2) {
+        const votes = agentResults
+          .filter(r => !r.skipped && r.decision)
+          .map(r => ({
+            agent: (r.agent || '').replace('cynic-', ''),
+            decision: r.decision || 'APPROVE',
+            confidence: r.confidence || 0.5,
+          }));
+        const majorityDecision = votes[0]?.decision || 'APPROVE';
+        const dissentCount = votes.filter(v => v.decision !== majorityDecision).length;
+        voteSummary = {
+          votes,
+          dissent: dissentCount,
+          majority: majorityDecision,
+        };
+      }
+
       const decision = {
         blocked: result?.blocked || false,
         blockedBy: result?.blockedBy || null,
         message: result?.blockMessage || null,
         confidence: result?.synthesis?.confidence || PHI_INV,
         reason: result?.synthesis?.reason || 'Approved by collective',
-        agentResults: result?.agentResults || [],
+        agentResults,
+        voteSummary,
         isHighRisk,
       };
 

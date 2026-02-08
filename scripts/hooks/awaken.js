@@ -148,6 +148,9 @@ import {
   getTemporalPerception,
 } from './lib/index.js';
 
+// Cross-session context preservation: load top items from previous session
+import { loadTopItems } from './lib/context-preservation.js';
+
 // =============================================================================
 // M2.1 CONFIGURATION - Cross-Session Fact Injection
 // =============================================================================
@@ -1212,6 +1215,30 @@ async function main() {
         }
       } catch (e) {
         // Reflection injection failed - continue without
+      }
+
+      // ═══════════════════════════════════════════════════════════════════════════
+      // CROSS-SESSION CONTEXT PRESERVATION (Fix 3 - Influence Matrix)
+      // Load high C-Score items from previous session's compaction
+      // "Le chien se souvient des meilleures idées d'hier"
+      // ═══════════════════════════════════════════════════════════════════════════
+      try {
+        const topItems = loadTopItems();
+        if (topItems.length > 0) {
+          const itemLines = topItems
+            .slice(0, 5)
+            .map(item => `- [C=${item.cScore}, ${item.category}] ${item.content} (${item.age})`)
+            .join('\n');
+
+          contextInjections.push({
+            type: 'preserved_context',
+            title: `Previous Session Insights (${topItems.length} high-value items)`,
+            content: itemLines,
+            count: topItems.length,
+          });
+        }
+      } catch (e) {
+        // Context preservation loading is best-effort
       }
 
       // ═══════════════════════════════════════════════════════════════════════════

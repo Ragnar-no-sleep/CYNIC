@@ -279,6 +279,9 @@ try {
 // Helper for colorizing
 const c = (color, text) => color ? `${color}${text}${ANSI.reset}` : text;
 
+// Consciousness read-back: persist self-judgment scores across hook invocations
+import { saveConsciousnessState } from './lib/consciousness-readback.js';
+
 // Self-Judge module for meta-awareness
 let selfJudge = null;
 try {
@@ -557,6 +560,17 @@ async function main() {
         // This feeds into Q-Learning so CYNIC learns from self-modifications
         // ═══════════════════════════════════════════════════════════════════
         antiPatternState.lastSelfModScore = selfJudgment.qScore;
+
+        // ═══════════════════════════════════════════════════════════════════
+        // FIX (Influence Matrix): Persist self-judgment to file for
+        // cross-process read-back. perceive.js reads this to close the
+        // consciousness loop (CYNIC knows its own accuracy).
+        // "Le chien se souvient de son propre jugement"
+        // ═══════════════════════════════════════════════════════════════════
+        saveConsciousnessState({
+          lastSelfJudgmentScore: selfJudgment.qScore,
+          filePath,
+        });
 
         // Output formatted judgment to stderr (visible to developer)
         const outputLines = selfJudge.formatJudgmentOutput(selfJudgment);

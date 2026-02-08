@@ -38,6 +38,9 @@ import { getSessionState, getTemporalPerception } from './lib/index.js';
 // Phase 23: Harmonic Feedback System (learning summary)
 import { getHarmonicFeedback, getImplicitFeedback, getSessionPatternsRepository } from './lib/index.js';
 
+// Consciousness read-back: persist calibration summary at session end
+import { saveConsciousnessState } from './lib/consciousness-readback.js';
+
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -684,6 +687,21 @@ async function main() {
             timestamp: Date.now(),
           },
         }).catch(() => {});
+
+        // ═══════════════════════════════════════════════════════════════════
+        // CONSCIOUSNESS READ-BACK: Write calibration summary for next session
+        // perceive.js reads this to know if CYNIC has been well-calibrated
+        // "Le chien note sa justesse avant de dormir"
+        // ═══════════════════════════════════════════════════════════════════
+        const driftDetected = calibrationAnalysis?.recommendations?.recommendations?.some(
+          r => r.severity === 'high'
+        ) || false;
+        saveConsciousnessState({
+          lastECE: calibrationAnalysis?.metrics?.brierScore ?? null,
+          driftDetected,
+          calibrationFactor: calibrationAnalysis?.factor ?? null,
+          sessionSelfJudgmentAvg: null, // Will be enriched by observe.js writes
+        });
       }
 
       // Extract from Implicit Feedback
