@@ -505,10 +505,10 @@ async function handleCynicState(event, persistence, context) {
   }
 
   // P-GAP-5: Bridge local psychology file → PostgreSQL psychology_snapshots
-  // BurnoutDetection service exists in persistence but nobody writes to it.
-  // Read the local file (written by observe hook) and persist to DB.
+  // Uses PsychologyRepository.recordSnapshot() which handles user FK via _ensureUserExists().
+  // Raw SQL was failing silently because context.userId is not a UUID.
   try {
-    if (persistence) {
+    if (repositories?.psychology?.recordSnapshot) {
       const { readFileSync, existsSync } = await import('fs');
       const { join } = await import('path');
       const { homedir } = await import('os');
@@ -518,26 +518,21 @@ async function handleCynicState(event, persistence, context) {
         // Only persist if recently updated (within 10 min)
         if (psyState.updatedAt && (Date.now() - psyState.updatedAt) < 10 * 60 * 1000) {
           const dims = psyState.dimensions || {};
-          const energy = dims.energy?.value ?? 0.5;
-          const focus = dims.focus?.value ?? 0.5;
-          const creativity = dims.creativity?.value ?? 0.5;
-          const frustration = dims.frustration?.value ?? 0.2;
-          // Burnout formula matches BurnoutDetection._calculateBurnoutScore
-          const burnoutScore = Math.min(1, Math.max(0, (1 - energy) * frustration * (1 + (1 - creativity) * 0.618 * 0.5)));
-          const flowScore = Math.min(1, Math.max(0, energy * 0.618 + focus * 0.618 + creativity * 0.382 - frustration * 0.618));
-
-          await persistence.query(`
-            INSERT INTO psychology_snapshots (user_id, session_id, energy, focus, creativity, frustration, burnout_score, flow_score, work_done, heat_generated, error_count)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-          `, [
+          await repositories.psychology.recordSnapshot(
             context.userId || 'default',
-            context.sessionId || null,
-            energy, focus, creativity, frustration,
-            burnoutScore, flowScore,
-            psyState.temporal?.sessionDuration || 0,
-            0, // heat_generated (could be wired later)
-            0, // error_count (could be wired later)
-          ]);
+            {
+              energy: dims.energy?.value ?? 0.5,
+              focus: dims.focus?.value ?? 0.5,
+              creativity: dims.creativity?.value ?? 0.5,
+              frustration: dims.frustration?.value ?? 0.2,
+            },
+            {
+              sessionId: context.sessionId || null,
+              workDone: psyState.temporal?.sessionDuration || 0,
+              heatGenerated: 0,
+              errorCount: 0,
+            }
+          );
           _stats.burnoutPersisted = (_stats.burnoutPersisted || 0) + 1;
         }
       }
@@ -773,6 +768,7 @@ export function startEventListeners(options = {}) {
           judgments: persistence.getRepository('judgments'),
           feedback: persistence.getRepository('feedback'),
           sessions: persistence.getRepository('sessions'),
+          psychology: persistence.getRepository('psychology'),
         };
       } else if (persistence.repositories) {
         repositories = persistence.repositories;
@@ -1186,6 +1182,7 @@ export function startEventListeners(options = {}) {
     hasJudgmentsRepo: !!repositories.judgments,
     hasFeedbackRepo: !!repositories.feedback,
     hasSessionsRepo: !!repositories.sessions,
+    hasPsychologyRepo: !!repositories?.psychology,
     hasSharedMemory: !!sharedMemory,
     hasPersistence: !!persistence?.query,
     hasBlockStore: !!blockStore,
