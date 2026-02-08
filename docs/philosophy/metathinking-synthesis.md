@@ -524,9 +524,11 @@ Le code est le chien.
 | Consensus / φ-BFT | 1 file (913 LOC) | Collective decision | Yes (φ⁻¹ threshold) | Yes (consensus_votes) |
 | PoJ Blockchain | ~5 files | Immutability | Yes (block timing) | Yes (blocks, anchors) |
 
-**Total unique protocols**: 11
-**Total φ-governed**: 11/11 (100%)
-**Total persisted**: 9/11 (82%)
+| 7×7 Influence Matrix | 16 files (hooks) | Metathinking | Yes (Distance D) | Partial (symbiosis cache) |
+
+**Total unique protocols**: 12
+**Total φ-governed**: 12/12 (100%)
+**Total persisted**: 10/12 (83%)
 
 ```
 ╔═══════════════════════════════════════════════════════════╗
@@ -538,6 +540,28 @@ Le code est le chien.
 ║   Le chien se connaît.                                     ║
 ╚═══════════════════════════════════════════════════════════╝
 ```
+
+---
+
+---
+
+## 11. The Influence Matrix
+
+The 7×7 Fractal Matrix describes WHAT CYNIC perceives. But the same 7×7 structure describes HOW CYNIC influences the LLM itself:
+
+```
+7 Temporal Layers × 7 Influence Dimensions = 49 + 1 cells
+
+Dominant layer: T3 ÉCOUTE (perceive.js) = 72.7%
+Strongest dimension: D7 CONSCIENCE = 67.2%
+Overall completion: 44.6%
+THE_UNNAMEABLE: internal model influence (fine-tuning)
+
+The Influence Matrix IS cell C6.2 (CYNIC × JUDGE) unfolded
+into its own 7×7 fractal. At every scale, the same pattern.
+```
+
+> See [influence-matrix.md](influence-matrix.md) for the full 7×7 analysis.
 
 ---
 

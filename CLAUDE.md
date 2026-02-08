@@ -579,6 +579,7 @@ Ces documents capturent la vision cristalline de CYNIC.
 | [Symbiose Humain-LLM](docs/philosophy/human-llm-symbiosis.md) | CYNIC comme membrane | Pour comprendre la relation |
 | [Utilité Écosystème](docs/philosophy/ecosystem-utility.md) | Rôle réel dans ASDFASDFA | Pour comprendre l'écosystème |
 | [Tokenomics](docs/philosophy/tokenomics.md) | Économie du burn | Pour comprendre le modèle économique |
+| [Matrice d'Influence](docs/philosophy/influence-matrix.md) | 7×7 influence CYNIC→LLM, metathinking | Pour comprendre comment CYNIC agit sur le LLM |
 
 ### Résumé Ultra-Condensé (Si temps limité)
 
