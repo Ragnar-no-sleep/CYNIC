@@ -292,6 +292,10 @@ export class KabbalisticRouter {
     this._dpoWeightsTTL = 5 * 60 * 1000; // 5 minutes
     this._dpoWeightsLastLoad = 0;
 
+    // D-GRAVE-1: Orchestration performance cache (from orchestration_log)
+    this._orchPerf = null;
+    this._orchPerfLastLoad = 0;
+
     // D1: Thompson Sampler for exploration
     this.thompsonSampler = new ThompsonSampler();
     // Initialize arms for all 11 dogs
@@ -424,8 +428,9 @@ export class KabbalisticRouter {
     // =======================================================================
     // D1: LEARNING-INFORMED PATH OPTIMIZATION (Q + DPO + Thompson)
     // =======================================================================
-    // Load DPO weights (cached, non-blocking)
+    // Load DPO weights + orchestration learning (cached, non-blocking)
     try { await this.loadDPOWeights(); } catch (err) { /* best-effort */ }
+    try { await this._loadOrchestrationLearning(); } catch (err) { /* best-effort */ }
 
     // D1: Thompson exploration - with phi^-2 (23.6%), let Thompson pick entry
     let thompsonExplored = false;
@@ -612,6 +617,16 @@ export class KabbalisticRouter {
 
     // Penalty for unnecessary escalations
     if (context.escalations.length > 2) reward -= 0.1;
+
+    // D-GRAVE-1: Orchestration history alignment
+    // If entry dog historically succeeds, slight reward boost (learning from past)
+    if (this._orchPerf) {
+      const entryDog = context.path?.[0];
+      const perf = this._orchPerf[entryDog];
+      if (perf && perf.sampleSize >= 5) {
+        reward += (perf.successRate - 0.5) * PHI_INV_3; // ±23.6% max adjustment
+      }
+    }
 
     return Math.max(-1, Math.min(1, reward));
   }
@@ -1385,6 +1400,13 @@ export class KabbalisticRouter {
       age: this._dpoWeightsLastLoad ? Date.now() - this._dpoWeightsLastLoad : null,
     };
 
+    // D-GRAVE-1: Orchestration performance cache
+    stats.orchestrationPerf = {
+      loaded: !!this._orchPerf,
+      dogs: this._orchPerf ? Object.keys(this._orchPerf).length : 0,
+      age: this._orchPerfLastLoad ? Date.now() - this._orchPerfLastLoad : null,
+    };
+
     return stats;
   }
 
@@ -1483,6 +1505,56 @@ export class KabbalisticRouter {
   }
 
   // ===========================================================================
+  // D-GRAVE-1: ORCHESTRATION LEARNING (historical routing success)
+  // ===========================================================================
+
+  /**
+   * Load historical orchestration performance per dog (sefirah).
+   * Reads orchestration_log to determine which dogs have best track records.
+   * Uses same TTL as DPO weights (5 min cache).
+   */
+  async _loadOrchestrationLearning() {
+    if (!this.persistence?.query) return null;
+    if (this._orchPerf && (Date.now() - this._orchPerfLastLoad) < this._dpoWeightsTTL) {
+      return this._orchPerf;
+    }
+
+    try {
+      const { rows } = await this.persistence.query(`
+        SELECT
+          LOWER(sefirah) as dog,
+          COUNT(*) as total,
+          SUM(CASE WHEN outcome = 'ALLOW' AND skill_success IS NOT FALSE THEN 1 ELSE 0 END)::FLOAT
+            / NULLIF(COUNT(*), 0) as success_rate,
+          AVG(judgment_qscore) as avg_qscore
+        FROM orchestration_log
+        WHERE created_at > NOW() - INTERVAL '7 days'
+          AND sefirah IS NOT NULL
+        GROUP BY LOWER(sefirah)
+        HAVING COUNT(*) >= 5
+      `);
+
+      this._orchPerf = {};
+      for (const row of rows) {
+        this._orchPerf[row.dog] = {
+          successRate: parseFloat(row.success_rate) || 0.5,
+          avgQScore: parseFloat(row.avg_qscore) || 50,
+          sampleSize: parseInt(row.total),
+        };
+      }
+      this._orchPerfLastLoad = Date.now();
+
+      if (rows.length > 0) {
+        log.info('Orchestration learning loaded', { dogs: rows.length });
+      }
+      return this._orchPerf;
+    } catch (err) {
+      log.debug('Orchestration learning load failed (non-blocking)', { error: err.message });
+      return null;
+    }
+  }
+
+  // ===========================================================================
   // D1: BLENDED WEIGHTS (Q-Learning + DPO + Thompson)
   // ===========================================================================
 
@@ -1504,6 +1576,11 @@ export class KabbalisticRouter {
         const fisher = this._dpoFisher?.[dog] || 0;
         const learnedTrust = PHI_INV_2 + fisher * PHI_INV_3;
         blended[dog] = (1 - learnedTrust) * existingWeight + learnedTrust * learnedAvg;
+        // D-GRAVE-1: Orchestration performance bias (±PHI_INV_3 from historical success)
+        const orchPerf = this._orchPerf?.[dog];
+        if (orchPerf && orchPerf.sampleSize >= 5) {
+          blended[dog] += (orchPerf.successRate - 0.5) * PHI_INV_3;
+        }
       }
       return blended;
     } catch (err) {

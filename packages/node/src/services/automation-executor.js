@@ -1012,7 +1012,48 @@ export class AutomationExecutor {
         }
       } catch (e) { /* table may not exist */ }
 
-      // 5. Calibration drift (last 24h)
+      // 5. Friction category hotspots (last 6h, from recent_frictions view)
+      try {
+        const { rows } = await this.pool.query(
+          `SELECT severity, category, SUM(count) as total
+           FROM recent_frictions
+           WHERE hour > NOW() - INTERVAL '6 hours'
+           GROUP BY severity, category
+           ORDER BY total DESC
+           LIMIT 10`
+        );
+        for (const row of rows) {
+          const total = parseInt(row.total);
+          if (row.severity === 'critical' && total >= 3) {
+            findings.push({ type: 'friction_hotspot', message: `Critical frictions in ${row.category}: ${total} in 6h`, severity: 'high' });
+          } else if (row.severity === 'high' && total >= 5) {
+            findings.push({ type: 'friction_hotspot', message: `High frictions in ${row.category}: ${total} in 6h`, severity: 'medium' });
+          }
+        }
+      } catch (e) { /* view may not exist */ }
+
+      // 6. Orchestration domain performance (last 7d, from orchestration_learning_view)
+      try {
+        const { rows } = await this.pool.query(
+          `SELECT domain, outcome, count, skill_success_rate, avg_qscore
+           FROM orchestration_learning_view
+           WHERE count >= 5
+           ORDER BY count DESC
+           LIMIT 10`
+        );
+        for (const row of rows) {
+          const successRate = parseFloat(row.skill_success_rate) || 0;
+          if (successRate < PHI_INV * 0.618 && parseInt(row.count) >= 10) {
+            findings.push({
+              type: 'orchestration_quality',
+              message: `Domain "${row.domain}" skill success: ${Math.round(successRate * 100)}% (${row.count} decisions, avg Q: ${Math.round(parseFloat(row.avg_qscore) || 0)})`,
+              severity: successRate < 0.236 ? 'high' : 'medium',
+            });
+          }
+        }
+      } catch (e) { /* view may not exist */ }
+
+      // 7. Calibration drift (last 24h)
       try {
         const { rows: [cal] } = await this.pool.query(
           `SELECT COUNT(*) AS total,
