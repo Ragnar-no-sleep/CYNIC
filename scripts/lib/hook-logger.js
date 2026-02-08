@@ -11,7 +11,7 @@
 
 'use strict';
 
-import { appendFileSync, existsSync, mkdirSync, statSync, renameSync, readFileSync } from 'fs';
+import { appendFileSync, existsSync, mkdirSync, statSync, renameSync, readFileSync, unlinkSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -61,7 +61,7 @@ function rotateIfNeeded() {
       if (existsSync(oldFile)) {
         if (i === MAX_LOG_FILES - 1) {
           // Delete oldest
-          require('fs').unlinkSync(oldFile);
+          unlinkSync(oldFile);
         } else {
           renameSync(oldFile, newFile);
         }

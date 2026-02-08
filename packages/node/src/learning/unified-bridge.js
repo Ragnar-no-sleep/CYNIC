@@ -321,8 +321,8 @@ export class UnifiedBridge extends EventEmitter {
    * @private
    */
   async _updateSignalOutcome(judgmentId, outcome) {
-    // In production, would update in store
-    log.debug('Would update signal outcome', { judgmentId, outcome });
+    const updated = await this.store.updateOutcome(judgmentId, outcome);
+    if (updated) this._stats.signalsWithOutcome++;
   }
 
   /**

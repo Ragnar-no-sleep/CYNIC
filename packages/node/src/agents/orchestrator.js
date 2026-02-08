@@ -475,6 +475,7 @@ export class DogOrchestrator {
       dimensions: result.dimensions || result.scores || {},
       weight: DOG_CONFIG[dogName]?.blocking ? 1.5 : 1,
       insights: result.insights || result.recommendations || [],
+      isMock: false,
     };
   }
 
@@ -490,18 +491,27 @@ export class DogOrchestrator {
   }
 
   /**
-   * Mock response for dogs without real implementation
+   * Mock response for dogs without real implementation.
+   * Returns NEUTRAL score (50) with zero weight so it doesn't bias consensus.
+   * Marked with isMock=true for downstream detection.
    * @private
    */
   _mockDogResponse(dogName, item) {
-    const baseScore = 50 + Math.random() * 30;
+    // Emit warning through event bus (never silent)
+    this.eventBus?.publish('dog:mock:used', {
+      dogId: dogName?.toLowerCase(),
+      reason: 'fallback',
+      itemType: item?.type || 'unknown',
+    }, { source: 'DogOrchestrator' });
+
     return {
-      score: baseScore,
-      verdict: this._scoreToVerdict(baseScore),
+      score: 50,
+      verdict: 'GROWL',
       response: 'allow',
-      weight: 1,
+      weight: 0, // Zero weight: mock votes don't influence consensus
       dimensions: {},
-      insights: [`[${dogName}] Mock evaluation`],
+      insights: [`[${dogName}] MOCK — dog unavailable, vote excluded from consensus`],
+      isMock: true,
     };
   }
 
@@ -538,7 +548,8 @@ export class DogOrchestrator {
    * @private
    */
   _calculateConsensus(votes) {
-    const successfulVotes = votes.filter(v => v.success);
+    // Exclude mock votes (weight=0, isMock=true) from consensus
+    const successfulVotes = votes.filter(v => v.success && !v.isMock);
     const totalWeight = successfulVotes.reduce((sum, v) => sum + (v.weight || 1), 0);
 
     // Check for blocking votes
@@ -582,13 +593,15 @@ export class DogOrchestrator {
    * @private
    */
   _buildJudgment(item, votes, consensus) {
-    const successfulVotes = votes.filter(v => v.success);
+    // Exclude mock votes from judgment building
+    const realVotes = votes.filter(v => v.success && !v.isMock);
+    const mockCount = votes.filter(v => v.isMock).length;
 
     // Aggregate dimension scores (weighted average)
     const dimensions = {};
     const weights = {};
 
-    for (const vote of successfulVotes) {
+    for (const vote of realVotes) {
       if (vote.dimensions) {
         for (const [dim, score] of Object.entries(vote.dimensions)) {
           const weight = vote.weight || 1;
@@ -603,8 +616,8 @@ export class DogOrchestrator {
       dimensions[dim] = dimensions[dim] / weights[dim];
     }
 
-    // Calculate global score
-    const scores = successfulVotes.map(v => v.score).filter(s => typeof s === 'number');
+    // Calculate global score (only from real votes)
+    const scores = realVotes.map(v => v.score).filter(s => typeof s === 'number');
     const globalScore = scores.length > 0
       ? scores.reduce((a, b) => a + b, 0) / scores.length
       : 50;
@@ -612,8 +625,8 @@ export class DogOrchestrator {
     // Determine verdict
     const verdict = this._scoreToVerdict(globalScore);
 
-    // Collect all insights
-    const allInsights = successfulVotes
+    // Collect all insights (from real votes only)
+    const allInsights = realVotes
       .flatMap(v => v.insights || [])
       .filter(Boolean);
 
@@ -626,9 +639,10 @@ export class DogOrchestrator {
         ratio: consensus.ratio,
         reached: consensus.reached,
         threshold: consensus.threshold,
-        votingDogs: successfulVotes.length,
+        votingDogs: realVotes.length,
+        mockDogs: mockCount,
       },
-      votes: successfulVotes.map(v => ({
+      votes: realVotes.map(v => ({
         dog: v.dog,
         score: v.score,
         verdict: v.verdict,

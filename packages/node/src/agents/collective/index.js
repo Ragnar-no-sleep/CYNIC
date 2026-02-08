@@ -487,6 +487,57 @@ export class CollectivePack {
   }
 
   /**
+   * Collective vote on a governance question.
+   * Bypasses shouldTrigger — ALL dogs vote.
+   *
+   * @param {string} question - Human-readable question
+   * @param {Object} [options]
+   * @param {string} [options.context] - Context type (e.g. 'dimension_governance')
+   * @param {Object} [options.metadata] - Structured metadata for dogs
+   * @returns {Promise<Object>} { votes, decision, confidence }
+   */
+  async decide(question, options = {}) {
+    const event = {
+      type: 'governance_vote',
+      question,
+      context: options.context,
+      ...(options.metadata || {}),
+    };
+
+    const votes = {};
+    let totalScore = 0;
+    let count = 0;
+
+    for (const [id, agent] of this.agents) {
+      try {
+        const analysis = await agent.analyze(event, { governance: true });
+        const decision = await agent.decide(analysis, { governance: true });
+        const score = analysis.score ?? 50;
+
+        votes[id] = {
+          decision: decision.response === 'allow' ? 'approve' : 'reject',
+          score,
+          confidence: analysis.confidence ?? decision.confidence,
+          reason: decision.reason,
+        };
+        totalScore += score;
+        count++;
+      } catch (err) {
+        votes[id] = { decision: 'abstain', score: 0, error: err.message };
+      }
+    }
+
+    const avgScore = count > 0 ? totalScore / count : 0;
+    const approveCount = Object.values(votes).filter(v => v.decision === 'approve').length;
+
+    return {
+      votes,
+      decision: approveCount > count / 2 ? 'approve' : 'reject',
+      confidence: Math.min(avgScore / 100, 0.618),
+    };
+  }
+
+  /**
    * Check command safety (Guardian)
    * @param {string} command - Command to check
    * @returns {Promise<Object>} Safety assessment

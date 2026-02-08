@@ -569,6 +569,34 @@ export class UnifiedSignalStore extends EventEmitter {
   }
 
   /**
+   * Update outcome for an already-persisted signal (by judgmentId).
+   * @param {string} judgmentId
+   * @param {Object} outcome - { status, reason }
+   * @returns {Promise<boolean>} true if a row was updated
+   */
+  async updateOutcome(judgmentId, outcome) {
+    if (!this._persistencePool) return false;
+
+    try {
+      const { rowCount } = await this._persistencePool.query(`
+        UPDATE unified_signals
+        SET outcome = outcome || $1::jsonb,
+            learning = learning || '{"canPair": true}'::jsonb
+        WHERE judgment->>'judgmentId' = $2
+          AND (outcome->>'status' IS NULL OR outcome->>'status' = 'PENDING')
+      `, [JSON.stringify(outcome), judgmentId]);
+
+      if (rowCount > 0) {
+        log.debug('Signal outcome updated', { judgmentId, status: outcome.status });
+      }
+      return rowCount > 0;
+    } catch (error) {
+      log.error('Failed to update signal outcome', { judgmentId, error: error.message });
+      return false;
+    }
+  }
+
+  /**
    * Cleanup old signals
    * @private
    */
