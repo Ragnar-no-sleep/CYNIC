@@ -159,6 +159,7 @@ export class Perceiver extends EventEmitter {
 
     // Start polling loop
     this.pollTimer = setInterval(() => this._poll(), this.config.pollInterval);
+    this.pollTimer.unref();
 
     log.info('Perceiver started', {
       polling: true,

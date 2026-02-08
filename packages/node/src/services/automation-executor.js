@@ -256,6 +256,7 @@ export class AutomationExecutor {
         log.error('Scheduled learning cycle failed', { error: err.message });
       });
     }, this.intervals.LEARNING);
+    learningHandle.unref();
     this._intervalHandles.set('learning', learningHandle);
 
     // Trigger evaluation interval
@@ -265,6 +266,7 @@ export class AutomationExecutor {
         log.error('Trigger evaluation failed', { error: err.message });
       });
     }, this.intervals.TRIGGERS);
+    triggerHandle.unref();
     this._intervalHandles.set('triggers', triggerHandle);
 
     // Cleanup interval
@@ -274,6 +276,7 @@ export class AutomationExecutor {
         log.error('Cleanup failed', { error: err.message });
       });
     }, this.intervals.CLEANUP);
+    cleanupHandle.unref();
     this._intervalHandles.set('cleanup', cleanupHandle);
 
     // Heartbeat interval
@@ -284,6 +287,7 @@ export class AutomationExecutor {
         stats: this.stats,
       }, { source: 'AutomationExecutor' });
     }, this.intervals.HEARTBEAT);
+    heartbeatHandle.unref();
     this._intervalHandles.set('heartbeat', heartbeatHandle);
 
     // Task queue processing interval
@@ -293,6 +297,7 @@ export class AutomationExecutor {
         log.error('Task queue processing failed', { error: err.message });
       });
     }, this.intervals.TASKS);
+    tasksHandle.unref();
     this._intervalHandles.set('tasks', tasksHandle);
 
     // Goal progress update interval
@@ -302,6 +307,7 @@ export class AutomationExecutor {
         log.error('Goal progress update failed', { error: err.message });
       });
     }, this.intervals.GOALS);
+    goalsHandle.unref();
     this._intervalHandles.set('goals', goalsHandle);
 
     // Notification generation interval
@@ -311,6 +317,7 @@ export class AutomationExecutor {
         log.error('Notification generation failed', { error: err.message });
       });
     }, this.intervals.NOTIFICATIONS);
+    notificationsHandle.unref();
     this._intervalHandles.set('notifications', notificationsHandle);
 
     // Governance review interval (F9 = 34 min Fibonacci)
@@ -320,6 +327,7 @@ export class AutomationExecutor {
         log.error('Governance review failed', { error: err.message });
       });
     }, this.intervals.GOVERNANCE);
+    governanceHandle.unref();
     this._intervalHandles.set('governance', governanceHandle);
 
     // Data grave analysis interval (F8 = 21 min Fibonacci)
@@ -329,6 +337,7 @@ export class AutomationExecutor {
         log.error('Data grave analysis failed', { error: err.message });
       });
     }, this.intervals.DATA_GRAVES);
+    dataGraveHandle.unref();
     this._intervalHandles.set('dataGraves', dataGraveHandle);
 
     // Pattern learning interval (F10 = 55 min Fibonacci)
@@ -339,6 +348,7 @@ export class AutomationExecutor {
           log.error('Pattern learning failed', { error: err.message });
         });
       }, this.intervals.PATTERN_LEARNING);
+      patternHandle.unref();
       this._intervalHandles.set('patternLearning', patternHandle);
     }
 

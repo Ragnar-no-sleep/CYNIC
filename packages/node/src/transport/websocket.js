@@ -775,6 +775,7 @@ export class WebSocketTransport extends EventEmitter {
     this.heartbeatTimer = setInterval(() => {
       this._sendHeartbeats();
     }, this.heartbeatInterval);
+    this.heartbeatTimer.unref();
   }
 
   /**

@@ -112,6 +112,7 @@ export class DogStateEmitter extends EventEmitter {
     this._intervalId = setInterval(() => {
       this._emitPeriodicState();
     }, this._emitIntervalMs);
+    this._intervalId.unref();
 
     // Emit initial state
     this._emitPeriodicState();

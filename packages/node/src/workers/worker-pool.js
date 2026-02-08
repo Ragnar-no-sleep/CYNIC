@@ -224,6 +224,7 @@ export class WorkerPool extends EventEmitter {
       () => this._processQueue(),
       this.config.pollIntervalMs
     );
+    this._pollIntervalId.unref();
 
     // Process immediately
     this._processQueue();
@@ -577,6 +578,7 @@ export class WorkerPool extends EventEmitter {
     task._timeoutId = setTimeout(() => {
       this._handleTimeout(task);
     }, task.timeoutMs);
+    task._timeoutId.unref();
 
     // Set up progress interval
     task._progressIntervalId = setInterval(() => {
@@ -587,6 +589,7 @@ export class WorkerPool extends EventEmitter {
         message: task.progressMessage,
       });
     }, this.config.progressIntervalMs);
+    task._progressIntervalId.unref();
 
     // Execute handler
     try {

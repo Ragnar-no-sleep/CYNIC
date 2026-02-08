@@ -159,12 +159,14 @@ export class TelemetryCollector extends EventEmitter {
     this._flushTimer = null;
     if (this.flushInterval > 0) {
       this._flushTimer = setInterval(() => this.flush(), this.flushInterval);
+      this._flushTimer.unref();
     }
 
     // Task #62: Start threshold monitoring
     this._thresholdTimer = null;
     if (this.alertsEnabled) {
       this._thresholdTimer = setInterval(() => this._checkThresholds(), 30000); // Every 30s
+      this._thresholdTimer.unref();
     }
   }
 

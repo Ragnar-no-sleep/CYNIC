@@ -1246,6 +1246,7 @@ export function startAutoSave(persistence) {
       log.warn('Auto-save failed', { error: err.message });
     }
   }, AUTO_SAVE_CONFIG.INTERVAL_MS);
+  _autoSaveInterval.unref();
 
   log.info('Auto-save started', { intervalMs: AUTO_SAVE_CONFIG.INTERVAL_MS });
 }

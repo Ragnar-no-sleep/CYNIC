@@ -669,7 +669,9 @@ export class ConsensusEngine extends EventEmitter {
         if (this.state === ConsensusState.STOPPED) return;
         this._onSlotChange();
       }, this.slotDuration);
+      this.slotTimer.unref();
     }, delay > 0 ? delay : 0);
+    this.slotTimer.unref();
   }
 
   /**

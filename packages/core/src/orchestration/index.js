@@ -766,6 +766,7 @@ export class Orchestrator {
     this._workStealInterval = setInterval(() => {
       this._scheduleNext();
     }, ORCHESTRATION_CONSTANTS.WORK_STEAL_INTERVAL_MS);
+    this._workStealInterval.unref();
   }
 
   /**

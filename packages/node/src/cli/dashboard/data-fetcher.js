@@ -130,6 +130,7 @@ export class DataFetcher {
         this.onError(err);
       }
     }, this.pollInterval);
+    this.intervalId.unref();
   }
 
   /**

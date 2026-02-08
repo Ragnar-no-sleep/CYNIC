@@ -120,6 +120,7 @@ export class SONA extends EventEmitter {
       () => this._processAdaptationBatch(),
       this.config.ADAPTATION_INTERVAL_MS
     );
+    this._adaptationTimer.unref();
 
     this.emit('sona:started');
   }

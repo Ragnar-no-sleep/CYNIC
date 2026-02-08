@@ -146,6 +146,7 @@ export class AgentEventBus extends EventEmitter {
       () => this._cleanup(),
       BUS_CONSTANTS.CLEANUP_INTERVAL_MS
     );
+    this._cleanupInterval.unref();
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -467,6 +468,7 @@ export class AgentEventBus extends EventEmitter {
           resolve(result);
         }
       }, 100); // Check every 100ms
+      checkInterval.unref();
     });
   }
 

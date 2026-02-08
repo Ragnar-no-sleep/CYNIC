@@ -161,11 +161,13 @@ export class PeerDiscovery extends EventEmitter {
     this._exchangeTimer = setInterval(() => {
       this._broadcastPeerExchange();
     }, DISCOVERY_INTERVALS.PEER_EXCHANGE_MS);
+    this._exchangeTimer.unref();
 
     // Start health checks
     this._healthTimer = setInterval(() => {
       this._checkHealth();
     }, DISCOVERY_INTERVALS.HEALTH_CHECK_MS);
+    this._healthTimer.unref();
 
     this.emit('started');
   }
@@ -240,6 +242,7 @@ export class PeerDiscovery extends EventEmitter {
       this._bootstrapTimer = setTimeout(() => {
         this._bootstrap();
       }, DISCOVERY_INTERVALS.BOOTSTRAP_RETRY_MS);
+      this._bootstrapTimer.unref();
     } else {
       this.state = connected >= this.minPeers
         ? DiscoveryState.CONNECTED

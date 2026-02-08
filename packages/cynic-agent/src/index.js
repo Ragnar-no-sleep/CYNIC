@@ -259,11 +259,13 @@ export class CynicAgent extends EventEmitter {
     // Start tick loop
     this._tick();
     this.tickTimer = setInterval(() => this._tick(), this.config.tickInterval);
+    this.tickTimer.unref();
 
     // Reset hourly action count
-    setInterval(() => {
+    const _hourlyReset = setInterval(() => {
       this.metrics.actionsThisHour = 0;
     }, 60 * 60 * 1000);
+    _hourlyReset.unref();
 
     this.emit('started', { name: this.name, timestamp: Date.now() });
 

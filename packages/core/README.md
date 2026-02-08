@@ -13,24 +13,28 @@ npm install @cynic/core
 ## Quick Start
 
 ```javascript
-import * as pkg from '@cynic/core';
+import { timerTracker } from '@cynic/core';
 ```
 
 ## API Reference
 
+### Functions
+
+`timerTracker`
+
 ## Stats
 
-- **Source files**: 53
+- **Source files**: 54
 - **Test files**: 22
-- **Test ratio**: 42%
-- **Exports**: 0 named
+- **Test ratio**: 41%
+- **Exports**: 1 named
 
 ## Dimensions (4 Axioms)
 
 ```
-[████░░░░░░] 42% φ (Confidence)
+[████░░░░░░] 41% φ (Confidence)
 [█████░░░░░] 50% Verify
-[█████░░░░░] 50% Culture
+[██████░░░░] 62% Culture
 [██████░░░░] 62% Burn (Simplicity)
 [░░░░░░░░░░]  0% Emergence
 ```

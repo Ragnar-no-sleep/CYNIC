@@ -89,6 +89,7 @@ export class EWCConsolidationService extends EventEmitter {
       () => this.consolidate('schedule'),
       this.config.CONSOLIDATION_INTERVAL_MS
     );
+    this.consolidationTimer.unref();
 
     this.emit('scheduler:started');
   }

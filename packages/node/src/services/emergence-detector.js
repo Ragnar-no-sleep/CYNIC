@@ -119,6 +119,7 @@ export class EmergenceDetector extends EventEmitter {
         console.error('[EmergenceDetector] Periodic analysis failed:', e.message);
       });
     }, this.config.analysisIntervalMs);
+    this._interval.unref();
 
     this.emit('started');
   }

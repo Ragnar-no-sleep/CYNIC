@@ -662,6 +662,7 @@ export class PoJChain extends EventEmitter {
     // Run immediately then on interval
     tick();
     this._slotTimer = setInterval(tick, SLOT_DURATION_MS);
+    this._slotTimer.unref();
   }
 
   /**

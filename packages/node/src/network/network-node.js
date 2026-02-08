@@ -438,9 +438,13 @@ export class CYNICNetworkNode extends EventEmitter {
   /** @private */
   _startPeriodicTasks() {
     this._heartbeatTimer = setInterval(() => this._publishHeartbeat(), NETWORK_INTERVALS.HEARTBEAT_MS);
+    this._heartbeatTimer.unref();
     this._syncTimer = setInterval(() => this._checkStateSync(), NETWORK_INTERVALS.STATE_SYNC_MS);
+    this._syncTimer.unref();
     this._validatorTimer = setInterval(() => this._updateValidatorSet(), NETWORK_INTERVALS.VALIDATOR_CHECK_MS);
+    this._validatorTimer.unref();
     this._metricsTimer = setInterval(() => this._reportMetrics(), NETWORK_INTERVALS.METRICS_REPORT_MS);
+    this._metricsTimer.unref();
   }
 
   /** @private */

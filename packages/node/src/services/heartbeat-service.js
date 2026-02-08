@@ -100,6 +100,7 @@ export class HeartbeatService extends EventEmitter {
     this._interval = setInterval(() => {
       this._runChecks();
     }, this.config.intervalMs);
+    this._interval.unref();
 
     this.emit('started');
   }

@@ -750,11 +750,13 @@ export class CYNICNode {
     this._epochTimer = setInterval(() => {
       this._onEpoch();
     }, EPOCH_MS * 100); // Scale up for practical use
+    this._epochTimer.unref();
 
     // Cycle timer - governance check
     this._cycleTimer = setInterval(() => {
       this._onCycle();
     }, CYCLE_MS * 100); // Scale up for practical use
+    this._cycleTimer.unref();
   }
 
   /**

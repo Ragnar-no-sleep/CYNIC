@@ -261,6 +261,7 @@ export class AnchorQueue {
         await this._processBatch();
       }
     }, this.intervalMs);
+    this.timer.unref();
   }
 
   /**

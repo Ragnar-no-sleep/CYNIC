@@ -150,6 +150,7 @@ export class AuthService {
 
     // Cleanup interval for expired rate limits
     this._cleanupInterval = setInterval(() => this._cleanup(), this.rateWindow);
+    this._cleanupInterval.unref();
   }
 
   /**

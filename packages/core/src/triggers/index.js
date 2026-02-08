@@ -1024,6 +1024,7 @@ export class PeriodicScheduler {
     const intervalId = setInterval(() => {
       this._executeTask(task);
     }, task.intervalMs);
+    intervalId.unref();
 
     this.intervals.set(task.id, intervalId);
     task.nextRun = Date.now() + task.intervalMs;

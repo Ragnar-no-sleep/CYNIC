@@ -143,6 +143,7 @@ export class CalibrationTracker {
         log.error('CalibrationTracker', 'Scheduled flush failed', { error: err.message });
       });
     }, this._flushIntervalMs);
+    this._flushDebounce.unref();
   }
 
   /**

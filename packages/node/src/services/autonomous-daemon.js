@@ -536,6 +536,7 @@ export class AutonomousDaemon {
   _sleep(ms) {
     return new Promise(resolve => {
       this._loopHandle = setTimeout(resolve, ms);
+      this._loopHandle.unref();
     });
   }
 
