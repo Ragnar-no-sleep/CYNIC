@@ -23,7 +23,8 @@ if [ -n "$DIFF" ]; then
 
   # 1a. SECRET DETECTION — block API keys, passwords, tokens in code
   SECRET_PATTERNS='(PRIVATE_KEY|SECRET_KEY|API_KEY|api_key|password|passwd|token)\s*[:=]\s*["\x27][^\s]{8,}'
-  SECRETS_FOUND=$(echo "$DIFF" | grep -cPi "$SECRET_PATTERNS" 2>/dev/null || echo "0")
+  SECRETS_FOUND=$(echo "$DIFF" | grep -cPi "$SECRET_PATTERNS" 2>/dev/null | tr -d '\r\n' || echo "0")
+  SECRETS_FOUND=${SECRETS_FOUND:-0}
   if [ "$SECRETS_FOUND" -gt 0 ]; then
     echo ""
     echo "┌─────────────────────────────────────────────────────────┐"
@@ -45,7 +46,8 @@ if [ -n "$DIFF" ]; then
     for f in $PROD_FILES; do
       # Only check added lines (lines starting with +, excluding +++ header)
       FILE_DIFF=$(git diff --cached -U0 "$f" 2>/dev/null | grep "^+" | grep -v "^+++" || true)
-      FOUND=$(echo "$FILE_DIFF" | grep -cE '(console\.log|debugger\b)' 2>/dev/null || echo "0")
+      FOUND=$(echo "$FILE_DIFF" | grep -cE '(console\.log|debugger\b)' 2>/dev/null | tr -d '\r\n' || echo "0")
+      FOUND=${FOUND:-0}
       DEBUG_COUNT=$((DEBUG_COUNT + FOUND))
     done
 
@@ -58,7 +60,8 @@ if [ -n "$DIFF" ]; then
   fi
 
   # 1c. φ CEILING — check that no confidence > 0.618 is hardcoded
-  PHI_VIOLATIONS=$(echo "$DIFF" | grep "^+" | grep -v "^+++" | grep -cE 'confidence\s*[:=]\s*(0\.[7-9]|1\.0|0\.6[2-9])' 2>/dev/null || echo "0")
+  PHI_VIOLATIONS=$(echo "$DIFF" | grep "^+" | grep -v "^+++" | grep -cE 'confidence\s*[:=]\s*(0\.[7-9]|1\.0|0\.6[2-9])' 2>/dev/null | tr -d '\r\n' || echo "0")
+  PHI_VIOLATIONS=${PHI_VIOLATIONS:-0}
   if [ "$PHI_VIOLATIONS" -gt 0 ]; then
     echo ""
     echo "⚠️  Found $PHI_VIOLATIONS confidence value(s) exceeding φ⁻¹ (0.618)"
@@ -82,8 +85,10 @@ fi
 CHANGED_DOCS=$(git diff --cached --name-only --diff-filter=ACMR 2>/dev/null | grep -E '^(packages/|scripts/)' || true)
 if [ -n "$CHANGED_DOCS" ]; then
   DOC_HEALTH=$(node "$ROOT/scripts/tikkun/doc-health.mjs" --json 2>/dev/null || echo '{}')
-  ROTTEN_COUNT=$(echo "$DOC_HEALTH" | grep -o '"rotten":[0-9]*' | grep -o '[0-9]*' || echo "0")
-  STALE_COUNT=$(echo "$DOC_HEALTH" | grep -o '"stale":[0-9]*' | grep -o '[0-9]*' || echo "0")
+  ROTTEN_COUNT=$(echo "$DOC_HEALTH" | grep -o '"rotten":[0-9]*' | grep -o '[0-9]*' | tr -d '\r\n' || echo "0")
+  ROTTEN_COUNT=${ROTTEN_COUNT:-0}
+  STALE_COUNT=$(echo "$DOC_HEALTH" | grep -o '"stale":[0-9]*' | grep -o '[0-9]*' | tr -d '\r\n' || echo "0")
+  STALE_COUNT=${STALE_COUNT:-0}
 
   if [ "$ROTTEN_COUNT" -gt 0 ]; then
     echo ""
