@@ -139,6 +139,7 @@ export class RouteHandlers {
         status: s._collectiveReady ? 'healthy' : 'initializing',
         dogsReady: (s.collectivePack?.agents?.length || 0) > 0,
         dogCount: s.collectivePack?.agents?.length || 0,
+        details: { agents: s.collectivePack?.agents?.length || 0 },
         patternsLoaded: s.sharedMemory?.patterns?.length || 0,
       };
       if (!s._collectiveReady) {
@@ -146,6 +147,24 @@ export class RouteHandlers {
       }
     } catch (err) {
       checks.collective = { status: 'unhealthy', error: err.message };
+    }
+
+    // Check Automation (loop integrity — innate self-monitoring)
+    try {
+      if (s.automationExecutor) {
+        const health = s.automationExecutor.getHealth?.() || {};
+        checks.automation = {
+          status: health.status || 'unknown',
+          lateLoops: health.lateCount || 0,
+          totalCycles: health.totalCycles || 0,
+          errorRate: health.errorRate || 0,
+        };
+        if (health.status === 'dead') overallHealthy = false;
+      } else {
+        checks.automation = { status: 'not_configured' };
+      }
+    } catch (err) {
+      checks.automation = { status: 'unknown', error: err.message };
     }
 
     const statusCode = overallHealthy ? 200 : 503;

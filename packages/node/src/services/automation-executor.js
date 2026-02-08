@@ -1286,6 +1286,61 @@ export class AutomationExecutor {
   }
 
   /**
+   * Loop integrity check — CYNIC monitors its own health.
+   *
+   * Verifies each scheduled cycle ran within its expected interval.
+   * Returns status: 'healthy' | 'degraded' | 'dead'.
+   * φ⁻¹ tolerance: a cycle is "late" if it missed 1.618× its interval.
+   *
+   * @returns {{ status: string, loops: Object[], errorRate: number }}
+   */
+  getHealth() {
+    if (!this.running) {
+      return { status: 'dead', loops: [], errorRate: 1 };
+    }
+
+    const now = Date.now();
+    const PHI = 1.618033988749895;
+    const loops = [
+      { name: 'learning', interval: this.intervals.LEARNING, lastRun: this.stats.lastLearningCycle },
+      { name: 'triggers', interval: this.intervals.TRIGGERS, lastRun: this.stats.lastTriggerEval },
+      { name: 'cleanup', interval: this.intervals.CLEANUP, lastRun: this.stats.lastCleanup },
+      { name: 'tasks', interval: this.intervals.TASKS, lastRun: this.stats.lastTaskProcess },
+      { name: 'goals', interval: this.intervals.GOALS, lastRun: this.stats.lastGoalUpdate },
+      { name: 'governance', interval: this.intervals.GOVERNANCE, lastRun: this.stats.lastGovernanceReview },
+      { name: 'dataGraves', interval: this.intervals.DATA_GRAVES, lastRun: this.stats.lastDataGraveRun },
+      { name: 'patternLearning', interval: this.intervals.PATTERN_LEARNING, lastRun: this.stats.lastPatternLearningRun },
+    ];
+
+    let lateCount = 0;
+    const uptime = now - this.stats.startedAt;
+
+    for (const loop of loops) {
+      if (!loop.lastRun) {
+        // Never ran — only flag as late if uptime > interval (give it time to start)
+        loop.status = uptime > loop.interval * PHI ? 'late' : 'pending';
+      } else {
+        const elapsed = now - new Date(loop.lastRun).getTime();
+        loop.status = elapsed > loop.interval * PHI ? 'late' : 'ok';
+      }
+      if (loop.status === 'late') lateCount++;
+    }
+
+    // Error rate: errors / (total cycles across all loops)
+    const totalCycles = this.stats.learningCycles + this.stats.triggersEvaluated +
+      this.stats.cleanupRuns + this.stats.tasksProcessed + this.stats.goalsUpdated +
+      this.stats.governanceReviews + this.stats.dataGraveRuns + this.stats.patternLearningRuns;
+    const errorRate = totalCycles > 0 ? this.stats.errors / totalCycles : 0;
+
+    // Status: dead if not running, degraded if any loop late or error rate > φ⁻¹, healthy otherwise
+    let status = 'healthy';
+    if (lateCount > 0 || errorRate > PHI_INV) status = 'degraded';
+    if (lateCount > loops.length / 2) status = 'dead';
+
+    return { status, loops, errorRate, lateCount, totalCycles };
+  }
+
+  /**
    * Add feedback directly (for testing or manual submission)
    * @param {Object} feedback - Feedback data
    */

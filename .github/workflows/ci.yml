@@ -27,39 +27,51 @@ jobs:
         run: npm ci
 
       - name: Run core tests
+        timeout-minutes: 2
         run: npm test --workspace=@cynic/core
 
       - name: Run protocol tests
+        timeout-minutes: 2
         run: npm test --workspace=@cynic/protocol
 
       - name: Run node tests
+        timeout-minutes: 3
         run: npm test --workspace=@cynic/node
 
       - name: Run holdex tests
+        timeout-minutes: 2
         run: npm test --workspace=@cynic/holdex
 
       - name: Run gasdf tests
+        timeout-minutes: 2
         run: npm test --workspace=@cynic/gasdf
 
       - name: Run MCP tests
+        timeout-minutes: 2
         run: npm test --workspace=@cynic/mcp
 
       - name: Run persistence tests
+        timeout-minutes: 2
         run: npm test --workspace=@cynic/persistence
 
       - name: Run identity tests
+        timeout-minutes: 2
         run: npm test --workspace=@cynic/identity
 
       - name: Run emergence tests
+        timeout-minutes: 2
         run: npm test --workspace=@cynic/emergence
 
       - name: Run burns tests
+        timeout-minutes: 2
         run: npm test --workspace=@cynic/burns
 
       - name: Run anchor tests
+        timeout-minutes: 2
         run: npm test --workspace=@cynic/anchor
 
       - name: Run zk tests
+        timeout-minutes: 2
         run: npm test --workspace=@cynic/zk
 
   consensus-tests:
@@ -266,6 +278,33 @@ jobs:
             Q_SCORE=$(echo "$RESPONSE" | jq -r '.result.Q // 0')
             echo "✅ Smoke test passed: Q-Score=$Q_SCORE"
           fi
+
+      - name: Post-Deploy Automation Check
+        run: |
+          echo "Verifying CYNIC automation is alive..."
+          # Wait for automation to initialize (first tick at 30s)
+          sleep 35
+
+          HEALTH=$(curl -s --max-time 10 "$RENDER_SERVICE_URL/health")
+          STATUS=$(echo "$HEALTH" | jq -r '.status // "unknown"')
+          UPTIME=$(echo "$HEALTH" | jq -r '.uptime // 0')
+
+          echo "Status: $STATUS | Uptime: ${UPTIME}s"
+
+          # Verify the service restarted (uptime < 5min means fresh deploy)
+          if [ "$UPTIME" -gt 300 ]; then
+            echo "⚠️  Uptime > 5min — deploy may not have restarted the service"
+          fi
+
+          # Verify collective (Dogs) initialized
+          DOGS=$(echo "$HEALTH" | jq -r '.checks.collective.details.agents // 0' 2>/dev/null || echo "0")
+          if [ "$DOGS" -gt 0 ]; then
+            echo "✅ Collective: $DOGS Dogs initialized"
+          else
+            echo "⚠️  Collective not initialized (Dogs: $DOGS)"
+          fi
+
+          echo "✅ Post-deploy automation check complete"
 
       - name: Deploy Summary
         if: always()

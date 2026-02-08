@@ -1,17 +1,84 @@
 #!/bin/bash
-# CYNIC Pre-Commit Hook
+# CYNIC Pre-Commit Hook — The Guardian at the Gate
 # "Le code se connaît lui-même" - κυνικός
 #
-# Auto-generates README.md for packages with staged changes.
-# Documentation stays alive, synchronized with code.
+# 1. Validates staged diff (secrets, debug, φ-constants)
+# 2. Auto-generates README.md for packages with staged changes
 #
-# Install with: cp scripts/hooks/git/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+# Install: npm run hooks:install
+#   or: cp scripts/hooks/git/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
 
 set -e
 
 ROOT="$(git rev-parse --show-toplevel)"
+ERRORS=0
 
-# Find packages with staged changes
+# ═══════════════════════════════════════════════════════════════
+# STAGE 1: GUARDIAN — Scan diff for dangers
+# ═══════════════════════════════════════════════════════════════
+
+DIFF=$(git diff --cached --diff-filter=ACMR -U0 2>/dev/null || true)
+
+if [ -n "$DIFF" ]; then
+
+  # 1a. SECRET DETECTION — block API keys, passwords, tokens in code
+  SECRET_PATTERNS='(PRIVATE_KEY|SECRET_KEY|API_KEY|api_key|password|passwd|token)\s*[:=]\s*["\x27][^\s]{8,}'
+  SECRETS_FOUND=$(echo "$DIFF" | grep -cPi "$SECRET_PATTERNS" 2>/dev/null || echo "0")
+  if [ "$SECRETS_FOUND" -gt 0 ]; then
+    echo ""
+    echo "┌─────────────────────────────────────────────────────────┐"
+    echo "│ *GROWL* 🛡️ GUARDIAN: Possible secrets in staged diff    │"
+    echo "├─────────────────────────────────────────────────────────┤"
+    echo "│ Found $SECRETS_FOUND potential secret(s).                       │"
+    echo "│ Review with: git diff --cached                         │"
+    echo "│ To override: git commit --no-verify                    │"
+    echo "└─────────────────────────────────────────────────────────┘"
+    ERRORS=$((ERRORS + 1))
+  fi
+
+  # 1b. CONSOLE.LOG / DEBUGGER in production code (not tests, not scripts)
+  STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR 2>/dev/null || true)
+  PROD_FILES=$(echo "$STAGED_FILES" | grep -E '\.js$|\.mjs$' | grep -v 'test/' | grep -v 'scripts/' | grep -v '__test__' || true)
+
+  if [ -n "$PROD_FILES" ]; then
+    DEBUG_COUNT=0
+    for f in $PROD_FILES; do
+      # Only check added lines (lines starting with +, excluding +++ header)
+      FILE_DIFF=$(git diff --cached -U0 "$f" 2>/dev/null | grep "^+" | grep -v "^+++" || true)
+      FOUND=$(echo "$FILE_DIFF" | grep -cE '(console\.log|debugger\b)' 2>/dev/null || echo "0")
+      DEBUG_COUNT=$((DEBUG_COUNT + FOUND))
+    done
+
+    if [ "$DEBUG_COUNT" -gt 0 ]; then
+      echo ""
+      echo "⚠️  Found $DEBUG_COUNT console.log/debugger statement(s) in production code"
+      echo "   (tests and scripts are exempt)"
+      # Warning only, not blocking
+    fi
+  fi
+
+  # 1c. φ CEILING — check that no confidence > 0.618 is hardcoded
+  PHI_VIOLATIONS=$(echo "$DIFF" | grep "^+" | grep -v "^+++" | grep -cE 'confidence\s*[:=]\s*(0\.[7-9]|1\.0|0\.6[2-9])' 2>/dev/null || echo "0")
+  if [ "$PHI_VIOLATIONS" -gt 0 ]; then
+    echo ""
+    echo "⚠️  Found $PHI_VIOLATIONS confidence value(s) exceeding φ⁻¹ (0.618)"
+    echo "   φ distrusts φ — max confidence is 61.8%"
+    # Warning only
+  fi
+
+fi
+
+# Block on hard errors only (secrets)
+if [ "$ERRORS" -gt 0 ]; then
+  echo ""
+  echo "*GROWL* Commit blocked. Fix issues or use --no-verify to override."
+  exit 1
+fi
+
+# ═══════════════════════════════════════════════════════════════
+# STAGE 2: AUTO-DOCUMENTATION — Keep READMEs alive
+# ═══════════════════════════════════════════════════════════════
+
 CHANGED_PACKAGES=$(git diff --cached --name-only | grep "^packages/" | cut -d'/' -f2 | sort -u 2>/dev/null || true)
 
 if [ -z "$CHANGED_PACKAGES" ]; then
