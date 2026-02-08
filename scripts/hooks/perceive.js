@@ -400,7 +400,7 @@ function calculateCYNICDistance({ brainThought, patterns, routing, tierDecision,
   return { distance, level, breakdown };
 }
 
-function generateFramingDirective(D, brainThought, routing, patterns, promptType, profile, { consciousnessState, voteSummary } = {}) {
+function generateFramingDirective(D, brainThought, routing, patterns, promptType, profile, { consciousnessState, voteSummary, tierDecision } = {}) {
   // Only frame when CYNIC is awake (D >= φ⁻² = 38.2%)
   if (D.distance < PHI_INV_2) return null;
 
@@ -439,28 +439,47 @@ function generateFramingDirective(D, brainThought, routing, patterns, promptType
       'Chesed': 'build', 'Gevurah': 'protect', 'Tiferet': 'harmonize',
       'Netzach': 'explore', 'Hod': 'deploy', 'Yesod': 'connect', 'Malkhut': 'map',
     };
+    const routeReason = routing?.reason || tierDecision?.reason || 'default';
     lines.push(`   Lead: ${dog.icon} ${dog.name} (${dog.sefirah || '?'}) \u2014 ${MODES[dog.sefirah] || 'analyze'} mode`);
+    lines.push(`   Route: ${routeReason}${tierDecision?.tier ? ` | tier: ${tierDecision.tier}` : ''}`);
+  } else if (tierDecision) {
+    // No Dog routed but show tier decision anyway
+    lines.push(`   Route: no Dog routed | tier: ${tierDecision.tier} (${tierDecision.reason || 'default'})`);
   }
 
-  // Vote breakdown (Fix 2): Show disagreement when >=2 Dogs dissent
-  if (voteSummary && voteSummary.dissent >= 2) {
-    const voteEntries = voteSummary.votes.slice(0, 3)
+  // Vote breakdown: ALWAYS show — human sees what Dogs think
+  if (voteSummary && voteSummary.votes.length > 0) {
+    const voteEntries = voteSummary.votes.slice(0, 4)
       .map(v => `${v.agent} ${v.decision}(${Math.round(v.confidence * 100)}%)`)
       .join(', ');
-    lines.push(`   Votes: ${voteEntries} [${voteSummary.dissent} dissent]`);
+    const status = voteSummary.dissent >= 2
+      ? `[${voteSummary.dissent} dissent]`
+      : '[consensus]';
+    lines.push(`   Votes: ${voteEntries} ${status}`);
   }
 
-  // Consciousness read-back (Fix 1): Self-awareness from previous judgments
+  // Consciousness: ALWAYS show — human sees CYNIC's self-awareness
   if (consciousnessState) {
-    if (consciousnessState.driftDetected) {
+    const score = consciousnessState.lastSelfJudgmentScore;
+    const trend = consciousnessState.trend || 'stable';
+    const drift = consciousnessState.driftDetected;
+    const cal = consciousnessState.calibrationFactor;
+
+    // Always show consciousness line (compact)
+    const scorePart = score != null ? `score ${Math.round(score)}/100` : 'no score yet';
+    const trendIcon = trend === 'improving' ? '\u2191' : trend === 'declining' ? '\u2193' : '\u2192';
+    const calPart = drift ? '\u26A0\uFE0F drift' : (cal ? `cal ${Math.round(cal * 100)}%` : 'ok');
+    lines.push(`   Conscience: ${scorePart}, trend ${trendIcon}${trend}, ${calPart}`);
+
+    // Escalate warnings when serious
+    if (drift) {
       lines.push('   \u26A0\uFE0F Calibration drift detected. Increase verification.');
     }
-    if (consciousnessState.lastSelfJudgmentScore != null && consciousnessState.lastSelfJudgmentScore < 50) {
+    if (score != null && score < 50) {
       lines.push('   \u26A0\uFE0F Recent self-modifications scored low. Extra scrutiny.');
     }
-    if (consciousnessState.trend === 'declining') {
-      lines.push('   \u26A0\uFE0F Self-judgment trend: declining. Careful with changes.');
-    }
+  } else {
+    lines.push('   Conscience: no read-back (first session or stale)');
   }
 
   // Frame: approach directive (maps to dominant axiom)
@@ -1527,7 +1546,7 @@ async function main() {
       framingDirective = generateFramingDirective(
         cynicDistance, brainThought, routing, patterns,
         detectPromptType(prompt), profile,
-        { consciousnessState, voteSummary },
+        { consciousnessState, voteSummary, tierDecision },
       );
 
       logger.debug('CYNIC Distance', {

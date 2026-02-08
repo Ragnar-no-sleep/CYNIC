@@ -2336,8 +2336,9 @@ async function main() {
           outputParts.push(`\n${c(ANSI.cyan, '🧠 Learning:')} ${sentiment} ${action}\n`);
         }
 
-        // Periodically review patterns for promotion (every ~50 tool calls)
-        if (Math.random() < 0.02) { // ~2% chance per call
+        // Review patterns for promotion every 50 tool calls (deterministic)
+        const _callCount = parseInt(process.env.CYNIC_TOOL_CALL_COUNT || '0', 10);
+        if (_callCount > 0 && _callCount % 50 === 0) {
           const reviewResult = harmonicFeedback.reviewPatterns?.();
           if (reviewResult?.promoted?.length > 0) {
             for (const patternId of reviewResult.promoted.slice(0, 2)) {
@@ -2356,7 +2357,9 @@ async function main() {
         // "L'humain comprend ce que CYNIC a appris"
         // Show state more often (~10%) or when significant learning happened
         // ═══════════════════════════════════════════════════════════════════════
-        if (Math.random() < 0.10) { // ~10% chance per call
+        // Show Thompson state every 10 tool calls (deterministic, human sees learning)
+        const _callCountT = parseInt(process.env.CYNIC_TOOL_CALL_COUNT || '0', 10);
+        if (_callCountT > 0 && _callCountT % 10 === 0) {
           const stats = harmonicFeedback.thompsonSampler?.getStats?.();
           if (stats && stats.armCount > 0) {
             const topArms = harmonicFeedback.thompsonSampler?.getTopArms?.(3) || [];
@@ -2378,11 +2381,13 @@ async function main() {
         // Ensures weight adjustments happen even without session end
         // ~5% chance per call ≈ every 20 tool calls
         // ═══════════════════════════════════════════════════════════════════════
-        if (Math.random() < 0.05) {
+        // Periodic learn() every 20 tool calls (deterministic)
+        const _callCountL = parseInt(process.env.CYNIC_TOOL_CALL_COUNT || '0', 10);
+        if (_callCountL > 0 && _callCountL % 20 === 0) {
           callBrainTool('brain_learning', { action: 'learn' })
             .then(result => {
               if (result?.weightAdjustments && Object.keys(result.weightAdjustments).length > 0) {
-                // Learning happened - could add visibility here in future
+                // Learning happened — visible in next Thompson display
               }
             })
             .catch(() => {
@@ -2394,7 +2399,9 @@ async function main() {
         // PHASE B1 (Task #21): Periodic mathematical system visibility
         // Antifragility, Temporal, Girsanov insights (~2% chance)
         // ═══════════════════════════════════════════════════════════════════════
-        if (Math.random() < 0.02) {
+        // Math insights every 50 tool calls (deterministic, aligned with pattern review)
+        const _callCountM = parseInt(process.env.CYNIC_TOOL_CALL_COUNT || '0', 10);
+        if (_callCountM > 0 && _callCountM % 50 === 0) {
           // Antifragility Index visibility
           const afStats = harmonicFeedback.getAntifragilityStats?.();
           if (afStats?.metrics?.trend && afStats.totalObservations > 10) {
