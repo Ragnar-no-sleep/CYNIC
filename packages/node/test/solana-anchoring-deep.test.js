@@ -20,10 +20,11 @@
 
 'use strict';
 
-import { describe, it, beforeEach, afterEach } from 'node:test';
+import { describe, it, beforeEach, afterEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'events';
 import { SolanaAnchoringManager } from '../src/network/solana-anchoring.js';
+import { globalEventBus } from '@cynic/core';
 
 describe('SolanaAnchoringManager - Deep Tests', () => {
   let manager;
@@ -37,6 +38,11 @@ describe('SolanaAnchoringManager - Deep Tests', () => {
       manager.cleanup();
       manager.removeAllListeners();
     }
+  });
+
+  after(() => {
+    // Clean up globalEventBus listeners added during anchor tests.
+    globalEventBus.removeAllListeners();
   });
 
   // ==================== 1. Constructor & defaults (~4) ====================
