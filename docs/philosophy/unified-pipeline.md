@@ -1,7 +1,9 @@
-# Pipeline Unifié CYNIC
+# Pipeline Unifie CYNIC
 
 > Les 12 pipelines sont UN seul flux de conscience.
-> Ce document mappe la vision fractale à l'exécution concrète.
+> Ce document mappe la vision fractale a l'execution concrete.
+> **Last verified: 2026-02-08** | Note: Now 5 axioms (+ FIDELITY), 36 dimensions (5x7+1).
+> See `harmonized-structure.md` for the updated axiom/dimension spec.
 
 ---
 
@@ -210,7 +212,7 @@ Fin de réponse
 │                                                                  │
 │  Fractal check:                                                  │
 │    φ → Jugement harmonieux?                                      │
-│    verify → Q-Score vérifié sur 25 dimensions?                   │
+│    verify → Q-Score vérifié sur 36 dimensions?                   │
 │    culture → Insights stockés pour futur?                        │
 │    burn → Digest concis?                                         │
 │                                                                  │

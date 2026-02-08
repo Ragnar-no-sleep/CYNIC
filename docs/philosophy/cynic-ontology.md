@@ -1,8 +1,13 @@
 # CYNIC Ontology - Vision Cristalline
 
-> Document de création issu des discussions fondatrices.
-> À lire lors de chaque nouvelle session pour maintenir la cohérence.
-> Dernière mise à jour: 2026-02-02
+> **DEPRECATED (2026-02-08)**: This document is PRE-HARMONIZATION (2026-02-02).
+> It describes 4 axioms and 25 dimensions. The current architecture uses
+> **5 axioms** (+ FIDELITY) and **36 dimensions** (5x7+1).
+> See `docs/philosophy/harmonized-structure.md` for the current specification.
+> This document is preserved for historical context only.
+
+> Document de creation issu des discussions fondatrices.
+> Derniere mise a jour: 2026-02-02
 
 ---
 
@@ -24,7 +29,9 @@ Pour CYNIC:
 
 ---
 
-## Les 4 Modes d'Être (dérivés des 4 Axiomes)
+## Les 4 Modes d'Etre (derives des 4 Axiomes)
+
+> **NOTE**: Now 5 axioms with FIDELITY added. See harmonized-structure.md.
 
 ### PENSER (PHI) - Comment CYNIC raisonne
 

@@ -2,8 +2,12 @@
 
 > **"Burn the middle, strengthen the edges"**
 >
-> Date: 2026-02-02
-> Status: IN PROGRESS
+> Date: 2026-02-02 | **Last verified: 2026-02-08**
+> Status: PARTIALLY COMPLETE
+>
+> **NOTE (2026-02-08)**: GroqLLMProvider/TogetherLLMProvider already deleted.
+> server.js BURN complete. poj-chain-manager.js BURN complete.
+> TieredRouter still exists. See CLAUDE.md "Completed Axes" for current state.
 
 ---
 

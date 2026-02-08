@@ -1,8 +1,8 @@
 # The Fractal Matrix: CYNIC's 7×7 Consciousness Grid
 
-> **Document Fondateur** - Structure découverte le 2026-02-05
+> **Document Fondateur** - Structure decouverte le 2026-02-05 | **Last verified: 2026-02-08**
 > "49 portes de conscience + 1 porte de transcendance"
-> φ confidence: 61.8%
+> phi confidence: 61.8%
 
 ---
 
@@ -42,7 +42,7 @@ These are the **phases of consciousness** that transform perception into action.
 | # | Dimension | Symbol | Description | Axiom Mapping |
 |---|-----------|--------|-------------|---------------|
 | A1 | **PERCEIVE** | `👁` | Observe current state | CULTURE (memory informs perception) |
-| A2 | **JUDGE** | `⚖` | Evaluate with 25 dimensions | PHI (bounded confidence) |
+| A2 | **JUDGE** | `⚖` | Evaluate with 36 dimensions (5x7+1) | PHI (bounded confidence) |
 | A3 | **DECIDE** | `🚦` | Governance: approve/reject/defer | VERIFY (don't trust) |
 | A4 | **ACT** | `⚡` | Execute transformation | BURN (simplicity in action) |
 | A5 | **LEARN** | `📚` | Update from feedback | CULTURE (memory updates) |
@@ -96,7 +96,7 @@ Each cell is named `C{reality}.{analysis}`:
 | Cell | Name | Description | Implementation |
 |------|------|-------------|----------------|
 | C1.1 | Code Perception | Watch filesystem, detect changes | `chokidar`, `codebase-indexer.js` |
-| C1.2 | Code Judgment | Quality scoring, pattern detection | `judge.js`, 25 dimensions |
+| C1.2 | Code Judgment | Quality scoring, pattern detection | `judge.js`, 36 dimensions (5 axioms x 7 + 1) |
 | C1.3 | Code Decision | Approve/reject changes, Guardian | `guardian.js`, pre-tool hook |
 | C1.4 | Code Action | Execute edits, refactoring | LLM tool calls, Edit/Write |
 | C1.5 | Code Learning | Pattern extraction, style learning | `learning-service.js`, DPO |
@@ -216,7 +216,7 @@ Mathematical significance:
 
 Legend: 🟢 Implemented (>60%)  🟡 Partial (20-60%)  🔴 Missing (<20%)
 
-Score: 15/49 cells with meaningful implementation = 31%
+Score: ~40% (CODE/CYNIC rows ~86%, HUMAN ~57%, SOLANA ~29%) — updated 2026-02-08
 Target: 49/49 = 100% (true omniscience)
 ```
 
@@ -297,18 +297,18 @@ CYNIC explores at the depth appropriate to the task.
 
 ### 6.1 Mapping to 25 Judgment Dimensions
 
-The 25 dimensions operate WITHIN the JUDGE column (A2):
+The 36 dimensions (5 axioms x 7 + THE_UNNAMEABLE) operate WITHIN the JUDGE column (A2):
 
 ```
 For any cell C[i,2] (reality × JUDGE):
-  Apply all 25 dimensions:
+  Apply all 36 dimensions:
     PHI:     COHERENCE, HARMONY, STRUCTURE, ELEGANCE, COMPLETENESS, PRECISION
     VERIFY:  ACCURACY, VERIFIABILITY, TRANSPARENCY, REPRODUCIBILITY, PROVENANCE, INTEGRITY
     CULTURE: AUTHENTICITY, RELEVANCE, NOVELTY, ALIGNMENT, IMPACT, RESONANCE
     BURN:    UTILITY, SUSTAINABILITY, EFFICIENCY, VALUE_CREATION, NON_EXTRACTIVE, CONTRIBUTION
     META:    THE_UNNAMEABLE
 
-This means: 7 realities × 25 dimensions = 175 judgment points
+This means: 7 realities x 36 dimensions = 252 judgment points
 But these 175 are WITHIN the 7 cells of column A2.
 ```
 

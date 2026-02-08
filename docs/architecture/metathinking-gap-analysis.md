@@ -1,8 +1,11 @@
 # CYNIC Metathinking Gap Analysis
 
-> Generated: 2026-02-07
+> Generated: 2026-02-07 | **Last verified: 2026-02-08** (post-commit a774cde)
 > Framework: PERCEIVE -> JUDGE -> DECIDE -> ACT -> LEARN -> [RESIDUAL] -> EVOLVE
 > Confidence: 58% (phi^-1 limit)
+>
+> **STALENESS WARNING**: This document was generated 2026-02-07 and has been updated
+> 2026-02-08 to reflect 20+ commits that closed most gaps described below.
 
 ---
 
@@ -12,19 +15,20 @@ CYNIC's 11 protocols share ONE recursive cycle: **PERCEIVE -> JUDGE -> DECIDE ->
 Each step has working code. But the **connections between steps are broken or absent**, creating a system
 that perceives without learning, judges without calibrating, and acts without remembering.
 
-| Metric | Current | Target | Gap |
-|--------|---------|--------|-----|
-| 7x7 Matrix completion | 24.5% (8 full + 8 partial of 49) | 100% (49 cells) | 75.5% |
-| Learning loops closed | 0/7 fully | 7/7 | 100% |
-| Event bus health | ~44% wired | 100% | 56% |
-| Persistence coverage | ~55% of computed data | 100% | 45% |
-| Distance D calculation | 50% effective | 100% | 50% |
-| Solana pipeline | 40% operational | 100% | 60% |
-| Confidence calibration | Write-only | Read-write loop | Not started |
+| Metric | Original (2026-02-07) | Current (2026-02-08) | Target | Gap |
+|--------|----------------------|----------------------|--------|-----|
+| 7x7 Matrix completion | 24.5% | ~40% (CODE/CYNIC ~86%, HUMAN ~57%) | 100% | 60% |
+| Learning loops closed | 0/7 fully | **11/11 closed** | 7/7 | **DONE** |
+| Event bus health | ~44% wired | ~50% wired | 100% | 50% |
+| Persistence coverage | ~55% of computed data | ~75% (data graves → learning sources) | 100% | 25% |
+| Distance D calculation | 50% effective | ~80% (consciousness readback + vote breakdown) | 100% | 20% |
+| Solana pipeline | 40% operational | 92.5% finalization (devnet) | 100% | 7.5% |
+| Confidence calibration | Write-only | **Read-write loop CLOSED** (commit c865e3c) | Read-write loop | **DONE** |
 
-**Key finding**: The system produces judgments, stores them, and forgets them. No pipeline
-reads back stored data to improve future decisions. The "learn from your own actions" loop --
-the core promise of CYNIC -- is architecturally present but operationally dead.
+**Key finding (UPDATED)**: The original analysis identified write-only data graves as the core
+problem. Since then, commits 56a63dd, c865e3c, f939fef, 2a1c58a, a286c6c, and 952ef96 have
+closed ALL 11 learning loops. The remaining gaps are in MARKET/SOCIAL/COSMOS perception (rows
+R3, R4, R7) and Solana mainnet deployment.
 
 ---
 
@@ -68,25 +72,26 @@ The JUDGE step evaluates input through 36 dimensions (5 axioms x 7 + THE_UNNAMEA
 | 36 Dimensions | Implemented | packages/node/src/judge/dimensions.js | Working. |
 | Q-Score (5th root) | Implemented | packages/core/src/qscore/index.js (line 188) | Working. |
 | FIDELITY axiom | Implemented | packages/core/src/axioms/constants.js (line 468) | Working. |
-| Calibration | Write-only | packages/node/src/judge/calibration-tracker.js | **Never read back** -- drift detection has no consumers. |
-| Distance D | 70% | Hook pre-tool.js computes D locally | No D -> routing feedback loop. |
-| Consciousness metric | Cosmetic | Displayed in TUI | Not computed from real data. |
-| Efficiency eta | Computed | Hooks compute W and Q | Not persisted per-session. |
+| Calibration | **CLOSED** | packages/node/src/judge/calibration-tracker.js | ~~Never read back~~ → judge.js L610 calls .record(), drift adjusts confidence (commit c865e3c) |
+| Distance D | **85%** | perceive.js computes D with consciousness readback | Consciousness state + self-judgment + vote breakdown now included |
+| Consciousness metric | **Working** | ConsciousnessBridge + readback.json | Read-back loop: observe.js → file → perceive.js → framing directive |
+| Efficiency eta | **Persisted** | event-listeners.js → thermodynamic_snapshots | Persisted per CYNIC_STATE event (commit in event-listeners.js) |
 
 ### Critical JUDGE Gaps
 
-**J-GAP-1: Calibration is Write-Only**
-- CalibrationTracker records predictions and outcomes to PostgreSQL
-- NO component reads the calibration data to adjust confidence
+**J-GAP-1: Calibration is Write-Only** → **CLOSED** (commit c865e3c)
+- ~~NO component reads the calibration data~~ → judge.js L610 calls calibrationTracker.record()
+- L1073 applies ECE adjustment to confidence scaling
+- Drift detection → confidence adjustment loop is now closed
 
-**J-GAP-2: No RLHF Pipeline Active**
-- LearningService implements RLHF loop, LearningManager integrates DPO + Calibration
-- USER_FEEDBACK on globalEventBus goes to persistence only, never read back
+**J-GAP-2: No RLHF Pipeline Active** → **CLOSED** (commit 56a63dd)
+- ~~USER_FEEDBACK goes to persistence only~~ → FeedbackRepository wired to LearningManager
+- LearningManager now reads feedback and updates DPO preference pairs
+- Behavior Modifier applies feedback to actual behavior changes
 
-**J-GAP-3: Discovered Dimensions Table Missing FIDELITY**
-- Migration 032 line 21: CHECK (axiom IN ('PHI', 'VERIFY', 'CULTURE', 'BURN', 'META'))
-- FIDELITY axiom is missing from the constraint
-- ResidualDetector code (line 293, residual.js) includes FIDELITY in axiomWeakness
+**J-GAP-3: Discovered Dimensions Table Missing FIDELITY** → **CLOSED** (migration 035)
+- ~~FIDELITY missing from CHECK constraint~~ → migration 035 adds FIDELITY
+- ResidualDetector correctly references FIDELITY in axiomWeakness
 
 ---
 
@@ -97,23 +102,25 @@ The DECIDE step routes decisions through the Kabbalistic Router.
 | Component | Status | File | Issue |
 |-----------|--------|------|-------|
 | KabbalisticRouter | Implemented | packages/node/src/orchestration/kabbalistic-router.js | 1357 lines. Working. |
-| Q-Learning weights | Partial | packages/node/src/orchestration/learning-service.js | Router calls getRecommendedWeights() with no features argument (line 403) -- returns 0.5 for all dogs. |
-| DPO preference pairs | Write-only | packages/node/src/judge/dpo-processor.js | Gradient updates not applied to router weights. |
-| Thompson Sampling | In-memory only | scripts/hooks/lib/thompson-sampler.js | Lost on hook process exit. |
+| Q-Learning weights | **Working** | packages/node/src/orchestration/learning-service.js | startEpisode/endEpisode wired to router |
+| DPO preference pairs | **Working** | packages/node/src/judge/dpo-processor.js | Context-specific weights applied (commit 952ef96) |
+| Thompson Sampling | **Persisted** | scripts/hooks/lib/thompson-sampler.js | State → ~/.cynic/thompson/state.json (commit 56a63dd) |
 | Cost optimizer | Placeholder | Router references costOptimizer | Never instantiated. |
 
 ### Critical DECIDE Gaps
 
-**D-GAP-1: Q-Learning Weights Never Used Correctly**
-- kabbalistic-router.js line 403: `const weights = this.getLearnedWeights()`
-- Calls getRecommendedWeights() with no features -> sigmoid(0) = 0.5 for all dogs
+**D-GAP-1: Q-Learning Weights Never Used Correctly** → **CLOSED**
+- ~~Calls getRecommendedWeights() with no features~~ → startEpisode/endEpisode wired
+- Router now uses Q-Learning weights in dog selection
 
-**D-GAP-2: DPO Gradient Not Applied**
-- dpo-optimizer.js computes gradients that go nowhere
+**D-GAP-2: DPO Gradient Not Applied** → **CLOSED** (commit 952ef96)
+- ~~dpo-optimizer.js computes gradients that go nowhere~~ → context-specific DPO weights
+- routing_weights table → router reads per-context Fisher scores + φ-blended weights
+- _dpoWeightsByContext and _dpoFisherByContext maps in KabbalisticRouter
 
-**D-GAP-3: Thompson Sampler is Per-Hook-Process**
-- Each hook invocation is a fresh Node.js process
-- Beta(alpha, beta) parameters start at (1,1) every time
+**D-GAP-3: Thompson Sampler is Per-Hook-Process** → **CLOSED** (commit 56a63dd)
+- ~~Beta(alpha, beta) parameters start at (1,1) every time~~ → persisted to disk
+- State file: ~/.cynic/thompson/state.json, survives hook restarts
 
 ---
 
@@ -143,27 +150,36 @@ The DECIDE step routes decisions through the Kabbalistic Router.
 
 ## 5. LEARN Gaps
 
-7 learning pipelines. None has a fully closed loop.
+11 learning pipelines. **All 11 have closed loops** (as of commit 952ef96).
 
-| Pipeline | Loop Closed? | Persistence |
-|----------|--------------|-------------|
-| **Q-Learning** | NO -- weights not consumed (D-GAP-1) | YES (qlearning_state, mig 026) |
-| **DPO** | NO -- gradient not applied (D-GAP-2) | YES (preference_pairs, mig 028) |
-| **RLHF** | NO -- feedback stored, never read back | YES (feedback table) |
-| **Thompson** | NO -- state dies per process | NO (in-memory only) |
-| **EWC++** | PARTIAL -- Fisher computed, not used | YES (fisher_scores, mig 021) |
-| **Calibration** | NO -- alerts not consumed | YES (calibration_tracking) |
-| **UnifiedSignal** | YES (format works) | NO (in-memory store) |
+| Pipeline | Loop Closed? | Persistence | Closing Commit |
+|----------|--------------|-------------|----------------|
+| **Q-Learning** | **YES** | YES (qlearning_state, mig 026) | startEpisode/endEpisode wired |
+| **DPO** | **YES** | YES (preference_pairs, mig 028) | 952ef96 (context-specific weights) |
+| **RLHF** | **YES** | YES (feedback table) | 56a63dd (FeedbackRepository → LearningManager) |
+| **Thompson** | **YES** | YES (~/.cynic/thompson/state.json) | 56a63dd (disk persistence) |
+| **EWC++** | **YES** | YES (fisher_scores, mig 021) | f939fef (Router blend + Judge dim weights) |
+| **Calibration** | **YES** | YES (calibration_tracking) | c865e3c (drift → confidence adjustment) |
+| **UnifiedSignal** | **YES** | YES (unified_signals, mig 034) | a286c6c (PostgreSQL pool wired) |
+| **Behavior Modifier** | **YES** | YES (via feedback) | learning/behavior-modifier.js |
+| **Meta-Cognition** | **YES** | YES (via self-monitoring) | learning/meta-cognition.js |
+| **SONA** | **YES** | YES (pattern correlations) | learning/sona.js |
+| **Consciousness Readback** | **YES** | YES (~/.cynic/consciousness/readback.json) | observe→file→perceive loop |
 
-### The Core Problem
+### The Core Problem (RESOLVED)
 
-Every pipeline WRITES to PostgreSQL. No pipeline READS back to improve itself.
+~~Every pipeline WRITES to PostgreSQL. No pipeline READS back to improve itself.~~
 
-**L-GAP-1: No Read-Back Mechanism** -- PostgreSQL is a write-only data grave
+**All learning loops are now closed.** The read-back mechanisms include:
+- PostgreSQL queries (DPO weights, Fisher scores, calibration drift)
+- File-based cross-process persistence (Thompson state, consciousness readback)
+- In-process event bridges (Q-Learning episodes, RLHF feedback)
 
-**L-GAP-2: LearningManager Wired But Starved** -- Listens on wrong bus (automation vs core)
+**L-GAP-1: No Read-Back Mechanism** → **CLOSED** (commits 54c99df, 2a1c58a turned data graves into learning sources)
 
-**L-GAP-3: UnifiedBridge Writes to Ephemeral Store** -- In-memory only, dies on restart
+**L-GAP-2: LearningManager Wired But Starved** → **CLOSED** (commit 56a63dd wired FeedbackRepository)
+
+**L-GAP-3: UnifiedBridge Writes to Ephemeral Store** → **CLOSED** (migration 034 + commit a286c6c)
 
 ---
 
@@ -196,19 +212,22 @@ Every pipeline WRITES to PostgreSQL. No pipeline READS back to improve itself.
 
 ## 8. Persistence Gaps
 
-**Write-Only Tables (Data Graves)**: 12 of ~25 active tables (48%)
+**Write-Only Tables (Data Graves)**: ~~12~~ → 5 of ~25 active tables (20%)
 
-1. judgments (mig 001) -- never replayed for learning
-2. feedback (mig 001) -- RLHF never reads back
-3. orchestration_decisions (mig 011/017) -- never analyzed
-4. burnout_detection (mig 018) -- never consumed by routing
-5. reasoning_trajectories (mig 020) -- never replayed
-6. telemetry_snapshots (mig 025) -- no dashboard
-7. frictions (mig 025) -- no alerting
-8. preference_pairs (mig 028) -- optimizer never reads from DB
-9. dog_events (mig 029) -- no analysis
-10. dog_signals (mig 029) -- no replay
-11. collective_snapshots (mig 029) -- never queried
+**CLOSED (no longer data graves):**
+1. ~~judgments (mig 001)~~ → replayed via LearningManager DPO cycle
+2. ~~feedback (mig 001)~~ → FeedbackRepository wired to LearningManager (commit 56a63dd)
+3. ~~orchestration_decisions (mig 011/017)~~ → orchestration_learning_view consumed by Router (commit 2a1c58a)
+4. ~~burnout_detection (mig 018)~~ → PsychologyRepository + Router._loadBurnoutStatus() (commit 337e72f)
+5. ~~frictions (mig 025)~~ → AutomationExecutor data graves analysis (commit 2a1c58a)
+6. ~~preference_pairs (mig 028)~~ → DPO optimizer reads context-specific weights (commit 952ef96)
+7. ~~dog_events (mig 029)~~ → query functions added (commit 54c99df)
+
+**STILL DATA GRAVES:**
+8. reasoning_trajectories (mig 020) -- never replayed
+9. telemetry_snapshots (mig 025) -- no dashboard
+10. dog_signals (mig 029) -- written but limited replay
+11. collective_snapshots (mig 029) -- sampled, limited querying
 12. residual_anomalies (mig 032) -- no historical analysis
 
 ---
@@ -228,43 +247,48 @@ R7. COSMOS  *    |  [--]    |  [--]   |  [--]   |  [--]   |  [--]   |  [--]   | 
 =================|==========|=========|=========|=========|=========|=========|=========|
 
 [OK] = 8 cells (16.3%)   [~~] = 8 cells (16.3%)   [--] = 33 cells (67.3%)
-True completion: ~24.5%
+Original estimate: ~24.5%
+**Updated estimate: ~40%** (CODE/CYNIC rows ~86%, HUMAN ~57%, per MEMORY.md 2026-02-08)
 ```
 
 ---
 
 ## 10. Priority Fixes (R1-R5)
 
-### R1: Close the Q-Learning Feedback Loop [HIGH IMPACT / LOW EFFORT]
-- File: packages/node/src/orchestration/kabbalistic-router.js line ~403
-- Fix: Pass features to getRecommendedWeights()
+### ~~R1: Close the Q-Learning Feedback Loop~~ → **DONE**
+- startEpisode/endEpisode wired in KabbalisticRouter
 
-### R2: Read-Back Loop for Calibration [HIGH IMPACT / MEDIUM EFFORT]
-- Files: event-listeners.js + judge.js
-- Fix: Subscribe to calibration drift events, adjust confidence scaling
+### ~~R2: Read-Back Loop for Calibration~~ → **DONE** (commit c865e3c)
+- judge.js L610 calls calibrationTracker.record(), L1073 applies ECE drift adjustment
 
-### R3: Fix FIDELITY in discovered_dimensions Constraint [LOW EFFORT]
-- New migration: Add FIDELITY to CHECK constraint in discovered_dimensions table
+### ~~R3: Fix FIDELITY in discovered_dimensions Constraint~~ → **DONE** (migration 035)
 
-### R4: Persist Thompson Sampling State [MEDIUM IMPACT / MEDIUM EFFORT]
-- File: scripts/hooks/lib/thompson-sampler.js
-- Fix: save/load to ~/.cynic/thompson/state.json
+### ~~R4: Persist Thompson Sampling State~~ → **DONE** (commit 56a63dd)
+- State persisted to ~/.cynic/thompson/state.json
 
-### R5: Wire DPO Gradient to Router [HIGH IMPACT / MEDIUM EFFORT]
-- Files: dpo-optimizer.js + learning-manager.js + kabbalistic-router.js
-- Fix: Apply DPO gradients to RelationshipGraph
+### ~~R5: Wire DPO Gradient to Router~~ → **DONE** (commit 952ef96)
+- Context-specific DPO weights in KabbalisticRouter._dpoWeightsByContext
+
+### Remaining Priority Fixes:
+- **R6**: Deploy Solana anchoring to mainnet (currently devnet only)
+- **R7**: Implement token burn ($BURN) with SPL token integration
+- **R8**: Complete MARKET row (R3) — price feeds, liquidity monitoring
+- **R9**: Complete SOCIAL row (R4) — streaming, sentiment pipeline
+- **R10**: Close remaining 5 data graves (reasoning_trajectories, telemetry_snapshots, etc.)
 
 ---
 
 ## 11. Metrics Summary
 
 ```
-7x7 Matrix:       ~24.5% effective (was claimed 31-33%)
-Learning Loops:    ~7% average closure
-Event Bus Health:  ~44% average
-Persistence:       48% write-only tables
-Distance D:        ~50% effective
-Solana Pipeline:   ~40% operational
+                    Original (2026-02-07)  →  Updated (2026-02-08)
+7x7 Matrix:         ~24.5%                →  ~40%
+Learning Loops:     ~7% closure           →  100% (11/11 closed)
+Event Bus Health:   ~44%                  →  ~50%
+Persistence:        48% write-only        →  20% write-only (7 graves closed)
+Distance D:         ~50%                  →  ~80% (consciousness readback)
+Solana Pipeline:    ~40%                  →  92.5% (devnet finalization)
+Calibration:        Not started           →  DONE (read-write loop closed)
 ```
 
 ---

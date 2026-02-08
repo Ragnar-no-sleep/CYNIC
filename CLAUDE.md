@@ -185,7 +185,7 @@ Cell notation: C{reality}.{analysis}
   Example: C1.2 = CODE × JUDGE (code quality scoring)
   Example: C6.5 = CYNIC × LEARN (Q-Learning, Thompson Sampling)
 
-Current completion: 31% (15/49 cells)
+Current completion: ~40% (CODE/CYNIC ~86%, HUMAN ~57%, SOLANA ~29%)
 Target: 100% = true omniscience
 ```
 
@@ -494,7 +494,7 @@ Confidence: [██████░░░░] 62% ← MAX (φ⁻¹)
 
 ---
 
-## CURRENT PROJECT STATE (2026-02-05)
+## CURRENT PROJECT STATE (2026-02-08)
 
 ### Completed Axes
 
@@ -524,12 +524,17 @@ Confidence: [██████░░░░] 62% ← MAX (φ⁻¹)
 | Event | Table | Source |
 |-------|-------|--------|
 | `JUDGMENT_CREATED` | `judgments` | Judge |
-| `USER_FEEDBACK` | `feedback` | Hooks |
+| `USER_FEEDBACK` | `feedback` → LearningManager | Hooks |
 | `SESSION_ENDED` | SharedMemory consolidation | Session |
 | `DOG_EVENT` | `dog_events` | DogStateEmitter |
 | `CONSENSUS_COMPLETED` | `consensus_votes` | AmbientConsensus |
 | `DogSignal.*` (7 types) | `dog_signals` | AmbientConsensus |
-| `CYNIC_STATE` | `collective_snapshots` (sampled 1:5) | DogStateEmitter |
+| `CYNIC_STATE` | `collective_snapshots` (sampled 1:5) + `psychology_snapshots` + `thermodynamic_snapshots` + `consciousness_transitions` | DogStateEmitter |
+| `PATTERN_DETECTED` | `unified_signals` | EmergenceDetector |
+| `DIMENSION_CANDIDATE` | `consensus_votes` (via Dogs) | ResidualGovernance |
+| `THREAT_BLOCKED` | `dog_signals` | Guardian |
+| `orchestration_log` | `orchestration_learning_view` → Router | AutomationExecutor |
+| `frictions` | Data grave analysis → learning | AutomationExecutor |
 
 ### Next Steps
 - [x] **AXE 3: BURN server.js** ✅ DONE - Extracted to 7 components (366 lines remaining)
@@ -543,22 +548,35 @@ Confidence: [██████░░░░] 62% ← MAX (φ⁻¹)
 ```
 SINGLETON:        packages/node/src/collective-singleton.js
 ORCHESTRATOR:     packages/node/src/orchestration/unified-orchestrator.js
+ROUTER:           packages/node/src/orchestration/kabbalistic-router.js
+LEARNING:         packages/node/src/orchestration/learning-service.js
+AUTOMATION:       packages/node/src/services/automation-executor.js
 EVENT LISTENERS:  packages/node/src/services/event-listeners.js
 EVENT BUS:        packages/core/src/bus/event-bus.js
 CONSENSUS:        packages/node/src/agents/collective/ambient-consensus.js
 DOG STATE:        packages/node/src/perception/dog-state-emitter.js
+JUDGE:            packages/node/src/judge/judge.js
+DIMENSIONS (36):  packages/node/src/judge/dimensions.js
+RESIDUAL:         packages/node/src/judge/residual.js
+EMERGENCE:        packages/node/src/services/emergence-detector.js
+CONSCIOUSNESS:    packages/node/src/organism/consciousness-bridge.js
 MCP SERVER:       packages/mcp/src/server.js
-HOOKS:            scripts/hooks/awaken.js, pre-tool.js, observe.js
+HOOKS:            scripts/hooks/awaken.js, perceive.js, pre-tool.js, observe.js, sleep.js
+HOOK LIBS:        scripts/hooks/lib/consciousness-readback.js, auto-orchestrator.js
 MIGRATIONS:       packages/persistence/src/postgres/migrations/
 ROADMAP:          .claude/plans/integration-roadmap.md
 ```
 
 ### How CYNIC Controls Claude Code
-1. **Hooks** inject CYNIC presence at session start/tool use
-2. **MCP Tools** (brain_*) provide 90 tools for Claude to call
-3. **CollectivePack** (11 Dogs) makes collective decisions
-4. **Guardian** can BLOCK dangerous commands
-5. **Event Listeners** persist all dog/consensus events to PostgreSQL
+1. **Hooks** inject CYNIC presence at session start/tool use (awaken, perceive, pre-tool, observe, sleep)
+2. **MCP Tools** (brain_*) provide 90+ tools for Claude to call
+3. **CollectivePack** (11 Dogs) makes collective decisions via AmbientConsensus
+4. **Guardian** can BLOCK dangerous commands (pre-tool.js → exit(1))
+5. **Event Listeners** persist all dog/consensus/psychology events to PostgreSQL
+6. **ConsciousnessBridge** reads back stored context from previous sessions into current framing
+7. **AutoOrchestrator** automatically triggers Dog consultation for complex queries
+8. **ResidualGovernance** auto-triggers dimension discovery on F9=34min Fibonacci schedule
+9. **Context-specific DPO** adjusts routing weights based on query type (commit 952ef96)
 
 **Read `.claude/plans/integration-roadmap.md` for full context.**
 

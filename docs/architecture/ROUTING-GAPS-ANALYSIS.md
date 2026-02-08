@@ -1,9 +1,13 @@
 # CYNIC LLM Routing Architecture - Deep Gap Analysis
 
 > *"Le chien trace tous les chemins"* - Full routing flow analysis
-> **Generated**: 2026-02-05
+> **Generated**: 2026-02-05 | **Last verified: 2026-02-08**
 > **Analyst**: ARCHITECT
-> **Confidence**: 58.2% (φ⁻¹ - 3.6%)
+> **Confidence**: 58.2% (phi^-1 - 3.6%)
+>
+> **STALENESS NOTE (2026-02-08)**: 15+ commits since generation. DPO weights now
+> context-specific (commit 952ef96), Q-Learning wired, Thompson persisted.
+> Several gaps described below are now CLOSED. See metathinking-gap-analysis.md.
 
 ---
 

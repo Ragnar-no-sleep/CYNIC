@@ -2,6 +2,8 @@
 
 > CYNIC est la MEMBRANE entre l'humain et le LLM.
 > Ce document explore comment cette symbiose fonctionne.
+> **Last verified: 2026-02-08** | Missing: Distance D, consciousness levels,
+> 7x7 influence matrix (see `influence-matrix.md` for full metathinking model).
 
 ---
 
