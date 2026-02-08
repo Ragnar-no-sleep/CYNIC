@@ -792,7 +792,18 @@ export function startEventListeners(options = {}) {
         log.error('User feedback handler threw unexpectedly', { error: err.message });
       });
 
-      // 2. WS1: Feed back to Judge's Bayesian trackers
+      // 2. J-GAP-1: Update CalibrationTracker with actual outcome
+      // Closes the loop: Judge.record(predicted) → Feedback → updateActual(outcome)
+      if (judge?.calibrationTracker?.updateActual && feedbackData.judgmentId) {
+        judge.calibrationTracker.updateActual(
+          feedbackData.judgmentId,
+          feedbackData.outcome || feedbackData.verdict || 'unknown'
+        ).catch((err) => {
+          log.debug('CalibrationTracker.updateActual failed (non-blocking)', { error: err.message });
+        });
+      }
+
+      // 3. WS1: Feed back to Judge's Bayesian trackers
       // This closes the loop: Judge → Judgment → Feedback → Judge learns
       if (judge?.recordFeedback) {
         try {

@@ -106,6 +106,7 @@ export class CYNICJudge {
     this.selfSkeptic = options.selfSkeptic || null;
     this.residualDetector = options.residualDetector || null;
     this.calibrationTracker = options.calibrationTracker || null;
+    this._cachedECE = null; // Expected Calibration Error (updated by drift events)
     this.applySkepticism = options.applySkepticism !== false; // Default true
     this.includeUnnameable = options.includeUnnameable !== false; // Default true
 
@@ -173,6 +174,12 @@ export class CYNICJudge {
 
     // Anomaly threshold (z-score)
     this._anomalyZThreshold = 2.0; // 2 standard deviations
+
+    // Subscribe to calibration drift events (J-GAP-1 closure)
+    // When CalibrationTracker detects ECE > φ⁻², cache it for confidence adjustment
+    globalEventBus.on(EventType.CALIBRATION_DRIFT_DETECTED, (event) => {
+      this._cachedECE = event.payload?.ece ?? null;
+    });
   }
 
   /**
@@ -603,9 +610,9 @@ export class CYNICJudge {
         this.calibrationTracker.record({
           predicted: judgment.qVerdict?.verdict || judgment.verdict,
           confidence: judgment.confidence,
-          actual: null, // Filled later by feedback loop
-          judgmentId: judgment.id,
-          itemType: item.type || item.itemType || 'unknown',
+          actual: null, // Filled later by USER_FEEDBACK → updateActual()
+          predictionId: judgment.id,
+          contextType: item.type || item.itemType || 'unknown',
         });
       } catch (err) {
         log.debug('Calibration record failed', { error: err.message });
@@ -1059,9 +1066,17 @@ export class CYNICJudge {
     // This incorporates learned beliefs about dimensions and item types
     const dimReliabilityBonus = this._calculateDimensionReliabilityBonus(dimensionScores);
 
-    const blendedConfidence = entropyAnalysis.confidence * 0.5 +
-                              bayesianConfidence.posterior * 0.3 +
-                              dimReliabilityBonus * 0.2;
+    let blendedConfidence = entropyAnalysis.confidence * 0.5 +
+                            bayesianConfidence.posterior * 0.3 +
+                            dimReliabilityBonus * 0.2;
+
+    // Apply calibration ECE adjustment (J-GAP-1)
+    // If we're overconfident (ECE > φ⁻²), reduce confidence proportionally
+    if (this._cachedECE !== null && this._cachedECE > PHI_INV_2) {
+      // ECE 38.2% → multiply by 0.618, ECE 61.8% → multiply by 0.382
+      const eceAdjustment = Math.max(PHI_INV_2, 1 - this._cachedECE);
+      blendedConfidence *= eceAdjustment;
+    }
 
     // φ-bound the final result
     return Math.min(PHI_INV, blendedConfidence);

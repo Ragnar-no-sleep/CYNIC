@@ -18,6 +18,7 @@
 'use strict';
 
 import { getPool } from '@cynic/persistence';
+import { globalEventBus, EventType } from '@cynic/core';
 
 // Simple logger (no external dependency)
 const log = {
@@ -158,10 +159,10 @@ export class CalibrationTracker {
     this._buffer = [];
 
     try {
-      // Batch insert
+      // Batch insert (includes prediction_id for feedback matching)
       const values = toFlush.map((p, i) => {
-        const base = i * 6;
-        return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6})`;
+        const base = i * 7;
+        return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7})`;
       }).join(', ');
 
       const params = toFlush.flatMap(p => [
@@ -171,15 +172,20 @@ export class CalibrationTracker {
         p.predicted_confidence,
         p.confidence_bucket,
         p.context_type,
+        p.prediction_id,
       ]);
 
       await this.pool.query(`
         INSERT INTO calibration_tracking
-        (service_id, predicted_outcome, actual_outcome, predicted_confidence, confidence_bucket, context_type)
+        (service_id, predicted_outcome, actual_outcome, predicted_confidence, confidence_bucket, context_type, prediction_id)
         VALUES ${values}
       `, params);
 
       log.debug('CalibrationTracker', `Flushed ${toFlush.length} predictions`);
+
+      // Check drift after flush (throttled by alertCooldownMs)
+      this._checkDriftAfterFlush();
+
       return toFlush.length;
 
     } catch (err) {
@@ -187,6 +193,51 @@ export class CalibrationTracker {
       this._buffer = [...toFlush, ...this._buffer].slice(0, this._bufferLimit * 2);
       log.error('CalibrationTracker', 'Flush failed', { error: err.message });
       throw err;
+    }
+  }
+
+  /**
+   * Update actual outcome for a prediction (closes the feedback loop)
+   *
+   * @param {string} predictionId - Judgment ID that was used as prediction_id
+   * @param {string} actual - Actual outcome ('HOWL', 'WAG', 'GROWL', 'BARK', or user verdict)
+   * @returns {Promise<boolean>} True if updated
+   */
+  async updateActual(predictionId, actual) {
+    if (!predictionId || !actual) return false;
+    try {
+      const { rowCount } = await this.pool.query(`
+        UPDATE calibration_tracking
+        SET actual_outcome = $1
+        WHERE prediction_id = $2 AND actual_outcome IS NULL
+      `, [actual, predictionId]);
+      return rowCount > 0;
+    } catch (err) {
+      log.debug('CalibrationTracker', 'updateActual failed', { error: err.message });
+      return false;
+    }
+  }
+
+  /**
+   * Check for drift after flush and emit event if detected
+   * Throttled by _shouldAlert() cooldown
+   * @private
+   */
+  async _checkDriftAfterFlush() {
+    if (!this._shouldAlert()) return;
+    try {
+      const { summary } = await this.getCalibrationCurve(7);
+      if (summary.driftDetected) {
+        globalEventBus.emit(EventType.CALIBRATION_DRIFT_DETECTED, {
+          payload: {
+            ece: summary.ece,
+            threshold: summary.threshold,
+            totalSamples: summary.totalSamples,
+          },
+        });
+      }
+    } catch (err) {
+      log.debug('CalibrationTracker', 'Drift check failed (non-blocking)', { error: err.message });
     }
   }
 
