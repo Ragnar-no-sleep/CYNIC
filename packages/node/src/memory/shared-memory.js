@@ -1118,18 +1118,28 @@ export class SharedMemory {
       ? JSON.parse(dbPattern.data)
       : (dbPattern.data || {});
 
+    const confidence = parseFloat(dbPattern.confidence) || 0.5;
+    const frequency = parseInt(dbPattern.frequency) || 1;
+
+    // Derive φ-weighted values from raw DB fields when not stored in data
+    const weight = data.weight ?? Math.min(2.618, 0.5 + Math.log10(frequency + 1) * 0.5);
+    const fisherImportance = data.fisherImportance ?? Math.min(1.0, confidence * 1.2);
+    const verified = data.verified ?? (confidence >= PHI_INV && frequency >= 3);
+    const consolidationLocked = data.consolidationLocked ?? (fisherImportance >= PHI_INV);
+    const applicableTo = data.applicableTo || (dbPattern.category ? [dbPattern.category, '*'] : ['*']);
+
     return {
       id: dbPattern.pattern_id,
       name: dbPattern.name,
       description: dbPattern.description,
       category: dbPattern.category,
       tags: dbPattern.tags || [],
-      applicableTo: data.applicableTo || [dbPattern.category],
-      // Weights and importance
-      weight: data.weight ?? 1.0,
-      fisherImportance: data.fisherImportance ?? dbPattern.confidence ?? 0,
-      consolidationLocked: data.consolidationLocked ?? false,
-      verified: data.verified ?? false,
+      applicableTo,
+      // Weights and importance (φ-derived from confidence × frequency)
+      weight,
+      fisherImportance,
+      consolidationLocked,
+      verified,
       // Stats
       useCount: dbPattern.frequency || 0,
       addedAt: dbPattern.created_at ? new Date(dbPattern.created_at).getTime() : Date.now(),

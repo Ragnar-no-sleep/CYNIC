@@ -1076,6 +1076,62 @@ export class AutomationExecutor {
         }
       } catch (e) { /* table may not exist */ }
 
+      // 9. Judgment quality trends (last 24h, from judgments table)
+      try {
+        const { rows: [jq] } = await this.pool.query(
+          `SELECT COUNT(*) AS total,
+                  AVG(q_score) AS avg_qscore,
+                  COUNT(*) FILTER (WHERE verdict = 'BARK') AS bark_count,
+                  COUNT(*) FILTER (WHERE verdict = 'HOWL') AS howl_count,
+                  MIN(q_score) AS min_qscore,
+                  AVG(confidence) AS avg_confidence
+           FROM judgments
+           WHERE created_at > NOW() - INTERVAL '24 hours'`
+        );
+        if (jq && parseInt(jq.total) >= 5) {
+          const total = parseInt(jq.total);
+          const barkRate = parseInt(jq.bark_count) / total;
+          const avgQ = parseFloat(jq.avg_qscore) || 0;
+          // BARK rate > φ⁻² (38.2%) = quality degradation
+          if (barkRate > 0.382) {
+            findings.push({ type: 'judgment_quality', message: `High BARK rate: ${Math.round(barkRate * 100)}% of ${total} judgments (avg Q: ${Math.round(avgQ)})`, severity: 'high' });
+          }
+          // Average Q-Score below 50 = systemic quality issue
+          if (avgQ < 50 && total >= 10) {
+            findings.push({ type: 'judgment_drift', message: `Low avg Q-Score: ${Math.round(avgQ)} across ${total} judgments (${jq.howl_count} HOWLs, ${jq.bark_count} BARKs)`, severity: 'medium' });
+          }
+        }
+      } catch (e) { /* table may not exist */ }
+
+      // 10. Reasoning trajectory quality (last 24h, from reasoning_trajectories)
+      try {
+        const { rows: [trj] } = await this.pool.query(
+          `SELECT COUNT(*) AS total,
+                  AVG(coherence_score) AS avg_coherence,
+                  AVG(efficiency_score) AS avg_efficiency,
+                  AVG(step_count) AS avg_steps,
+                  COUNT(*) FILTER (WHERE outcome_feedback != 'pending' AND outcome_feedback IS NOT NULL) AS feedback_count,
+                  COUNT(*) FILTER (WHERE outcome_feedback = 'incorrect') AS incorrect_count
+           FROM reasoning_trajectories
+           WHERE created_at > NOW() - INTERVAL '24 hours'`
+        );
+        if (trj && parseInt(trj.total) >= 3) {
+          const total = parseInt(trj.total);
+          const avgCoherence = parseFloat(trj.avg_coherence) || 0;
+          const avgEfficiency = parseFloat(trj.avg_efficiency) || 0;
+          const feedbackCount = parseInt(trj.feedback_count) || 0;
+          const incorrectCount = parseInt(trj.incorrect_count) || 0;
+          // Low coherence = reasoning paths are disconnected
+          if (avgCoherence < 0.382 && total >= 5) {
+            findings.push({ type: 'trajectory_coherence', message: `Low trajectory coherence: ${Math.round(avgCoherence * 100)}% avg across ${total} trajectories`, severity: 'medium' });
+          }
+          // High incorrect rate among feedback trajectories
+          if (feedbackCount >= 3 && incorrectCount / feedbackCount > 0.382) {
+            findings.push({ type: 'trajectory_accuracy', message: `Trajectory accuracy issue: ${incorrectCount}/${feedbackCount} marked incorrect (${Math.round(incorrectCount / feedbackCount * 100)}%)`, severity: 'high' });
+          }
+        }
+      } catch (e) { /* table may not exist */ }
+
       // 8. Calibration drift (last 24h)
       try {
         const { rows: [cal] } = await this.pool.query(

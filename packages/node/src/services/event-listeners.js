@@ -1046,7 +1046,41 @@ export function startEventListeners(options = {}) {
         log.info('Goal completed (automation bus)', { goal: d.goal });
       } catch (e) { log.debug('Goal completed log error', { error: e.message }); }
     }));
-    log.info('Automation bus orphan listeners wired (Fix #4)');
+    // Fix #4b: Bridge data_grave_analysis findings → unified_signals
+    // AutomationExecutor publishes findings as AUTOMATION_TICK with subType 'data_grave_analysis'.
+    // Persist high-severity findings to unified_signals so they feed into learning loops.
+    _unsubscribers.push(ab.subscribe(AutomationEventType.AUTOMATION_TICK, (event) => {
+      try {
+        const d = event.data || event.payload || {};
+        if (d.subType !== 'data_grave_analysis' || !d.findings?.length) return;
+        if (!persistence?.query) return;
+
+        const highFindings = d.findings.filter(f => f.severity === 'high' || f.severity === 'critical');
+        if (highFindings.length === 0) return;
+
+        // Persist each high-severity finding as a unified signal
+        for (const finding of highFindings) {
+          const id = `dgf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+          persistence.query(`
+            INSERT INTO unified_signals (id, source, session_id, input, outcome, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6)
+          `, [
+            id,
+            'data_grave_analysis',
+            context.sessionId || null,
+            JSON.stringify({ findingType: finding.type }),
+            JSON.stringify({ status: finding.severity, reason: finding.message }),
+            JSON.stringify({ timestamp: d.timestamp, totalFindings: d.findings.length }),
+          ]).catch(err => {
+            log.debug('Data grave finding persistence failed', { error: err.message });
+          });
+        }
+        _stats.dataGraveFindingsPersisted = (_stats.dataGraveFindingsPersisted || 0) + highFindings.length;
+        log.info('Data grave findings persisted to unified_signals', { count: highFindings.length, types: highFindings.map(f => f.type) });
+      } catch (e) { log.debug('Data grave findings bridge error', { error: e.message }); }
+    }));
+
+    log.info('Automation bus orphan listeners wired (Fix #4 + 4b)');
   } catch (err) {
     log.debug('Automation bus listeners skipped', { error: err.message });
   }
