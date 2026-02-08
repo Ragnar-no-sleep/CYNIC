@@ -284,6 +284,21 @@ function buildFormattedBanner(output) {
     lines.push('');
   }
 
+  // LLM Environment
+  if (output.llmEnvironment) {
+    lines.push(`── LLM ENVIRONMENT ────────────────────────────────────────`);
+    if (output.llmEnvironment.detected?.length > 0) {
+      for (const llm of output.llmEnvironment.detected) {
+        const modelList = llm.models.slice(0, 3).join(', ');
+        lines.push(`   ✅ ${llm.provider} (${modelList})`);
+      }
+      lines.push(`   ${output.llmEnvironment.message}`);
+    } else {
+      lines.push(`   ⚠️ ${output.llmEnvironment.message}`);
+    }
+    lines.push('');
+  }
+
   // Dog tree
   lines.push(`── COLLECTIVE DOGS (Sefirot) ──────────────────────────────`);
   lines.push(`            🧠 CYNIC (Keter)`);
@@ -1453,6 +1468,75 @@ async function main() {
 
     // Memory mount phase complete
     bootSequence.exitPhase(BOOT_PHASES.MEMORY_MOUNT, true);
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PHASE 4.5: LLM ENVIRONMENT DETECTION
+    // "Le chien renifle les moteurs disponibles"
+    // Auto-detect Ollama, LM Studio, and other local LLMs.
+    // Result persisted to ~/.cynic/llm-detection.json for downstream hooks.
+    // ═══════════════════════════════════════════════════════════════════════════
+    try {
+      const llmDetection = { timestamp: Date.now(), adapters: [] };
+
+      // Probe Ollama (default: localhost:11434)
+      const ollamaEndpoint = process.env.OLLAMA_ENDPOINT || 'http://localhost:11434';
+      try {
+        const ollamaResp = await Promise.race([
+          fetch(`${ollamaEndpoint}/api/tags`),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 2000)),
+        ]);
+        if (ollamaResp.ok) {
+          const ollamaData = await ollamaResp.json();
+          const models = (ollamaData.models || []).map(m => m.name);
+          llmDetection.adapters.push({
+            provider: 'ollama', endpoint: ollamaEndpoint, models, available: true,
+          });
+        }
+      } catch { /* Ollama not available */ }
+
+      // Probe LM Studio (default: localhost:1234)
+      const lmStudioEndpoint = process.env.LM_STUDIO_ENDPOINT || 'http://localhost:1234';
+      try {
+        const lmResp = await Promise.race([
+          fetch(`${lmStudioEndpoint}/v1/models`),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 2000)),
+        ]);
+        if (lmResp.ok) {
+          const lmData = await lmResp.json();
+          const models = (lmData.data || []).map(m => m.id);
+          llmDetection.adapters.push({
+            provider: 'lm-studio', endpoint: lmStudioEndpoint, models, available: true,
+          });
+        }
+      } catch { /* LM Studio not available */ }
+
+      // Persist for downstream hooks (perceive.js, observe.js, daemon)
+      const llmDetectionPath = path.join(os.homedir(), '.cynic', 'llm-detection.json');
+      const llmDetectionDir = path.dirname(llmDetectionPath);
+      if (!fs.existsSync(llmDetectionDir)) fs.mkdirSync(llmDetectionDir, { recursive: true });
+      fs.writeFileSync(llmDetectionPath, JSON.stringify(llmDetection));
+
+      if (llmDetection.adapters.length > 0) {
+        const totalModels = llmDetection.adapters.reduce((n, a) => n + a.models.length, 0);
+        output.llmEnvironment = {
+          detected: llmDetection.adapters.map(a => ({
+            provider: a.provider,
+            models: a.models.slice(0, 5),
+            endpoint: a.endpoint,
+          })),
+          totalModels,
+          message: `*sniff* ${llmDetection.adapters.length} local LLM(s) detected (${totalModels} models). CYNIC can think independently.`,
+        };
+      } else {
+        output.llmEnvironment = {
+          detected: [],
+          totalModels: 0,
+          message: 'No local LLMs detected. CYNIC depends on Claude for reasoning.',
+        };
+      }
+    } catch {
+      // LLM detection is optional — fail silently
+    }
 
     // ═══════════════════════════════════════════════════════════════════════════
     // PHASE 5: IDENTITY ASSERTION

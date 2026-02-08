@@ -982,6 +982,24 @@ async function main() {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // LLM ENVIRONMENT AWARENESS: Read detection from awaken.js
+    // "Le chien sait quels moteurs sont disponibles"
+    // ═══════════════════════════════════════════════════════════════════════════
+    let llmEnvironment = null;
+    try {
+      const { homedir } = await import('os');
+      const { join } = await import('path');
+      const llmDetectionPath = join(homedir(), '.cynic', 'llm-detection.json');
+      if (fs.existsSync(llmDetectionPath)) {
+        const raw = JSON.parse(fs.readFileSync(llmDetectionPath, 'utf8'));
+        // Only use if less than 30 minutes old (session-scoped)
+        if (raw.timestamp && (Date.now() - raw.timestamp) < 1800000) {
+          llmEnvironment = raw;
+        }
+      }
+    } catch { /* ignore */ }
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // LLM TIER DECISION (Task #21) - Determine which LLM tier to use
     // LOCAL = No LLM (rule-based), LIGHT = Ollama, FULL = Claude/Large models
     // "Le plus petit chien qui peut faire le travail"
@@ -994,6 +1012,7 @@ async function main() {
         type: 'user_prompt',
         context: {
           risk: escalationLevel === 'high' || recentWarnings.length > 0 ? 'high' : 'normal',
+          hasLocalLLM: llmEnvironment?.adapters?.length > 0,
         },
       });
       logger.debug('Tier decision', {
@@ -1627,6 +1646,7 @@ async function main() {
         shouldRoute: tierDecision.shouldRoute,
         cost: tierDecision.cost,
         reason: tierDecision.reason,
+        localLLMs: llmEnvironment?.adapters?.length || 0,
       } : null,
       // Temporal perception data
       temporal: {
@@ -1671,7 +1691,8 @@ async function main() {
     // ═══════════════════════════════════════════════════════════════════════════
     const dPct = Math.round(cynicDistance.distance * 100);
     const activeCount = Object.values(cynicDistance.breakdown).filter(v => v).length;
-    const dCompact = `D=${dPct}% (${activeCount}/7) ${cynicDistance.level}`;
+    const localLLMs = llmEnvironment?.adapters?.length || 0;
+    const dCompact = `D=${dPct}% (${activeCount}/7) ${cynicDistance.level}${localLLMs > 0 ? ` | ${localLLMs} local LLM(s)` : ''}`;
 
     // If no framing directive but D > 0, add compact D line
     if (!framingDirective && dPct > 0) {
