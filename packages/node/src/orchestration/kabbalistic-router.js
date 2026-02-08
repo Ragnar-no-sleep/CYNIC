@@ -30,7 +30,7 @@ import { ThompsonSampler } from '../learning/thompson-sampler.js';
 import { SEFIROT_TEMPLATE } from '../agents/collective/sefirot.js';
 import { RelationshipGraph } from '../agents/collective/relationship-graph.js';
 import { CONSULTATION_MATRIX, getConsultants, shouldConsult } from '@cynic/core/orchestration';
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 
@@ -303,6 +303,9 @@ export class KabbalisticRouter {
     for (const name of dogNames) {
       this.thompsonSampler.initArm(name);
     }
+    // R4: Load persisted Thompson state (survives daemon restarts)
+    this._lastThompsonSave = 0;
+    this._loadThompsonState();
 
     // Fix 3: Consciousness state tracking (soft gate)
     this._consciousnessState = "AWARE";
@@ -518,6 +521,7 @@ export class KabbalisticRouter {
       this.applyLearnedWeights(); // D1: Close feedback loop
       // D1: Update Thompson Sampler with routing outcome
       this.updateThompson(path, synthesis.hasConsensus && !context.error); // D1: learned weights flow back to routing
+      this._saveThompsonState(); // R4: Persist Thompson state (debounced)
       this._currentEpisodeId = null;
     }
 
@@ -1610,6 +1614,49 @@ export class KabbalisticRouter {
 
   setPersistence(persistence) {
     this.persistence = persistence;
+  }
+
+  // ===========================================================================
+  // R4: THOMPSON SAMPLER PERSISTENCE
+  // ===========================================================================
+
+  /**
+   * Load Thompson state from disk (survives daemon restarts).
+   * Path: ~/.cynic/thompson/state.json
+   */
+  _loadThompsonState() {
+    try {
+      const statePath = join(homedir(), '.cynic', 'thompson', 'state.json');
+      if (!existsSync(statePath)) return;
+
+      const state = JSON.parse(readFileSync(statePath, 'utf8'));
+      this.thompsonSampler.importState(state);
+      log.info('Thompson state loaded from disk', {
+        arms: state.arms ? Object.keys(state.arms).length : 0,
+        totalPulls: state.totalPulls || 0,
+      });
+    } catch (err) {
+      log.debug('Thompson state load failed (starting fresh)', { error: err.message });
+    }
+  }
+
+  /**
+   * Save Thompson state to disk (debounced: at most every 30s).
+   */
+  _saveThompsonState() {
+    if (Date.now() - this._lastThompsonSave < 30000) return;
+    this._lastThompsonSave = Date.now();
+
+    try {
+      const dir = join(homedir(), '.cynic', 'thompson');
+      if (!existsSync(dir)) {
+        mkdirSync(dir, { recursive: true });
+      }
+      const state = this.thompsonSampler.exportState();
+      writeFileSync(join(dir, 'state.json'), JSON.stringify(state), 'utf8');
+    } catch (err) {
+      log.debug('Thompson state save failed (non-blocking)', { error: err.message });
+    }
   }
 }
 
