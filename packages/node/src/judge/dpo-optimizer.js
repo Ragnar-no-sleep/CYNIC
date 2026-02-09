@@ -578,6 +578,9 @@ let _instance = null;
  */
 export function getDPOOptimizer(options = {}) {
   if (!_instance) {
+    if (!options.pool) {
+      try { options.pool = getPool(); } catch { return null; }
+    }
     _instance = new DPOOptimizer(options);
   }
   return _instance;

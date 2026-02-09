@@ -37,8 +37,9 @@ const PHI_INV_3 = 0.236067977499790; // φ⁻³ - learning threshold
  */
 export class DPOProcessor {
   constructor(options = {}) {
-    this.pool = options.pool || getPool();
-    this.feedbackRepo = options.feedbackRepo || new FeedbackRepository(this.pool);
+    this.pool = options.pool || null;
+    this.feedbackRepo = options.feedbackRepo || (this.pool ? new FeedbackRepository(this.pool) : null);
+    this.pairsRepo = options.pairsRepo || null;
     this.serviceId = options.serviceId || 'default';
 
     // Processing config
@@ -222,27 +223,47 @@ export class DPOProcessor {
       rejectedScore: rejected.q_score,
     };
 
-    // Insert into preference_pairs table
-    const { rows } = await this.pool.query(`
-      INSERT INTO preference_pairs (
-        chosen, rejected, context, context_type, task_type,
-        feedback_ids, confidence, service_id
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      RETURNING id
-    `, [
-      JSON.stringify(chosenData),
-      JSON.stringify(rejectedData),
-      JSON.stringify(context),
-      contextType,
-      taskType,
-      [chosen.id, rejected.id],
+    // Persist preference pair
+    const pairData = {
+      chosen: chosenData,
+      rejected: rejectedData,
+      context,
+      context_type: contextType,
+      task_type: taskType,
+      feedback_ids: [chosen.id, rejected.id],
       confidence,
-      this.serviceId,
-    ]);
+      service_id: this.serviceId,
+    };
+
+    let pairId = null;
+    if (this.pairsRepo) {
+      // File-backed or repo-based storage
+      const saved = await this.pairsRepo.create(pairData);
+      pairId = saved.id;
+    } else if (this.pool) {
+      // PostgreSQL direct
+      const { rows } = await this.pool.query(`
+        INSERT INTO preference_pairs (
+          chosen, rejected, context, context_type, task_type,
+          feedback_ids, confidence, service_id
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        RETURNING id
+      `, [
+        JSON.stringify(chosenData),
+        JSON.stringify(rejectedData),
+        JSON.stringify(context),
+        contextType,
+        taskType,
+        [chosen.id, rejected.id],
+        confidence,
+        this.serviceId,
+      ]);
+      pairId = rows[0]?.id;
+    }
 
     return {
-      id: rows[0]?.id,
+      id: pairId,
       chosenId: chosen.id,
       rejectedId: rejected.id,
       confidence,
@@ -284,6 +305,11 @@ export class DPOProcessor {
    * @returns {Promise<number>} Count
    */
   async getUnprocessedCount() {
+    if (this.feedbackRepo?.findUnapplied) {
+      const items = await this.feedbackRepo.findUnapplied(1);
+      return items.length > 0 ? -1 : 0; // -1 = "some exist", 0 = none
+    }
+    if (!this.pool) return 0;
     const { rows } = await this.pool.query(`
       SELECT COUNT(*) as count FROM feedback WHERE applied = FALSE
     `);
@@ -296,6 +322,11 @@ export class DPOProcessor {
    * @returns {Promise<number>} Count
    */
   async getPairCount() {
+    if (this.pairsRepo?.getAll) {
+      const items = await this.pairsRepo.getAll();
+      return items.length;
+    }
+    if (!this.pool) return 0;
     const { rows } = await this.pool.query(`
       SELECT COUNT(*) as count FROM preference_pairs WHERE service_id = $1
     `, [this.serviceId]);
@@ -317,6 +348,10 @@ let _instance = null;
  */
 export function getDPOProcessor(options = {}) {
   if (!_instance) {
+    // If no pool provided and getPool() would fail, create without pool
+    if (!options.pool) {
+      try { options.pool = getPool(); } catch { /* proceed without pool */ }
+    }
     _instance = new DPOProcessor(options);
   }
   return _instance;

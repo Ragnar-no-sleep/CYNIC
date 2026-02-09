@@ -898,6 +898,7 @@ export async function getCollectivePackAsync(options = {}) {
               patterns: createFileBackedRepo('patterns'),
               knowledge: knowledgeRepo,
               patternEvolution: createFileBackedRepo('pattern-evolution'),
+              preferencePairs: createFileBackedRepo('preference-pairs'),
               // LearningService._saveState() calls this directly on persistence
               storeKnowledge: (data) => knowledgeRepo.create(data),
             };

@@ -428,6 +428,9 @@ let _instance = null;
  */
 export function getCalibrationTracker(options = {}) {
   if (!_instance) {
+    if (!options.pool) {
+      try { options.pool = getPool(); } catch { return null; }
+    }
     _instance = new CalibrationTracker(options);
   }
   return _instance;

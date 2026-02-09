@@ -111,10 +111,14 @@ export class LearningManager extends EventEmitter {
 
     await this.learningService.init();
 
-    // Initialize DPO components (Week 3) — non-blocking, need PostgreSQL
+    // Initialize DPO components (Week 3) — non-blocking
     try {
       if (!this.dpoProcessor) {
-        this.dpoProcessor = getDPOProcessor();
+        // Pass feedback + pairs repos so DPO works with file-backed storage
+        this.dpoProcessor = getDPOProcessor({
+          feedbackRepo: this.persistence?.feedback || undefined,
+          pairsRepo: this.persistence?.preferencePairs || undefined,
+        });
       }
       if (!this.dpoOptimizer) {
         this.dpoOptimizer = getDPOOptimizer();
@@ -128,8 +132,9 @@ export class LearningManager extends EventEmitter {
         });
       }
     } catch (err) {
-      // DPO/Calibration/Governance need PostgreSQL — degrade gracefully
-      log.debug('DPO components unavailable (no PostgreSQL)', { error: err.message });
+      // DPO Optimizer/Calibration/Governance still need PostgreSQL — degrade gracefully
+      // DPO Processor itself works with file-backed repos now
+      log.debug('Some DPO components unavailable (no PostgreSQL)', { error: err.message });
     }
 
     // Wire up event bus if available
