@@ -298,6 +298,17 @@ export {
   xCoachFactory,
 };
 
+// X Ingest domain (zero-cost tweet ingestion via oEmbed)
+import {
+  createXIngestTool,
+  xIngestFactory,
+} from './domains/x-ingest.js';
+
+export {
+  createXIngestTool,
+  xIngestFactory,
+};
+
 // Oracle domain (token scoring - 17-dim φ-governed judgment)
 import {
   createOracleScoreTool,
@@ -506,6 +517,10 @@ export function createAllTools(options = {}) {
       ...(oracle.watchlist ? [createOracleWatchlistTool(oracle)] : []),
       ...(oracle.memory ? [createOracleStatsTool(oracle)] : []),
     ] : []),
+    // X Ingest Tool (zero-cost ingestion via oEmbed or manual text)
+    ...(localXStore ? [
+      createXIngestTool(localXStore),
+    ] : []),
     // X Coach Tools (communication coaching - autonomize the human, requires localXStore)
     ...(localXStore ? [
       createXCoachTool(judge, localXStore),
@@ -603,7 +618,9 @@ export default {
   createXAnalyzeTool,
   createXTrendsTool,
   createXSyncTool,
+  createXIngestTool,
   socialFactory,
+  xIngestFactory,
   // LSP Tools (code intelligence)
   LSPService,
   createLSPTools,
