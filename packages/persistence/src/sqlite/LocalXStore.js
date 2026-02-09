@@ -58,6 +58,11 @@ export class LocalXStore {
     // Enable WAL mode for better concurrency
     this.db.pragma('journal_mode = WAL');
 
+    // Disable FK enforcement — this is a local cache, not a relational DB.
+    // better-sqlite3 may be compiled with SQLITE_DEFAULT_FK_ENFORCEMENT=1,
+    // which breaks tweet inserts when users arrive in the same batch.
+    this.db.pragma('foreign_keys = OFF');
+
     // Create tables
     this._createTables();
 

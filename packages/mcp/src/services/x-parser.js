@@ -218,7 +218,12 @@ function extractTweetFromResult(tweetResult, result) {
   if (!tweet?.legacy) return;
 
   const legacy = tweet.legacy;
-  const core = tweet.core?.user_results?.result;
+  const coreRaw = tweet.core?.user_results?.result;
+
+  // Unwrap user wrapper (UserWithVisibilityResults → .result)
+  const core = (coreRaw && !coreRaw.legacy && coreRaw.result?.legacy)
+    ? coreRaw.result
+    : coreRaw;
 
   // Extract user if present
   if (core) {
@@ -271,15 +276,33 @@ function extractTweetFromResult(tweetResult, result) {
 
 /**
  * Extract user from GraphQL result object
+ *
+ * Handles multiple Twitter API wrapper types:
+ * - Direct User object (has .legacy.screen_name)
+ * - UserWithVisibilityResults (has .result containing the real User)
+ * - UserUnavailable (has no .legacy — skipped)
  */
 function extractUserFromResult(userResult, result) {
-  if (!userResult?.legacy) return;
+  if (!userResult) return;
 
-  const legacy = userResult.legacy;
+  // Unwrap UserWithVisibilityResults and similar wrappers
+  // These have .result containing the actual User object
+  let user = userResult;
+  if (!user.legacy && user.result?.legacy) {
+    user = user.result;
+  }
+
+  if (!user?.legacy) return;
+
+  const legacy = user.legacy;
+  const username = legacy.screen_name || legacy.screenName;
+
+  // Skip users without username — can't store without it
+  if (!username) return;
 
   const userData = {
-    xUserId: userResult.rest_id,
-    username: legacy.screen_name,
+    xUserId: user.rest_id,
+    username,
     displayName: legacy.name,
     bio: legacy.description || null,
     location: legacy.location || null,
@@ -289,7 +312,7 @@ function extractUserFromResult(userResult, result) {
     followersCount: legacy.followers_count || 0,
     followingCount: legacy.friends_count || 0,
     tweetCount: legacy.statuses_count || 0,
-    verified: userResult.is_blue_verified || legacy.verified || false,
+    verified: user.is_blue_verified || legacy.verified || false,
     createdOnX: legacy.created_at ? new Date(legacy.created_at) : null,
   };
 

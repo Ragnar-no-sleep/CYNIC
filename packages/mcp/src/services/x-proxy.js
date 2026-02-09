@@ -282,7 +282,6 @@ export class XProxyService {
           this.localStore.upsertUser(user);
           this._stats.usersCaptured++;
         } catch (err) {
-          // Ignore duplicate key errors
           if (!err.message.includes('UNIQUE constraint')) {
             log.debug('User store error', { error: err.message });
           }
@@ -302,6 +301,8 @@ export class XProxyService {
           }
         }
       }
+
+      fs.appendFileSync(DIAG_FILE, `[${new Date().toISOString()}] STORED: users=${parsed.users.length} tweets=${parsed.tweets.length}\n`);
 
       if (this.verbose) {
         log.debug('Captured locally', {
