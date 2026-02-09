@@ -904,12 +904,12 @@ export async function getCollectivePackAsync(options = {}) {
             persistence: learningPersistence,
             eventBus: globalEventBus,
           });
-          try { await learningManager.initialize(); } catch { /* non-blocking */ }
+          try { await learningManager.init(); } catch { /* non-blocking */ }
 
           _learningScheduler.setDependencies({
             learningManager,
-            dpoOptimizer: new DPOOptimizer({ pool: options.persistence }),
-            calibrationTracker: new CalibrationTracker({ pool: options.persistence }),
+            dpoOptimizer: options.persistence ? new DPOOptimizer({ pool: options.persistence }) : null,
+            calibrationTracker: options.persistence ? new CalibrationTracker({ pool: options.persistence }) : null,
             residualGovernance,
           });
 
