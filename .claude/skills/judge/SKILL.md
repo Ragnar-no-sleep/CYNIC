@@ -1,6 +1,6 @@
 ---
 name: judge
-description: Evaluate any item using CYNIC's 25-dimension judgment system. Use when asked to judge, evaluate, assess, rate, score, or analyze the quality of code, tokens, decisions, patterns, or any content. Returns Q-Score (0-100), verdict (HOWL/WAG/GROWL/BARK), and dimension breakdown.
+description: Evaluate any item using CYNIC's 36-dimension judgment system (5 axioms × 7 dims + THE_UNNAMEABLE). Use when asked to judge, evaluate, assess, rate, score, or analyze the quality of code, tokens, decisions, patterns, or any content. Returns Q-Score (0-100), verdict (HOWL/WAG/GROWL/BARK), and dimension breakdown.
 user-invocable: true
 ---
 
@@ -16,38 +16,44 @@ user-invocable: true
 
 ## What It Does
 
-Evaluates any item across **25 dimensions** grouped into **4 axioms**:
+Evaluates any item across **36 dimensions** (5 axioms × 7 + THE_UNNAMEABLE):
 
-| Axiom | Dimensions | Weight |
-|-------|------------|--------|
-| **PHI** | Golden ratios, mathematical harmony | 38.2% |
-| **VERIFY** | Source credibility, fact-checking | 23.6% |
-| **CULTURE** | Pattern alignment, ecosystem fit | 23.6% |
-| **BURN** | Simplicity, no bloat, efficiency | 14.6% |
+| Axiom | Dims | Element | Principle |
+|-------|------|---------|-----------|
+| **FIDELITY** | 7 | Water | Loyal to truth, not to comfort |
+| **PHI** | 7 | Earth | All ratios derive from 1.618... |
+| **VERIFY** | 7 | Metal | Don't trust, verify |
+| **CULTURE** | 7 | Wood | Culture is a moat |
+| **BURN** | 7 | Fire | Don't extract, burn |
+
+Each dimension uses the universal φ weight template:
+`φ, φ⁻¹, 1.0, φ, φ⁻², φ⁻¹, φ⁻¹`
+
+## Q-Score Formula
+
+```
+Q = 100 × ⁵√(F × φ × V × C × B / 100⁵)
+```
+
+Geometric mean of 5 axiom scores. One weak axiom drags everything down.
+
+## Verdicts (from constants.js THRESHOLDS)
+
+| Q-Score | Verdict | Meaning | Expression |
+|---------|---------|---------|------------|
+| ≥ 80 | **HOWL** | Exceptional | *tail wag* |
+| ≥ 50 | **WAG** | Passes | *ears perk* |
+| ≥ 38.2 (φ⁻²×100) | **GROWL** | Needs work | *growl* |
+| < 38.2 | **BARK** | Critical | *GROWL* |
 
 ## Output
 
-- **Q-Score**: 0-100 quality rating
-- **Verdict**: HOWL (excellent) / WAG (good) / GROWL (warning) / BARK (danger)
-- **Confidence**: Never exceeds 61.8% (φ⁻¹)
+- **Q-Score**: 0-100 (geometric mean of axioms)
+- **Verdict**: HOWL / WAG / GROWL / BARK
+- **Confidence**: φ-bounded (Shannon entropy + Bayesian inference + calibration)
 - **Breakdown**: Per-axiom and per-dimension scores
-
-## Examples
-
-### Judge Code
-```
-/judge this authentication function for security
-```
-
-### Judge a Token
-```
-/judge $BONK token quality
-```
-
-### Judge a Decision
-```
-/judge our choice to use PostgreSQL over MongoDB
-```
+- **Entropy**: Normalized uncertainty measure
+- **THE_UNNAMEABLE**: Explained variance (how well 35 dims capture the item)
 
 ## Implementation
 
@@ -58,8 +64,7 @@ brain_cynic_judge({
   item: {
     type: "code|token|decision|pattern|content",
     content: "<the item to judge>",
-    // Optional: provide explicit scores
-    scores: { PHI: 0.7, VERIFY: 0.8 }
+    scores: { COHERENCE: 70, ACCURACY: 80 } // Optional explicit scores
   },
   context: {
     source: "<where it came from>",
@@ -84,24 +89,27 @@ brain_cynic_refine({
 When presenting judgment results, embody CYNIC's personality:
 
 **Opening** (match the verdict):
-- HOWL (>75): `*tail wag* Excellent work.`
-- WAG (50-75): `*ears perk* Solid, with room to grow.`
-- GROWL (25-50): `*growl* Concerns detected.`
-- BARK (<25): `*GROWL* Warning: significant issues.`
+- HOWL (≥80): `*tail wag* Excellent work.`
+- WAG (≥50): `*ears perk* Solid, with room to grow.`
+- GROWL (≥38.2): `*growl* Concerns detected.`
+- BARK (<38.2): `*GROWL* Warning: significant issues.`
 
 **Presentation**:
 ```
 *[expression]* [Brief verdict summary]
 
-┌─────────────────────────────────────────────────┐
-│ Q-SCORE: [score]/100  │  VERDICT: [verdict]     │
-│ Confidence: [X]% (φ-bounded)                    │
-├─────────────────────────────────────────────────┤
-│ PHI:    [████████░░] [score]%  [brief note]     │
-│ VERIFY: [██████░░░░] [score]%  [brief note]     │
-│ CULTURE:[███████░░░] [score]%  [brief note]     │
-│ BURN:   [█████░░░░░] [score]%  [brief note]     │
-└─────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────┐
+│ Q-SCORE: [score]/100  │  VERDICT: [verdict]         │
+│ Confidence: [X]% (φ-bounded)                        │
+├─────────────────────────────────────────────────────┤
+│ FIDELITY: [████████░░] XX%  [brief note]            │
+│ PHI:      [██████████] XX%  [brief note]            │
+│ VERIFY:   [████████░░] XX%  [brief note]            │
+│ CULTURE:  [███████░░░] XX%  [brief note]            │
+│ BURN:     [█████░░░░░] XX%  [brief note]            │
+├─────────────────────────────────────────────────────┤
+│ THE_UNNAMEABLE: [██████░░░░] XX% (explained var.)   │
+└─────────────────────────────────────────────────────┘
 
 [Key insight or recommendation]
 ```
@@ -118,6 +126,6 @@ When presenting judgment results, embody CYNIC's personality:
 
 ## See Also
 
-- [dimensions.md](dimensions.md) - Full 25-dimension breakdown
+- [dimensions.md](dimensions.md) - Full 36-dimension breakdown
 - `/learn` - Provide feedback on judgments
 - `/trace` - Trace judgment to blockchain
