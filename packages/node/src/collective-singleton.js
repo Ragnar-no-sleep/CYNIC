@@ -892,11 +892,14 @@ export async function getCollectivePackAsync(options = {}) {
           } else {
             // File-backed fallback: learning survives without PostgreSQL
             const { createFileBackedRepo } = await import('@cynic/persistence');
+            const knowledgeRepo = createFileBackedRepo('knowledge');
             learningPersistence = {
               feedback: createFileBackedRepo('feedback'),
               patterns: createFileBackedRepo('patterns'),
-              knowledge: createFileBackedRepo('knowledge'),
+              knowledge: knowledgeRepo,
               patternEvolution: createFileBackedRepo('pattern-evolution'),
+              // LearningService._saveState() calls this directly on persistence
+              storeKnowledge: (data) => knowledgeRepo.create(data),
             };
             log.info('LearningManager using file-backed repos (no PostgreSQL)');
           }

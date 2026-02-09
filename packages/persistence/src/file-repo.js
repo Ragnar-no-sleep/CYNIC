@@ -134,7 +134,7 @@ export class FileBackedRepo {
    * @returns {Object|null}
    */
   async findById(id) {
-    return this._items.find(i => i.id === id) || null;
+    return this._items.find(i => i.id === id || i.patternId === id) || null;
   }
 
   /**
