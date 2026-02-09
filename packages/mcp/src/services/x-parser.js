@@ -225,12 +225,12 @@ function extractTweetFromResult(tweetResult, result) {
     extractUserFromResult(core, result);
   }
 
-  // Build tweet object
+  // Build tweet object (camelCase — canonical format for all consumers)
   const tweetData = {
     tweetId: legacy.id_str || tweet.rest_id,
     xUserId: legacy.user_id_str || core?.rest_id,
     text: legacy.full_text || legacy.text || '',
-    textHtml: null, // We don't get HTML from API
+    textHtml: null,
     language: legacy.lang || null,
     tweetType: determineTweetType(legacy),
     replyToTweetId: legacy.in_reply_to_status_id_str || null,
@@ -248,6 +248,9 @@ function extractTweetFromResult(tweetResult, result) {
     viewsCount: parseInt(tweet.views?.count) || 0,
     bookmarksCount: legacy.bookmark_count || 0,
     postedAt: new Date(legacy.created_at),
+    isRetweet: !!legacy.retweeted_status_result,
+    isQuote: !!legacy.quoted_status_id_str,
+    source: 'proxy',
   };
 
   // Avoid duplicates

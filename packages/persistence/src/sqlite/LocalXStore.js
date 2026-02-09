@@ -240,18 +240,18 @@ export class LocalXStore {
     `);
 
     return stmt.get(
-      user.x_user_id || user.id_str || user.rest_id,
+      user.x_user_id || user.xUserId || user.id_str || user.rest_id,
       user.username || user.screen_name,
-      user.display_name || user.name,
+      user.display_name || user.displayName || user.name,
       user.bio || user.description,
-      user.profile_image_url || user.profile_image_url_https,
-      user.followers_count || 0,
-      user.following_count || user.friends_count || 0,
-      user.tweet_count || user.statuses_count || 0,
+      user.profile_image_url || user.profileImageUrl || user.profile_image_url_https,
+      user.followers_count || user.followersCount || 0,
+      user.following_count || user.followingCount || user.friends_count || 0,
+      user.tweet_count || user.tweetCount || user.statuses_count || 0,
       user.verified ? 1 : 0,
       user.protected ? 1 : 0,
-      user.created_at,
-      user.protected ? 1 : 0, // protected accounts are private by default
+      user.created_at || (user.createdOnX instanceof Date ? user.createdOnX.toISOString() : user.createdOnX),
+      user.protected ? 1 : 0,
     );
   }
 
@@ -298,28 +298,32 @@ export class LocalXStore {
       RETURNING *
     `);
 
+    const createdAt = tweet.created_at
+      || (tweet.postedAt instanceof Date ? tweet.postedAt.toISOString() : tweet.postedAt)
+      || new Date().toISOString();
+
     const result = stmt.get(
-      tweet.tweet_id || tweet.id_str || tweet.rest_id,
-      tweet.x_user_id || tweet.user_id_str,
+      tweet.tweet_id || tweet.tweetId || tweet.id_str || tweet.rest_id,
+      tweet.x_user_id || tweet.xUserId || tweet.user_id_str,
       tweet.text || tweet.full_text,
-      tweet.created_at,
+      createdAt,
       tweet.language || tweet.lang,
-      tweet.like_count || tweet.favorite_count || 0,
-      tweet.retweet_count || 0,
-      tweet.reply_count || 0,
-      tweet.quote_count || 0,
-      tweet.view_count || 0,
-      tweet.bookmark_count || 0,
+      tweet.like_count || tweet.likesCount || tweet.favorite_count || 0,
+      tweet.retweet_count || tweet.retweetsCount || 0,
+      tweet.reply_count || tweet.repliesCount || 0,
+      tweet.quote_count || tweet.quotesCount || 0,
+      tweet.view_count || tweet.viewsCount || 0,
+      tweet.bookmark_count || tweet.bookmarksCount || 0,
       JSON.stringify(tweet.hashtags || []),
       JSON.stringify(tweet.mentions || []),
       JSON.stringify(tweet.urls || []),
       JSON.stringify(tweet.media || []),
-      tweet.conversation_id,
-      tweet.in_reply_to_tweet_id || tweet.in_reply_to_status_id_str,
-      tweet.in_reply_to_user_id || tweet.in_reply_to_user_id_str,
-      tweet.is_retweet ? 1 : 0,
-      tweet.is_quote ? 1 : 0,
-      tweet.quoted_tweet_id || tweet.quoted_status_id_str,
+      tweet.conversation_id || tweet.threadId,
+      tweet.in_reply_to_tweet_id || tweet.replyToTweetId || tweet.in_reply_to_status_id_str,
+      tweet.in_reply_to_user_id || tweet.replyToUserId || tweet.in_reply_to_user_id_str,
+      (tweet.is_retweet || tweet.isRetweet) ? 1 : 0,
+      (tweet.is_quote || tweet.isQuote) ? 1 : 0,
+      tweet.quoted_tweet_id || tweet.quoteTweetId || tweet.quoted_status_id_str,
       tweet.sentiment_score,
       tweet.sentiment_label,
       JSON.stringify(tweet.topics || []),

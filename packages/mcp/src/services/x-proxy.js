@@ -20,8 +20,14 @@
 
 import Proxy from '@bjowes/http-mitm-proxy';
 import zlib from 'zlib';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 import { createLogger } from '@cynic/core';
 import { parseXResponse } from './x-parser.js';
+
+// Diagnostic log file for proxy debugging
+const DIAG_FILE = path.join(os.homedir(), '.cynic', 'x-proxy-diag.log');
 
 const log = createLogger('XProxy');
 
@@ -119,6 +125,7 @@ export class XProxyService {
     await new Promise((resolve, reject) => {
       this.proxy.listen({
         port: this.port,
+        host: '0.0.0.0',
         sslCaDir: this.sslCaDir,
         keepAlive: true,
       }, (err) => {
@@ -175,9 +182,11 @@ export class XProxyService {
 
     if (!shouldCapture) {
       // Not an API path we care about - pass through
+      fs.appendFileSync(DIAG_FILE, `[${new Date().toISOString()}] PASS-THROUGH: ${path.slice(0, 100)}\n`);
       return callback();
     }
 
+    fs.appendFileSync(DIAG_FILE, `[${new Date().toISOString()}] INTERCEPTING: ${path.slice(0, 100)}\n`);
     if (this.verbose) {
       log.debug('Intercepting X API', { path: path.slice(0, 80) });
     }
@@ -215,13 +224,18 @@ export class XProxyService {
    */
   async _processResponse(ctx, chunks, path) {
     // Require at least localStore for privacy-first storage
-    if (!this.localStore || chunks.length === 0) return;
+    if (!this.localStore || chunks.length === 0) {
+      fs.appendFileSync(DIAG_FILE, `[${new Date().toISOString()}] SKIP: no localStore=${!this.localStore} chunks=${chunks.length}\n`);
+      return;
+    }
 
     try {
       let body = Buffer.concat(chunks);
+      const bodySize = body.length;
 
       // Decompress if needed
       const encoding = ctx.serverToProxyResponse?.headers?.['content-encoding'];
+      fs.appendFileSync(DIAG_FILE, `[${new Date().toISOString()}] PROCESS: path=${path.slice(0, 80)} encoding=${encoding} size=${bodySize}\n`);
       if (encoding === 'gzip') {
         body = await this._gunzip(body);
       } else if (encoding === 'br') {
@@ -232,18 +246,23 @@ export class XProxyService {
 
       // Check content type
       const contentType = ctx.serverToProxyResponse?.headers?.['content-type'] || '';
-      if (!contentType.includes('json')) return;
+      if (!contentType.includes('json')) {
+        fs.appendFileSync(DIAG_FILE, `[${new Date().toISOString()}] SKIP-TYPE: ${contentType.slice(0, 60)}\n`);
+        return;
+      }
 
       // Parse JSON
       const data = JSON.parse(body.toString('utf8'));
 
       // Extract tweets, users, trends
       const parsed = parseXResponse(path, data);
+      fs.appendFileSync(DIAG_FILE, `[${new Date().toISOString()}] PARSED: tweets=${parsed.tweets.length} users=${parsed.users.length} trends=${parsed.trends.length}\n`);
 
       // Store LOCALLY first (privacy-first)
       await this._storeDataLocal(parsed, path);
 
     } catch (err) {
+      fs.appendFileSync(DIAG_FILE, `[${new Date().toISOString()}] ERROR: ${err.message.slice(0, 200)}\n`);
       // Silently ignore parse errors (many responses won't be valid JSON)
       if (this.verbose && !err.message.includes('Unexpected')) {
         log.debug('Parse error', { error: err.message, path: path.slice(0, 50) });
