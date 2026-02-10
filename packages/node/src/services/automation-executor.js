@@ -889,8 +889,8 @@ export class AutomationExecutor {
       // Insight: Learning progress
       if (this.stats.learningCycles > 0 && this.stats.learningCycles % 5 === 0) {
         const notification = await this.notificationsRepo.create({
-          user_id: 'system',
-          notification_type: 'insight',
+          userId: 'system',
+          notificationType: 'insight',
           title: 'Learning Milestone',
           message: `CYNIC has completed ${this.stats.learningCycles} learning cycles. φ improves.`,
           priority: 50,
@@ -904,8 +904,8 @@ export class AutomationExecutor {
       const errorRate = this.stats.errors / Math.max(1, this.stats.learningCycles + this.stats.triggersEvaluated);
       if (errorRate > PHI_INV && this.stats.errors > 5) {
         const notification = await this.notificationsRepo.create({
-          user_id: 'system',
-          notification_type: 'warning',
+          userId: 'system',
+          notificationType: 'warning',
           title: 'High Error Rate Detected',
           message: `Error rate is ${Math.round(errorRate * 100)}%. Investigation recommended.`,
           priority: 75,
@@ -918,8 +918,8 @@ export class AutomationExecutor {
       // Insight: Tasks processed milestone
       if (this.stats.tasksProcessed > 0 && this.stats.tasksProcessed % 10 === 0) {
         const notification = await this.notificationsRepo.create({
-          user_id: 'system',
-          notification_type: 'insight',
+          userId: 'system',
+          notificationType: 'insight',
           title: 'Automation Progress',
           message: `${this.stats.tasksProcessed} autonomous tasks have been processed.`,
           priority: 40,
