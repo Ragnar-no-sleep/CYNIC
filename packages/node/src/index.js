@@ -517,6 +517,16 @@ export {
   OperationType,
   getCynicAccountant,
   resetCynicAccountant,
+  // C4.6: SOCIAL × ACCOUNT
+  SocialAccountant,
+  InteractionType,
+  getSocialAccountant,
+  resetSocialAccountant,
+  // C7.6: COSMOS × ACCOUNT
+  CosmosAccountant,
+  ValueFlowType,
+  getCosmosAccountant,
+  resetCosmosAccountant,
 } from './accounting/index.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════

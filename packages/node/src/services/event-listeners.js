@@ -807,6 +807,8 @@ export function startEventListeners(options = {}) {
     codeActor,
     cynicAccountant,
     codeAccountant,
+    socialAccountant,
+    cosmosAccountant,
     humanActor,
     // Solana pipeline singletons (C2.2-C2.7)
     solanaJudge,
@@ -1431,6 +1433,89 @@ export function startEventListeners(options = {}) {
     _unsubscribers.push(unsubCodeAccounting);
   }
 
+  // 3b½. SOCIAL_CAPTURE → SocialAccountant: Track social interaction economics (C4.6)
+  if (socialAccountant) {
+    const unsubSocialAccounting = globalEventBus.subscribe(
+      EventType.SOCIAL_CAPTURE,
+      (event) => {
+        try {
+          const d = event.data || event.payload || {};
+          const tweets = d.tweets || [];
+          const users = d.users || [];
+
+          // Track each tweet as an interaction
+          for (const tweet of tweets.slice(0, 21)) { // Fib(8) cap
+            socialAccountant.trackInteraction({
+              type: tweet.isRetweet ? 'retweet' : tweet.isReply ? 'reply' : 'post',
+              reach: tweet.impressions || tweet.likes || 0,
+              engagement: (tweet.likes || 0) + (tweet.retweets || 0) + (tweet.replies || 0),
+              sentiment: tweet.sentiment || 0,
+              isInfluencer: (tweet.followers || 0) > 10000,
+              platform: 'x',
+            }, { sessionId });
+          }
+
+          // Track new follows/users as interactions
+          for (const user of users.slice(0, 13)) { // Fib(7) cap
+            socialAccountant.trackInteraction({
+              type: 'follow',
+              reach: user.followers || 0,
+              engagement: 1,
+              sentiment: 0,
+              isInfluencer: (user.followers || 0) > 10000,
+              platform: 'x',
+            }, { sessionId });
+          }
+
+          _stats.socialAccountingOps = (_stats.socialAccountingOps || 0) + 1;
+
+          // Publish accounting update
+          globalEventBus.publish(EventType.ACCOUNTING_UPDATE, {
+            source: 'SocialAccountant',
+            type: 'social_capture',
+            interactions: tweets.length + users.length,
+          }, { source: 'event-listeners' });
+        } catch (err) {
+          log.debug('SocialAccountant.trackInteraction failed', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubSocialAccounting);
+  }
+
+  // 3b¾. PATTERN_DETECTED → CosmosAccountant: Track ecosystem value flows (C7.6)
+  if (cosmosAccountant) {
+    const unsubCosmosAccounting = globalEventBus.subscribe(
+      EventType.PATTERN_DETECTED,
+      (event) => {
+        try {
+          const d = event.payload || {};
+          const category = d.category || d.source || 'unknown';
+
+          // Determine flow type based on pattern category
+          let flowType = 'ecosystem_event';
+          if (category === 'cosmos' || d.source === 'CosmosEmergence') flowType = 'emergence_signal';
+          else if (d.domains && d.domains.length > 1) flowType = 'cross_domain_sync';
+          else flowType = 'pattern_detected';
+
+          cosmosAccountant.trackValueFlow({
+            type: flowType,
+            direction: 'in',
+            magnitude: d.confidence || d.significance || 0.3,
+            domain: category,
+            targetDomain: d.targetDomain || null,
+            significance: d.significance === 'HIGH' || d.significance === 'CRITICAL' ? 0.8 : 0.4,
+          }, { sessionId });
+
+          _stats.cosmosAccountingOps = (_stats.cosmosAccountingOps || 0) + 1;
+        } catch (err) {
+          log.debug('CosmosAccountant.trackValueFlow failed', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubCosmosAccounting);
+  }
+
   // 3c. JUDGMENT_CREATED → CodeDecider: Run decision pipeline for code judgments
   if (codeDecider) {
     const unsubCodeDecision = globalEventBus.subscribe(
@@ -1620,12 +1705,14 @@ export function startEventListeners(options = {}) {
     _unsubscribers.push(unsubPatternAction);
   }
 
-  if (codeDecider || codeActor || cynicAccountant || codeAccountant || humanActor) {
+  if (codeDecider || codeActor || cynicAccountant || codeAccountant || socialAccountant || cosmosAccountant || humanActor) {
     log.info('RIGHT side event listeners wired', {
       codeDecider: !!codeDecider,
       codeActor: !!codeActor,
       cynicAccountant: !!cynicAccountant,
       codeAccountant: !!codeAccountant,
+      socialAccountant: !!socialAccountant,
+      cosmosAccountant: !!cosmosAccountant,
       humanActor: !!humanActor,
     });
   }

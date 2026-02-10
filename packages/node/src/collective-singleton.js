@@ -52,10 +52,13 @@ import { getSLATracker } from './services/sla-tracker.js';
 import { wireConsciousness } from './services/consciousness-bridge.js';
 import { eventBusBridge } from './services/event-bus-bridge.js';
 import { memoryCoordinator } from './services/memory-coordinator.js';
+import { contextCompressor } from './services/context-compressor.js';
 import { getCodeDecider, resetCodeDecider } from './code/code-decider.js';
 import { getCodeActor, resetCodeActor } from './code/code-actor.js';
 import { getCynicAccountant, resetCynicAccountant } from './accounting/cynic-accountant.js';
 import { getCodeAccountant, resetCodeAccountant } from './accounting/code-accountant.js';
+import { getSocialAccountant, resetSocialAccountant } from './accounting/social-accountant.js';
+import { getCosmosAccountant, resetCosmosAccountant } from './accounting/cosmos-accountant.js';
 import { getHumanActor, resetHumanActor } from './symbiosis/human-actor.js';
 import { getSolanaJudge, resetSolanaJudge } from './solana/solana-judge.js';
 import { getSolanaDecider, resetSolanaDecider } from './solana/solana-decider.js';
@@ -348,6 +351,20 @@ let _cynicAccountant = null;
  * @type {import('./accounting/code-accountant.js').CodeAccountant|null}
  */
 let _codeAccountant = null;
+
+/**
+ * C4.6 (SOCIAL × ACCOUNT): SocialAccountant singleton
+ * Tracks social interaction economics (engagement, reach, sentiment)
+ * @type {import('./accounting/social-accountant.js').SocialAccountant|null}
+ */
+let _socialAccountant = null;
+
+/**
+ * C7.6 (COSMOS × ACCOUNT): CosmosAccountant singleton
+ * Tracks ecosystem-level economics (patterns, syncs, value flows)
+ * @type {import('./accounting/cosmos-accountant.js').CosmosAccountant|null}
+ */
+let _cosmosAccountant = null;
 
 /**
  * C5.4 (HUMAN × ACT): HumanActor singleton
@@ -707,8 +724,10 @@ export function getCollectivePack(options = {}) {
     _codeActor = getCodeActor();
     _cynicAccountant = getCynicAccountant();
     _codeAccountant = getCodeAccountant();
+    _socialAccountant = getSocialAccountant();
+    _cosmosAccountant = getCosmosAccountant();
     _humanActor = getHumanActor();
-    log.debug('RIGHT side wired (C1.3, C1.4, C6.6, C1.6, C5.4)');
+    log.debug('RIGHT side wired (C1.3, C1.4, C6.6, C1.6, C4.6, C7.6, C5.4)');
 
     // AXE 2 (PERSIST): Wire Event Listeners to close data loops
     // "Le chien n'oublie jamais" - persists judgments, feedback, session state
@@ -732,6 +751,8 @@ export function getCollectivePack(options = {}) {
         codeActor: _codeActor,
         cynicAccountant: _cynicAccountant,
         codeAccountant: _codeAccountant,
+        socialAccountant: _socialAccountant,
+        cosmosAccountant: _cosmosAccountant,
         humanActor: _humanActor,
         // Solana pipeline singletons (C2.2-C2.7) — may be null in sync path
         solanaJudge: _solanaJudge,
@@ -929,6 +950,8 @@ export async function getCollectivePackAsync(options = {}) {
         codeActor: _codeActor,
         cynicAccountant: _cynicAccountant,
         codeAccountant: _codeAccountant,
+        socialAccountant: _socialAccountant,
+        cosmosAccountant: _cosmosAccountant,
         humanActor: _humanActor,
         // Solana pipeline singletons (C2.2-C2.7)
         solanaJudge: _solanaJudge,
@@ -1392,6 +1415,8 @@ export async function getCollectivePackAsync(options = {}) {
       if (_codeActor) systemTopology.registerComponent('codeActor', _codeActor);
       if (_cynicAccountant) systemTopology.registerComponent('cynicAccountant', _cynicAccountant);
       if (_codeAccountant) systemTopology.registerComponent('codeAccountant', _codeAccountant);
+      if (_socialAccountant) systemTopology.registerComponent('socialAccountant', _socialAccountant);
+      if (_cosmosAccountant) systemTopology.registerComponent('cosmosAccountant', _cosmosAccountant);
 
       // Solana pipeline (C2.2-C2.7)
       if (_solanaJudge) systemTopology.registerComponent('solanaJudge', _solanaJudge);
@@ -1460,6 +1485,18 @@ export async function getCollectivePackAsync(options = {}) {
       });
     } catch (err) {
       log.warn('MemoryCoordinator start failed (non-blocking)', { error: err.message });
+    }
+
+    // ─── ContextCompressor: Experience curve for context injection ───────────
+    try {
+      contextCompressor.start();
+      systemTopology.registerComponent('contextCompressor', contextCompressor);
+      log.info('ContextCompressor started', {
+        sessions: contextCompressor.getStats().totalSessions,
+        experience: contextCompressor.getStats().experienceLevel,
+      });
+    } catch (err) {
+      log.warn('ContextCompressor start failed (non-blocking)', { error: err.message });
     }
 
     return pack;
@@ -1897,6 +1934,8 @@ export function getSingletonStatus() {
     codeActorInitialized: !!_codeActor,
     cynicAccountantInitialized: !!_cynicAccountant,
     codeAccountantInitialized: !!_codeAccountant,
+    socialAccountantInitialized: !!_socialAccountant,
+    cosmosAccountantInitialized: !!_cosmosAccountant,
     humanActorInitialized: !!_humanActor,
     // Solana pipeline (C2.2-C2.7)
     solanaJudgeInitialized: !!_solanaJudge,
@@ -1937,6 +1976,12 @@ export function getCynicAccountantSingleton() { return _cynicAccountant; }
  * @returns {import('./accounting/code-accountant.js').CodeAccountant|null}
  */
 export function getCodeAccountantSingleton() { return _codeAccountant; }
+
+/** C4.6: Get SocialAccountant singleton @returns {import('./accounting/social-accountant.js').SocialAccountant|null} */
+export function getSocialAccountantSingleton() { return _socialAccountant; }
+
+/** C7.6: Get CosmosAccountant singleton @returns {import('./accounting/cosmos-accountant.js').CosmosAccountant|null} */
+export function getCosmosAccountantSingleton() { return _cosmosAccountant; }
 
 /**
  * C5.4: Get the HumanActor singleton
@@ -2099,6 +2144,8 @@ export function _resetForTesting() {
   if (_codeActor) { resetCodeActor(); _codeActor = null; }
   if (_cynicAccountant) { resetCynicAccountant(); _cynicAccountant = null; }
   if (_codeAccountant) { resetCodeAccountant(); _codeAccountant = null; }
+  if (_socialAccountant) { resetSocialAccountant(); _socialAccountant = null; }
+  if (_cosmosAccountant) { resetCosmosAccountant(); _cosmosAccountant = null; }
   if (_humanActor) { resetHumanActor(); _humanActor = null; }
 
   // Solana pipeline singletons (C2.2-C2.7)
@@ -2114,6 +2161,9 @@ export function _resetForTesting() {
 
   // MemoryCoordinator: Reset memory awareness
   try { memoryCoordinator._resetForTesting(); } catch { /* non-blocking */ }
+
+  // ContextCompressor: Reset experience curve
+  try { contextCompressor._resetForTesting(); } catch { /* non-blocking */ }
 
   // SystemTopology: Reset self-awareness (also resets ProcessRegistry)
   try { systemTopology._resetForTesting(); } catch { /* non-blocking */ }

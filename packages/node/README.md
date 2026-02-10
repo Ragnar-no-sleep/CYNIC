@@ -131,6 +131,8 @@ const instance = createIdentity();
 | `WorkflowTracker` | WorkflowTracker implementation |
 | `WorkflowStatus` | WorkflowStatus implementation |
 | `OperationType` | OperationType implementation |
+| `InteractionType` | InteractionType implementation |
+| `ValueFlowType` | ValueFlowType implementation |
 | `CodeEmergence` | CodeEmergence implementation |
 | `CodePatternType` | CodePatternType implementation |
 | `InterventionType` | InterventionType implementation |
@@ -278,6 +280,8 @@ const instance = createIdentity();
 | `getDogStateEmitter()` | Get DogStateEmitter singleton |
 | `getWorkflowTracker()` | Get WorkflowTracker singleton |
 | `getCynicAccountant()` | Get CynicAccountant singleton |
+| `getSocialAccountant()` | Get SocialAccountant singleton |
+| `getCosmosAccountant()` | Get CosmosAccountant singleton |
 | `getCodeEmergence()` | Get CodeEmergence singleton |
 | `getHumanAdvisor()` | Get HumanAdvisor singleton |
 | `getHumanLearning()` | Get HumanLearning singleton |
@@ -309,7 +313,7 @@ const instance = createIdentity();
 
 ### Functions
 
-`importIdentity`, `exportIdentity`, `calculateCompositeEScore`, `updateEScoreState`, `dimensionRegistry`, `resetLearningScheduler`, `serialize`, `deserialize`, `isValidMessage`, `initializeQLearning` + 116 more
+`importIdentity`, `exportIdentity`, `calculateCompositeEScore`, `updateEScoreState`, `dimensionRegistry`, `resetLearningScheduler`, `serialize`, `deserialize`, `isValidMessage`, `initializeQLearning` + 118 more
 
 ## Dependencies
 
@@ -318,10 +322,10 @@ const instance = createIdentity();
 
 ## Stats
 
-- **Source files**: 257
-- **Test files**: 92
+- **Source files**: 260
+- **Test files**: 93
 - **Test ratio**: 36%
-- **Exports**: 428 named
+- **Exports**: 434 named
 
 ## Fractal Structure
 

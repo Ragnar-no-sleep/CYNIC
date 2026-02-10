@@ -24,3 +24,19 @@ export {
   getCynicAccountant,
   resetCynicAccountant,
 } from './cynic-accountant.js';
+
+// C4.6: SOCIAL × ACCOUNT
+export {
+  SocialAccountant,
+  InteractionType,
+  getSocialAccountant,
+  resetSocialAccountant,
+} from './social-accountant.js';
+
+// C7.6: COSMOS × ACCOUNT
+export {
+  CosmosAccountant,
+  ValueFlowType,
+  getCosmosAccountant,
+  resetCosmosAccountant,
+} from './cosmos-accountant.js';
