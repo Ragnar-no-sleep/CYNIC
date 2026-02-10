@@ -53,6 +53,7 @@ import { wireConsciousness } from './services/consciousness-bridge.js';
 import { eventBusBridge } from './services/event-bus-bridge.js';
 import { memoryCoordinator } from './services/memory-coordinator.js';
 import { getCodeDecider, resetCodeDecider } from './code/code-decider.js';
+import { getCodeActor, resetCodeActor } from './code/code-actor.js';
 import { getCynicAccountant, resetCynicAccountant } from './accounting/cynic-accountant.js';
 import { getCodeAccountant, resetCodeAccountant } from './accounting/code-accountant.js';
 import { getHumanActor, resetHumanActor } from './symbiosis/human-actor.js';
@@ -326,6 +327,13 @@ let _ecosystemMonitor = null;
  * @type {import('./code/code-decider.js').CodeDecider|null}
  */
 let _codeDecider = null;
+
+/**
+ * C1.4 (CODE × ACT): CodeActor singleton
+ * Executes advisory actions from code decisions (notifications, debt tracking)
+ * @type {import('./code/code-actor.js').CodeActor|null}
+ */
+let _codeActor = null;
 
 /**
  * C6.6 (CYNIC × ACCOUNT): CynicAccountant singleton
@@ -696,10 +704,11 @@ export function getCollectivePack(options = {}) {
     // RIGHT SIDE: Wire DECIDE/ACT/ACCOUNT singletons
     // "Le chien décide, agit, et rend des comptes"
     _codeDecider = getCodeDecider();
+    _codeActor = getCodeActor();
     _cynicAccountant = getCynicAccountant();
     _codeAccountant = getCodeAccountant();
     _humanActor = getHumanActor();
-    log.debug('RIGHT side wired (C1.3, C6.6, C1.6, C5.4)');
+    log.debug('RIGHT side wired (C1.3, C1.4, C6.6, C1.6, C5.4)');
 
     // AXE 2 (PERSIST): Wire Event Listeners to close data loops
     // "Le chien n'oublie jamais" - persists judgments, feedback, session state
@@ -720,6 +729,7 @@ export function getCollectivePack(options = {}) {
         blockStore,
         // RIGHT side singletons
         codeDecider: _codeDecider,
+        codeActor: _codeActor,
         cynicAccountant: _cynicAccountant,
         codeAccountant: _codeAccountant,
         humanActor: _humanActor,
@@ -916,6 +926,7 @@ export async function getCollectivePackAsync(options = {}) {
         blockStore,
         // RIGHT side singletons
         codeDecider: _codeDecider,
+        codeActor: _codeActor,
         cynicAccountant: _cynicAccountant,
         codeAccountant: _codeAccountant,
         humanActor: _humanActor,
@@ -1378,6 +1389,7 @@ export async function getCollectivePackAsync(options = {}) {
 
       // RIGHT side (DECIDE/ACT/ACCOUNT)
       if (_codeDecider) systemTopology.registerComponent('codeDecider', _codeDecider);
+      if (_codeActor) systemTopology.registerComponent('codeActor', _codeActor);
       if (_cynicAccountant) systemTopology.registerComponent('cynicAccountant', _cynicAccountant);
       if (_codeAccountant) systemTopology.registerComponent('codeAccountant', _codeAccountant);
 
@@ -1882,6 +1894,7 @@ export function getSingletonStatus() {
     ecosystemMonitorSources: _ecosystemMonitor?.sources?.size || 0,
     // RIGHT side
     codeDeciderInitialized: !!_codeDecider,
+    codeActorInitialized: !!_codeActor,
     cynicAccountantInitialized: !!_cynicAccountant,
     codeAccountantInitialized: !!_codeAccountant,
     humanActorInitialized: !!_humanActor,
@@ -1906,6 +1919,12 @@ export function getSingletonStatus() {
  * @returns {import('./code/code-decider.js').CodeDecider|null}
  */
 export function getCodeDeciderSingleton() { return _codeDecider; }
+
+/**
+ * C1.4: Get the CodeActor singleton
+ * @returns {import('./code/code-actor.js').CodeActor|null}
+ */
+export function getCodeActorSingleton() { return _codeActor; }
 
 /**
  * C6.6: Get the CynicAccountant singleton
@@ -2077,6 +2096,7 @@ export function _resetForTesting() {
 
   // RIGHT side singletons (DECIDE/ACT/ACCOUNT)
   if (_codeDecider) { resetCodeDecider(); _codeDecider = null; }
+  if (_codeActor) { resetCodeActor(); _codeActor = null; }
   if (_cynicAccountant) { resetCynicAccountant(); _cynicAccountant = null; }
   if (_codeAccountant) { resetCodeAccountant(); _codeAccountant = null; }
   if (_humanActor) { resetHumanActor(); _humanActor = null; }

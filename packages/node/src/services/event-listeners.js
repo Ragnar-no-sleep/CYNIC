@@ -78,6 +78,7 @@ const _stats = {
   anchorFailuresFailed: 0,
   // RIGHT side stats
   codeDecisionsTriggered: 0,
+  codeActionsTriggered: 0,
   cynicAccountingOps: 0,
   codeAccountingOps: 0,
   humanActionsTriggered: 0,
@@ -803,6 +804,7 @@ export function startEventListeners(options = {}) {
     blockStore,
     // RIGHT side singletons (DECIDE/ACT/ACCOUNT)
     codeDecider,
+    codeActor,
     cynicAccountant,
     codeAccountant,
     humanActor,
@@ -1481,6 +1483,54 @@ export function startEventListeners(options = {}) {
     _unsubscribers.push(unsubCodeDecision);
   }
 
+  // 3c½. CODE_DECISION → CodeActor: Execute advisory action from code decisions (C1.4)
+  if (codeActor) {
+    const unsubCodeAction = globalEventBus.subscribe(
+      EventType.CODE_DECISION,
+      (event) => {
+        try {
+          const { decision, reason, judgmentId, qScore } = event.payload || {};
+          if (!decision) return;
+
+          const result = codeActor.act(
+            { type: decision, decision, reasoning: reason, reason },
+            { judgmentId, qScore, source: 'event-pipeline' }
+          );
+
+          if (result) {
+            _stats.codeActionsTriggered++;
+            globalEventBus.publish(EventType.CODE_ACTION, {
+              source: 'CodeActor',
+              actionType: result.type,
+              urgency: result.urgency,
+              message: result.message,
+              judgmentId,
+            }, { source: 'event-listeners' });
+
+            // Persist to unified_signals
+            if (persistence?.query) {
+              const id = `ca_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+              persistence.query(`
+                INSERT INTO unified_signals (id, source, session_id, input, outcome, metadata)
+                VALUES ($1, $2, $3, $4, $5, $6)
+              `, [
+                id, 'code_action', context.sessionId || null,
+                JSON.stringify({ decision, judgmentId, qScore }),
+                JSON.stringify({ actionType: result.type, urgency: result.urgency }),
+                JSON.stringify({ message: result.message }),
+              ]).catch(err => {
+                log.debug('Code action persistence failed', { error: err.message });
+              });
+            }
+          }
+        } catch (err) {
+          log.debug('CodeActor.act failed', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubCodeAction);
+  }
+
   // 3d. CYNIC_STATE → HumanActor: Trigger intervention on burnout risk
   // Reuses existing 1:5 CYNIC_STATE sampling (fires after handleCynicState)
   if (humanActor) {
@@ -1570,9 +1620,10 @@ export function startEventListeners(options = {}) {
     _unsubscribers.push(unsubPatternAction);
   }
 
-  if (codeDecider || cynicAccountant || codeAccountant || humanActor) {
+  if (codeDecider || codeActor || cynicAccountant || codeAccountant || humanActor) {
     log.info('RIGHT side event listeners wired', {
       codeDecider: !!codeDecider,
+      codeActor: !!codeActor,
       cynicAccountant: !!cynicAccountant,
       codeAccountant: !!codeAccountant,
       humanActor: !!humanActor,

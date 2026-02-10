@@ -74,6 +74,7 @@ export const EventType = {
 
   // Decision events (RIGHT side — DECIDE/ACT/ACCOUNT)
   CODE_DECISION: 'code:decision',
+  CODE_ACTION: 'code:action',
   HUMAN_ACTION: 'human:action',
   ACCOUNTING_UPDATE: 'accounting:update',
 

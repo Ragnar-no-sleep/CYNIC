@@ -16,3 +16,12 @@ export {
   getCodeDecider,
   resetCodeDecider,
 } from './code-decider.js';
+
+// C1.4: CODE × ACT
+export {
+  CodeActor,
+  CodeActionType,
+  CodeActionStatus,
+  getCodeActor,
+  resetCodeActor,
+} from './code-actor.js';
