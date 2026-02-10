@@ -89,6 +89,11 @@ const _stats = {
   solanaLearnings: 0,
   solanaAccountingOps: 0,
   solanaEmergencePatterns: 0,
+  // Cosmos pipeline stats (C7.2-C7.5)
+  cosmosJudgments: 0,
+  cosmosDecisions: 0,
+  cosmosActions: 0,
+  cosmosLearnings: 0,
   // Emergence pipeline stats (C1.7, C4.7, C5.7, C6.7, C7.7)
   codeEmergencePatterns: 0,
   codeEmergenceChanges: 0,
@@ -810,6 +815,11 @@ export function startEventListeners(options = {}) {
     socialAccountant,
     cosmosAccountant,
     humanActor,
+    // Cosmos pipeline singletons (C7.2-C7.5)
+    cosmosJudge,
+    cosmosDecider,
+    cosmosActor,
+    cosmosLearner,
     // Solana pipeline singletons (C2.2-C2.7)
     solanaJudge,
     solanaDecider,
@@ -1705,7 +1715,145 @@ export function startEventListeners(options = {}) {
     _unsubscribers.push(unsubPatternAction);
   }
 
-  if (codeDecider || codeActor || cynicAccountant || codeAccountant || socialAccountant || cosmosAccountant || humanActor) {
+  // ═════════════════════════════════════════════════════════════════════════════
+  // COSMOS PIPELINE WIRING (C7.2-C7.5)
+  // "Le chien juge les étoiles, décide le cap, agit, et apprend"
+  // Chain: PATTERN_DETECTED → CosmosJudge → cosmos:judgment → CosmosDecider
+  //        → cosmos:decision → CosmosActor → cosmos:action → CosmosLearner
+  // ═════════════════════════════════════════════════════════════════════════════
+
+  // 3e. PATTERN_DETECTED → CosmosJudge: Judge ecosystem patterns (C7.2)
+  if (cosmosJudge) {
+    const unsubCosmosJudge = globalEventBus.subscribe(
+      EventType.PATTERN_DETECTED,
+      (event) => {
+        try {
+          const d = event.payload || {};
+          // Only judge high-significance or cosmos-category patterns
+          const sig = d.significance || 'low';
+          if (sig !== 'HIGH' && sig !== 'CRITICAL' && d.category !== 'cosmos') return;
+
+          const judgment = cosmosJudge.judge({
+            type: d.category === 'cosmos' ? 'emergence_signal' : 'ecosystem_health',
+            data: {
+              significance: sig === 'CRITICAL' ? 1.0 : sig === 'HIGH' ? 0.8 : 0.5,
+              confidence: d.confidence || 0.5,
+              repos: d.domains || [],
+              convergence: d.convergence || d.confidence || 0.5,
+            },
+          });
+
+          if (judgment) {
+            _stats.cosmosJudgments++;
+            // Publish for downstream decision pipeline
+            globalEventBus.publish('cosmos:judgment', {
+              source: 'CosmosJudge',
+              judgment,
+              triggeredBy: event.id,
+            }, { source: 'event-listeners' });
+          }
+        } catch (err) {
+          log.debug('CosmosJudge.judge failed', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubCosmosJudge);
+  }
+
+  // 3e½. cosmos:judgment → CosmosDecider: Decide ecosystem action (C7.3)
+  if (cosmosDecider) {
+    const unsubCosmosDecision = globalEventBus.subscribe(
+      'cosmos:judgment',
+      (event) => {
+        try {
+          const { judgment } = event.payload || {};
+          if (!judgment) return;
+
+          // Only decide on concerning verdicts (GROWL/BARK) or significant patterns
+          if (judgment.verdict !== 'GROWL' && judgment.verdict !== 'BARK' && judgment.verdict !== 'HOWL') return;
+
+          const decision = cosmosDecider.decide(judgment, {
+            observationCount: cosmosJudge?.getStats?.()?.totalJudgments || 0,
+            trend: cosmosJudge?.getHealth?.()?.healthTrend || 'stable',
+          });
+
+          if (decision) {
+            _stats.cosmosDecisions++;
+            globalEventBus.publish('cosmos:decision', {
+              source: 'CosmosDecider',
+              decision,
+              judgment,
+            }, { source: 'event-listeners' });
+          }
+        } catch (err) {
+          log.debug('CosmosDecider.decide failed', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubCosmosDecision);
+  }
+
+  // 3e¾. cosmos:decision → CosmosActor: Execute advisory action (C7.4)
+  if (cosmosActor) {
+    const unsubCosmosAction = globalEventBus.subscribe(
+      'cosmos:decision',
+      (event) => {
+        try {
+          const { decision } = event.payload || {};
+          if (!decision) return;
+
+          const action = cosmosActor.act(decision);
+
+          if (action) {
+            _stats.cosmosActions++;
+            // Feed outcome to learner
+            if (cosmosLearner) {
+              cosmosLearner.recordOutcome({
+                category: 'decision_calibration',
+                data: {
+                  decision: decision.decision,
+                  wasGood: decision.verdict !== 'BARK', // optimistic: assume non-BARK was good
+                },
+              });
+              _stats.cosmosLearnings++;
+            }
+          }
+        } catch (err) {
+          log.debug('CosmosActor.act failed', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubCosmosAction);
+  }
+
+  // 3e⅞. cosmos:judgment → CosmosLearner: Learn from health observations (C7.5)
+  if (cosmosLearner) {
+    const unsubCosmosLearn = globalEventBus.subscribe(
+      'cosmos:judgment',
+      (event) => {
+        try {
+          const { judgment } = event.payload || {};
+          if (!judgment) return;
+
+          // Feed health score to learner
+          cosmosLearner.recordOutcome({
+            category: 'health_prediction',
+            data: {
+              score: judgment.score,
+              verdict: judgment.verdict,
+              health: judgment.score / 100,
+            },
+          });
+          _stats.cosmosLearnings++;
+        } catch (err) {
+          log.debug('CosmosLearner.recordOutcome failed', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubCosmosLearn);
+  }
+
+  if (codeDecider || codeActor || cynicAccountant || codeAccountant || socialAccountant || cosmosAccountant || humanActor || cosmosJudge) {
     log.info('RIGHT side event listeners wired', {
       codeDecider: !!codeDecider,
       codeActor: !!codeActor,
@@ -1714,6 +1862,10 @@ export function startEventListeners(options = {}) {
       socialAccountant: !!socialAccountant,
       cosmosAccountant: !!cosmosAccountant,
       humanActor: !!humanActor,
+      cosmosJudge: !!cosmosJudge,
+      cosmosDecider: !!cosmosDecider,
+      cosmosActor: !!cosmosActor,
+      cosmosLearner: !!cosmosLearner,
     });
   }
 

@@ -162,6 +162,11 @@ export {
   getHumanLearningSingleton,
   getHumanAccountantSingleton,
   getHumanEmergenceSingleton,
+  // C7.*: Cosmos Pipeline (C7.2-C7.5) singletons
+  getCosmosJudgeSingleton,
+  getCosmosDeciderSingleton,
+  getCosmosActorSingleton,
+  getCosmosLearnerSingleton,
   // AXE 2 (PERSIST): Event Listeners - Close data loops
   startEventListeners,
   stopEventListeners,
@@ -608,6 +613,34 @@ export {
   getSolanaEmergence,
   resetSolanaEmergence,
 } from './solana/index.js';
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Cosmos Module - COSMOS Row of 7×7 Matrix (C7.2-C7.5)
+// "Le chien voit les étoiles" - Ecosystem-level awareness
+// ═══════════════════════════════════════════════════════════════════════════════
+export {
+  // C7.2: COSMOS × JUDGE
+  CosmosJudge,
+  CosmosJudgmentType,
+  getCosmosJudge,
+  resetCosmosJudge,
+  // C7.3: COSMOS × DECIDE
+  CosmosDecider,
+  CosmosDecisionType,
+  getCosmosDecider,
+  resetCosmosDecider,
+  // C7.4: COSMOS × ACT
+  CosmosActor,
+  CosmosActionType,
+  CosmosActionStatus,
+  getCosmosActor,
+  resetCosmosActor,
+  // C7.5: COSMOS × LEARN
+  CosmosLearner,
+  CosmosLearningCategory,
+  getCosmosLearner,
+  resetCosmosLearner,
+} from './cosmos/index.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Inference Module - Bayesian reasoning

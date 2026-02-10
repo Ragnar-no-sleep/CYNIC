@@ -150,6 +150,11 @@ const instance = createIdentity();
 | `SolanaTransactionType` | SolanaTransactionType implementation |
 | `SolanaEmergencePattern` | SolanaEmergencePattern implementation |
 | `SolanaSignificance` | SolanaSignificance implementation |
+| `CosmosJudgmentType` | CosmosJudgmentType implementation |
+| `CosmosDecisionType` | CosmosDecisionType implementation |
+| `CosmosActionType` | CosmosActionType implementation |
+| `CosmosActionStatus` | CosmosActionStatus implementation |
+| `CosmosLearningCategory` | CosmosLearningCategory implementation |
 | `HypothesisSet` | HypothesisSet implementation |
 | `BeliefNetwork` | BeliefNetwork implementation |
 | `PoissonProcess` | PoissonProcess implementation |
@@ -257,6 +262,9 @@ const instance = createIdentity();
 | `getHumanLearningSingleton()` | Get HumanLearningSingleton singleton |
 | `getHumanAccountantSingleton()` | Get HumanAccountantSingleton singleton |
 | `getHumanEmergenceSingleton()` | Get HumanEmergenceSingleton singleton |
+| `getCosmosDeciderSingleton()` | Get CosmosDeciderSingleton singleton |
+| `getCosmosActorSingleton()` | Get CosmosActorSingleton singleton |
+| `getCosmosLearnerSingleton()` | Get CosmosLearnerSingleton singleton |
 | `getListenerStats()` | Get ListenerStats singleton |
 | `getDefaultWalletPath()` | Get DefaultWalletPath singleton |
 | `getEventBus()` | Get EventBus singleton |
@@ -291,6 +299,10 @@ const instance = createIdentity();
 | `getSolanaLearner()` | Get SolanaLearner singleton |
 | `getSolanaAccountant()` | Get SolanaAccountant singleton |
 | `getSolanaEmergence()` | Get SolanaEmergence singleton |
+| `getCosmosJudge()` | Get CosmosJudge singleton |
+| `getCosmosDecider()` | Get CosmosDecider singleton |
+| `getCosmosActor()` | Get CosmosActor singleton |
+| `getCosmosLearner()` | Get CosmosLearner singleton |
 | `getMetabolismTracker()` | Get MetabolismTracker singleton |
 | `getThermodynamicState()` | Get ThermodynamicState singleton |
 | `getHomeostasisTracker()` | Get HomeostasisTracker singleton |
@@ -313,7 +325,7 @@ const instance = createIdentity();
 
 ### Functions
 
-`importIdentity`, `exportIdentity`, `calculateCompositeEScore`, `updateEScoreState`, `dimensionRegistry`, `resetLearningScheduler`, `serialize`, `deserialize`, `isValidMessage`, `initializeQLearning` + 118 more
+`importIdentity`, `exportIdentity`, `calculateCompositeEScore`, `updateEScoreState`, `dimensionRegistry`, `resetLearningScheduler`, `serialize`, `deserialize`, `isValidMessage`, `initializeQLearning` + 122 more
 
 ## Dependencies
 
@@ -322,10 +334,10 @@ const instance = createIdentity();
 
 ## Stats
 
-- **Source files**: 260
+- **Source files**: 265
 - **Test files**: 93
-- **Test ratio**: 36%
-- **Exports**: 434 named
+- **Test ratio**: 35%
+- **Exports**: 450 named
 
 ## Fractal Structure
 
@@ -335,10 +347,10 @@ const instance = createIdentity();
 ## Dimensions (4 Axioms)
 
 ```
-[████░░░░░░] 36% φ (Confidence)
+[████░░░░░░] 35% φ (Confidence)
 [█████░░░░░] 50% Verify
 [█████░░░░░] 50% Culture
-[████░░░░░░] 44% Burn (Simplicity)
+[████░░░░░░] 43% Burn (Simplicity)
 [██████░░░░] 62% Emergence
 ```
 

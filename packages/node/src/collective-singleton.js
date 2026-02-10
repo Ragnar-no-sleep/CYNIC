@@ -66,6 +66,10 @@ import { getSolanaActor, resetSolanaActor } from './solana/solana-actor.js';
 import { getSolanaLearner, resetSolanaLearner } from './solana/solana-learner.js';
 import { getSolanaAccountant, resetSolanaAccountant } from './solana/solana-accountant.js';
 import { getSolanaEmergence, resetSolanaEmergence } from './solana/solana-emergence.js';
+import { getCosmosJudge, resetCosmosJudge } from './cosmos/cosmos-judge.js';
+import { getCosmosDecider, resetCosmosDecider } from './cosmos/cosmos-decider.js';
+import { getCosmosActor, resetCosmosActor } from './cosmos/cosmos-actor.js';
+import { getCosmosLearner, resetCosmosLearner } from './cosmos/cosmos-learner.js';
 
 const log = createLogger('CollectiveSingleton');
 
@@ -415,6 +419,34 @@ let _solanaAccountant = null;
  */
 let _solanaEmergence = null;
 
+/**
+ * C7.2 (COSMOS × JUDGE): CosmosJudge singleton
+ * Evaluates ecosystem health, distribution, cross-repo patterns
+ * @type {import('./cosmos/cosmos-judge.js').CosmosJudge|null}
+ */
+let _cosmosJudge = null;
+
+/**
+ * C7.3 (COSMOS × DECIDE): CosmosDecider singleton
+ * Decides ecosystem actions: accelerate, maintain, decelerate, focus, diversify
+ * @type {import('./cosmos/cosmos-decider.js').CosmosDecider|null}
+ */
+let _cosmosDecider = null;
+
+/**
+ * C7.4 (COSMOS × ACT): CosmosActor singleton
+ * Executes advisory actions from ecosystem decisions
+ * @type {import('./cosmos/cosmos-actor.js').CosmosActor|null}
+ */
+let _cosmosActor = null;
+
+/**
+ * C7.5 (COSMOS × LEARN): CosmosLearner singleton
+ * Learns from ecosystem patterns and prediction outcomes
+ * @type {import('./cosmos/cosmos-learner.js').CosmosLearner|null}
+ */
+let _cosmosLearner = null;
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // DEFAULT OPTIONS
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -727,7 +759,12 @@ export function getCollectivePack(options = {}) {
     _socialAccountant = getSocialAccountant();
     _cosmosAccountant = getCosmosAccountant();
     _humanActor = getHumanActor();
-    log.debug('RIGHT side wired (C1.3, C1.4, C6.6, C1.6, C4.6, C7.6, C5.4)');
+    // COSMOS pipeline (C7.2-C7.5)
+    _cosmosJudge = getCosmosJudge();
+    _cosmosDecider = getCosmosDecider();
+    _cosmosActor = getCosmosActor();
+    _cosmosLearner = getCosmosLearner();
+    log.debug('RIGHT side wired (C1.3, C1.4, C6.6, C1.6, C4.6, C7.6, C5.4, C7.2-C7.5)');
 
     // AXE 2 (PERSIST): Wire Event Listeners to close data loops
     // "Le chien n'oublie jamais" - persists judgments, feedback, session state
@@ -754,6 +791,11 @@ export function getCollectivePack(options = {}) {
         socialAccountant: _socialAccountant,
         cosmosAccountant: _cosmosAccountant,
         humanActor: _humanActor,
+        // Cosmos pipeline singletons (C7.2-C7.5)
+        cosmosJudge: _cosmosJudge,
+        cosmosDecider: _cosmosDecider,
+        cosmosActor: _cosmosActor,
+        cosmosLearner: _cosmosLearner,
         // Solana pipeline singletons (C2.2-C2.7) — may be null in sync path
         solanaJudge: _solanaJudge,
         solanaDecider: _solanaDecider,
@@ -953,6 +995,11 @@ export async function getCollectivePackAsync(options = {}) {
         socialAccountant: _socialAccountant,
         cosmosAccountant: _cosmosAccountant,
         humanActor: _humanActor,
+        // Cosmos pipeline singletons (C7.2-C7.5)
+        cosmosJudge: _cosmosJudge,
+        cosmosDecider: _cosmosDecider,
+        cosmosActor: _cosmosActor,
+        cosmosLearner: _cosmosLearner,
         // Solana pipeline singletons (C2.2-C2.7)
         solanaJudge: _solanaJudge,
         solanaDecider: _solanaDecider,
@@ -1426,6 +1473,12 @@ export async function getCollectivePackAsync(options = {}) {
       if (_solanaAccountant) systemTopology.registerComponent('solanaAccountant', _solanaAccountant);
       if (_solanaEmergence) systemTopology.registerComponent('solanaEmergence', _solanaEmergence);
       if (_humanActor) systemTopology.registerComponent('humanActor', _humanActor);
+
+      // Cosmos pipeline (C7.2-C7.5)
+      if (_cosmosJudge) systemTopology.registerComponent('cosmosJudge', _cosmosJudge);
+      if (_cosmosDecider) systemTopology.registerComponent('cosmosDecider', _cosmosDecider);
+      if (_cosmosActor) systemTopology.registerComponent('cosmosActor', _cosmosActor);
+      if (_cosmosLearner) systemTopology.registerComponent('cosmosLearner', _cosmosLearner);
 
       // Services
       if (options.persistence) {
@@ -1944,6 +1997,11 @@ export function getSingletonStatus() {
     solanaLearnerInitialized: !!_solanaLearner,
     solanaAccountantInitialized: !!_solanaAccountant,
     solanaEmergenceInitialized: !!_solanaEmergence,
+    // Cosmos pipeline (C7.2-C7.5)
+    cosmosJudgeInitialized: !!_cosmosJudge,
+    cosmosDeciderInitialized: !!_cosmosDecider,
+    cosmosActorInitialized: !!_cosmosActor,
+    cosmosLearnerInitialized: !!_cosmosLearner,
     // Emergence pipeline (C1.7, C4.7, C5.7, C6.7, C7.7)
     codeEmergenceInitialized: !!_codeEmergence,
     humanEmergenceInitialized: !!_humanEmergence,
@@ -2006,6 +2064,18 @@ export function getSolanaAccountantSingleton() { return _solanaAccountant; }
 
 /** C2.7: Get SolanaEmergence singleton @returns {import('./solana/solana-emergence.js').SolanaEmergence|null} */
 export function getSolanaEmergenceSingleton() { return _solanaEmergence; }
+
+/** C7.2: Get CosmosJudge singleton @returns {import('./cosmos/cosmos-judge.js').CosmosJudge|null} */
+export function getCosmosJudgeSingleton() { return _cosmosJudge; }
+
+/** C7.3: Get CosmosDecider singleton @returns {import('./cosmos/cosmos-decider.js').CosmosDecider|null} */
+export function getCosmosDeciderSingleton() { return _cosmosDecider; }
+
+/** C7.4: Get CosmosActor singleton @returns {import('./cosmos/cosmos-actor.js').CosmosActor|null} */
+export function getCosmosActorSingleton() { return _cosmosActor; }
+
+/** C7.5: Get CosmosLearner singleton @returns {import('./cosmos/cosmos-learner.js').CosmosLearner|null} */
+export function getCosmosLearnerSingleton() { return _cosmosLearner; }
 
 /** C6.7: Get CynicEmergence singleton @returns {import('./emergence/cynic-emergence.js').CynicEmergence|null} */
 export function getCynicEmergenceSingleton() { return _cynicEmergence; }
@@ -2155,6 +2225,12 @@ export function _resetForTesting() {
   if (_solanaLearner) { resetSolanaLearner(); _solanaLearner = null; }
   if (_solanaAccountant) { resetSolanaAccountant(); _solanaAccountant = null; }
   if (_solanaEmergence) { resetSolanaEmergence(); _solanaEmergence = null; }
+
+  // Cosmos pipeline singletons (C7.2-C7.5)
+  if (_cosmosJudge) { resetCosmosJudge(); _cosmosJudge = null; }
+  if (_cosmosDecider) { resetCosmosDecider(); _cosmosDecider = null; }
+  if (_cosmosActor) { resetCosmosActor(); _cosmosActor = null; }
+  if (_cosmosLearner) { resetCosmosLearner(); _cosmosLearner = null; }
 
   // EventBusBridge: Disconnect nervous systems
   try { eventBusBridge._resetForTesting(); } catch { /* non-blocking */ }
