@@ -48,6 +48,10 @@ import { getSLATracker } from './services/sla-tracker.js';
 import { wireConsciousness } from './services/consciousness-bridge.js';
 import { eventBusBridge } from './services/event-bus-bridge.js';
 import { memoryCoordinator } from './services/memory-coordinator.js';
+import { getCodeDecider, resetCodeDecider } from './code/code-decider.js';
+import { getCynicAccountant, resetCynicAccountant } from './accounting/cynic-accountant.js';
+import { getCodeAccountant, resetCodeAccountant } from './accounting/code-accountant.js';
+import { getHumanActor, resetHumanActor } from './symbiosis/human-actor.js';
 
 const log = createLogger('CollectiveSingleton');
 
@@ -276,6 +280,34 @@ let _ewcService = null;
  * @type {EcosystemMonitor|null}
  */
 let _ecosystemMonitor = null;
+
+/**
+ * C1.3 (CODE × DECIDE): CodeDecider singleton
+ * Makes decisions about code changes (commit/refactor/deploy safety)
+ * @type {import('./code/code-decider.js').CodeDecider|null}
+ */
+let _codeDecider = null;
+
+/**
+ * C6.6 (CYNIC × ACCOUNT): CynicAccountant singleton
+ * Tracks Dog operation economics (cost/efficiency per dog)
+ * @type {import('./accounting/cynic-accountant.js').CynicAccountant|null}
+ */
+let _cynicAccountant = null;
+
+/**
+ * C1.6 (CODE × ACCOUNT): CodeAccountant singleton
+ * Tracks code change economics (lines added/removed, risk)
+ * @type {import('./accounting/code-accountant.js').CodeAccountant|null}
+ */
+let _codeAccountant = null;
+
+/**
+ * C5.4 (HUMAN × ACT): HumanActor singleton
+ * Triggers human-facing interventions (burnout warning, celebration)
+ * @type {import('./symbiosis/human-actor.js').HumanActor|null}
+ */
+let _humanActor = null;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // DEFAULT OPTIONS
@@ -560,6 +592,14 @@ export function getCollectivePack(options = {}) {
     _humanEmergence = getHumanEmergence();
     log.debug('Symbiosis layer wired (C5.3-C5.7)');
 
+    // RIGHT SIDE: Wire DECIDE/ACT/ACCOUNT singletons
+    // "Le chien décide, agit, et rend des comptes"
+    _codeDecider = getCodeDecider();
+    _cynicAccountant = getCynicAccountant();
+    _codeAccountant = getCodeAccountant();
+    _humanActor = getHumanActor();
+    log.debug('RIGHT side wired (C1.3, C6.6, C1.6, C5.4)');
+
     // AXE 2 (PERSIST): Wire Event Listeners to close data loops
     // "Le chien n'oublie jamais" - persists judgments, feedback, session state
     if (finalOptions.persistence && !_eventListeners) {
@@ -577,6 +617,11 @@ export function getCollectivePack(options = {}) {
         sessionId: finalOptions.sessionId,
         userId: finalOptions.userId,
         blockStore,
+        // RIGHT side singletons
+        codeDecider: _codeDecider,
+        cynicAccountant: _cynicAccountant,
+        codeAccountant: _codeAccountant,
+        humanActor: _humanActor,
       });
       log.info('EventListeners started - data loops closed (AXE 2)', { hasBlockStore: !!blockStore, hasJudge: !!(finalOptions.judge || _globalPack?.judge) });
 
@@ -755,6 +800,11 @@ export async function getCollectivePackAsync(options = {}) {
         sessionId: options.sessionId,
         userId: options.userId,
         blockStore,
+        // RIGHT side singletons
+        codeDecider: _codeDecider,
+        cynicAccountant: _cynicAccountant,
+        codeAccountant: _codeAccountant,
+        humanActor: _humanActor,
       });
       log.info('EventListeners started on subsequent call with persistence (AXE 2 fix)');
 
@@ -1159,6 +1209,12 @@ export async function getCollectivePackAsync(options = {}) {
       if (_humanLearning) systemTopology.registerComponent('humanLearning', _humanLearning);
       if (_humanAccountant) systemTopology.registerComponent('humanAccountant', _humanAccountant);
       if (_humanEmergence) systemTopology.registerComponent('humanEmergence', _humanEmergence);
+
+      // RIGHT side (DECIDE/ACT/ACCOUNT)
+      if (_codeDecider) systemTopology.registerComponent('codeDecider', _codeDecider);
+      if (_cynicAccountant) systemTopology.registerComponent('cynicAccountant', _cynicAccountant);
+      if (_codeAccountant) systemTopology.registerComponent('codeAccountant', _codeAccountant);
+      if (_humanActor) systemTopology.registerComponent('humanActor', _humanActor);
 
       // Services
       if (options.persistence) {
@@ -1650,8 +1706,37 @@ export function getSingletonStatus() {
     ewcServiceRunning: !!_ewcService?.consolidationTimer,
     ewcStats: _ewcService?.stats || null,
     ecosystemMonitorSources: _ecosystemMonitor?.sources?.size || 0,
+    // RIGHT side
+    codeDeciderInitialized: !!_codeDecider,
+    cynicAccountantInitialized: !!_cynicAccountant,
+    codeAccountantInitialized: !!_codeAccountant,
+    humanActorInitialized: !!_humanActor,
   };
 }
+
+/**
+ * C1.3: Get the CodeDecider singleton
+ * @returns {import('./code/code-decider.js').CodeDecider|null}
+ */
+export function getCodeDeciderSingleton() { return _codeDecider; }
+
+/**
+ * C6.6: Get the CynicAccountant singleton
+ * @returns {import('./accounting/cynic-accountant.js').CynicAccountant|null}
+ */
+export function getCynicAccountantSingleton() { return _cynicAccountant; }
+
+/**
+ * C1.6: Get the CodeAccountant singleton
+ * @returns {import('./accounting/code-accountant.js').CodeAccountant|null}
+ */
+export function getCodeAccountantSingleton() { return _codeAccountant; }
+
+/**
+ * C5.4: Get the HumanActor singleton
+ * @returns {import('./symbiosis/human-actor.js').HumanActor|null}
+ */
+export function getHumanActorSingleton() { return _humanActor; }
 
 /**
  * Get SolanaWatcher singleton (if initialized)
@@ -1771,6 +1856,12 @@ export function _resetForTesting() {
   _humanLearning = null;
   _humanAccountant = null;
   _humanEmergence = null;
+
+  // RIGHT side singletons (DECIDE/ACT/ACCOUNT)
+  if (_codeDecider) { resetCodeDecider(); _codeDecider = null; }
+  if (_cynicAccountant) { resetCynicAccountant(); _cynicAccountant = null; }
+  if (_codeAccountant) { resetCodeAccountant(); _codeAccountant = null; }
+  if (_humanActor) { resetHumanActor(); _humanActor = null; }
 
   // EventBusBridge: Disconnect nervous systems
   try { eventBusBridge._resetForTesting(); } catch { /* non-blocking */ }

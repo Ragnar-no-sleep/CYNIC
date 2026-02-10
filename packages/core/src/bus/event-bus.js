@@ -72,6 +72,11 @@ export const EventType = {
   // Orchestration events
   ORCHESTRATION_COMPLETED: 'orchestration:completed',
 
+  // Decision events (RIGHT side — DECIDE/ACT/ACCOUNT)
+  CODE_DECISION: 'code:decision',
+  HUMAN_ACTION: 'human:action',
+  ACCOUNTING_UPDATE: 'accounting:update',
+
   // Topology events (self-awareness)
   TOPOLOGY_CHANGED: 'topology:changed',
 };

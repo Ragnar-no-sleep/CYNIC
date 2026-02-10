@@ -168,6 +168,7 @@ import {
   createAgentDiagnosticTool,
   createConsensusTool,
   createTopologyTool,
+  createAccountingTool,
   systemFactory,
 } from './domains/system.js';
 
@@ -178,6 +179,7 @@ export {
   createAgentDiagnosticTool,
   createConsensusTool,
   createTopologyTool,
+  createAccountingTool,
   systemFactory,
 };
 
@@ -465,6 +467,7 @@ export function createAllTools(options = {}) {
     createDigestTool(persistence, sessionManager),
     createHealthTool(node, judge, persistence, automationExecutor, thermodynamics, heartbeat, slaTracker),
     createTopologyTool(), // CYNIC self-awareness: mode, components, 7×7 matrix
+    createAccountingTool(), // RIGHT side economics: dogs, code, decisions, actions
     createPsychologyTool(persistence), // Human psychology dashboard
     createSearchTool(persistence),
     // Progressive Search Tools (3-layer retrieval for 10x token savings)
@@ -607,6 +610,7 @@ export default {
   createEcosystemTool,
   createDistributionTool,
   createSolanaTool,
+  createAccountingTool,
   createDiscoveryTool,
   createPoJChainTool,
   createTraceTool,

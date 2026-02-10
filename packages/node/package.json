@@ -37,7 +37,9 @@
     "./chaos": "./src/chaos/index.js",
     "./inference": "./src/inference/index.js",
     "./tracing/dog-tracing.js": "./src/tracing/dog-tracing.js",
-    "./tracing/trace-propagation.js": "./src/tracing/trace-propagation.js"
+    "./tracing/trace-propagation.js": "./src/tracing/trace-propagation.js",
+    "./collective-singleton.js": "./src/collective-singleton.js",
+    "./services/event-listeners.js": "./src/services/event-listeners.js"
   },
   "scripts": {
     "test": "node --test --test-concurrency=4 test/*.test.js",

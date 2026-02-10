@@ -400,7 +400,7 @@ function calculateCYNICDistance({ brainThought, patterns, routing, tierDecision,
   return { distance, level, breakdown };
 }
 
-function generateFramingDirective(D, brainThought, routing, patterns, promptType, profile, { consciousnessState, voteSummary, tierDecision, ecosystemStatus, socialStatus } = {}) {
+function generateFramingDirective(D, brainThought, routing, patterns, promptType, profile, { consciousnessState, voteSummary, tierDecision, ecosystemStatus, socialStatus, accountingStatus } = {}) {
   // Only frame when CYNIC is awake (D >= φ⁻² = 38.2%)
   if (D.distance < PHI_INV_2) return null;
 
@@ -504,6 +504,19 @@ function generateFramingDirective(D, brainThought, routing, patterns, promptType
   if (socialStatus?.totalTweets > 0 || socialStatus?.stats?.totalTweets > 0) {
     const stats = socialStatus.stats || socialStatus;
     lines.push(`   Social: ${stats.totalTweets || 0} tweets captured, ${stats.totalUsers || 0} users`);
+  }
+
+  // Accounting: RIGHT side economics (when available)
+  if (accountingStatus?.stats) {
+    const s = accountingStatus.stats;
+    const parts = [];
+    if (s.cynicAccountingOps > 0) parts.push(`dogs: ${s.cynicAccountingOps} ops`);
+    if (s.codeAccountingOps > 0) parts.push(`code: ${s.codeAccountingOps} changes`);
+    if (s.codeDecisionsTriggered > 0) parts.push(`decisions: ${s.codeDecisionsTriggered}`);
+    if (s.humanActionsTriggered > 0) parts.push(`actions: ${s.humanActionsTriggered}`);
+    if (parts.length > 0) {
+      lines.push(`   Accounting: ${parts.join(' \u2502 ')}`);
+    }
   }
 
   // Frame: approach directive (maps to dominant axiom)
@@ -940,6 +953,7 @@ async function main() {
     let optimizeResult = null;
     let ecosystemStatus = null;
     let socialStatus = null;
+    let accountingStatus = null;
 
     const hasCodeBlocks = /```[\s\S]*?```/.test(prompt);
     const estimatedTokens = Math.ceil(prompt.length / 4);
@@ -975,6 +989,18 @@ async function main() {
           }).catch(() => null),
           MCP_TOOL_TIMEOUT
         ).then(r => { socialStatus = r; })
+      );
+    }
+
+    // Accounting awareness: every 5th prompt — RIGHT side economics
+    if (promptCount % 5 === 1) {
+      mcpPromises.push(
+        raceTimeout(
+          callBrainTool('brain_accounting', {
+            action: 'snapshot',
+          }).catch(() => null),
+          MCP_TOOL_TIMEOUT
+        ).then(r => { accountingStatus = r; })
       );
     }
 
@@ -1603,7 +1629,7 @@ async function main() {
       framingDirective = generateFramingDirective(
         cynicDistance, brainThought, routing, patterns,
         detectPromptType(prompt), profile,
-        { consciousnessState, voteSummary, tierDecision, ecosystemStatus, socialStatus },
+        { consciousnessState, voteSummary, tierDecision, ecosystemStatus, socialStatus, accountingStatus },
       );
 
       logger.debug('CYNIC Distance', {

@@ -76,6 +76,11 @@ const _stats = {
   blocksAnchoredFailed: 0,
   anchorFailuresPersisted: 0,
   anchorFailuresFailed: 0,
+  // RIGHT side stats
+  codeDecisionsTriggered: 0,
+  cynicAccountingOps: 0,
+  codeAccountingOps: 0,
+  humanActionsTriggered: 0,
   startedAt: null,
 };
 
@@ -756,6 +761,11 @@ export function startEventListeners(options = {}) {
     sessionId,
     userId,
     blockStore,
+    // RIGHT side singletons (DECIDE/ACT/ACCOUNT)
+    codeDecider,
+    cynicAccountant,
+    codeAccountant,
+    humanActor,
   } = options;
 
   // Get or create repositories
@@ -1299,6 +1309,210 @@ export function startEventListeners(options = {}) {
     } catch (err) {
       log.debug('Dog specialist listeners skipped', { error: err.message });
     }
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════════
+  // RIGHT SIDE WIRING (DECIDE/ACT/ACCOUNT/EMERGE)
+  // "Le chien décide, agit, et rend des comptes"
+  // ═════════════════════════════════════════════════════════════════════════════
+
+  // 3a. DOG_EVENT → CynicAccountant: Track per-Dog economics
+  if (cynicAccountant && persistence?.query) {
+    const unsubCynicAccounting = globalEventBus.subscribe(
+      EventType.DOG_EVENT,
+      (event) => {
+        try {
+          const { dog, eventType, stats: dogStats } = event.payload || {};
+          if (!dog) return;
+          cynicAccountant.trackOperation(dog, eventType || 'invocation', dogStats || {});
+          _stats.cynicAccountingOps++;
+
+          // Publish accounting update for downstream consumers
+          globalEventBus.publish(EventType.ACCOUNTING_UPDATE, {
+            source: 'CynicAccountant',
+            dogId: dog,
+            type: eventType,
+          }, { source: 'event-listeners' });
+        } catch (err) {
+          log.debug('CynicAccountant.trackOperation failed', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubCynicAccounting);
+  }
+
+  // 3b. TOOL_COMPLETED → CodeAccountant: Track code change economics
+  if (codeAccountant) {
+    const unsubCodeAccounting = globalEventBus.subscribe(
+      EventType.TOOL_COMPLETED,
+      (event) => {
+        try {
+          const { tool, result } = event.payload || {};
+          // Only track code-modifying tools (Write, Edit)
+          if (!tool || !['Write', 'Edit'].includes(tool)) return;
+          codeAccountant.trackChange({
+            tool,
+            linesAdded: result?.linesAdded || 0,
+            linesRemoved: result?.linesRemoved || 0,
+            filePath: result?.filePath || result?.path || 'unknown',
+          }, { sessionId });
+          _stats.codeAccountingOps++;
+        } catch (err) {
+          log.debug('CodeAccountant.trackChange failed', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubCodeAccounting);
+  }
+
+  // 3c. JUDGMENT_CREATED → CodeDecider: Run decision pipeline for code judgments
+  if (codeDecider) {
+    const unsubCodeDecision = globalEventBus.subscribe(
+      EventType.JUDGMENT_CREATED,
+      (event) => {
+        try {
+          const { itemType, qScore, verdict, dimensions } = event.payload || {};
+          // Only trigger for code-related judgments
+          if (!itemType || !['code', 'commit', 'refactor', 'deploy'].includes(itemType)) return;
+
+          const decision = codeDecider.decide({
+            itemType,
+            qScore,
+            verdict,
+            dimensions,
+            judgmentId: event.id,
+          });
+
+          if (decision) {
+            _stats.codeDecisionsTriggered++;
+            globalEventBus.publish(EventType.CODE_DECISION, {
+              source: 'CodeDecider',
+              decision: decision.decision || decision.verdict,
+              reason: decision.reason,
+              judgmentId: event.id,
+              qScore,
+            }, { source: 'event-listeners' });
+
+            // Persist to unified_signals (same pattern as PATTERN_DETECTED)
+            if (persistence?.query) {
+              const id = `cd_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+              persistence.query(`
+                INSERT INTO unified_signals (id, source, session_id, input, outcome, metadata)
+                VALUES ($1, $2, $3, $4, $5, $6)
+              `, [
+                id, 'code_decision', context.sessionId || null,
+                JSON.stringify({ itemType, qScore, judgmentId: event.id }),
+                JSON.stringify({ decision: decision.decision || decision.verdict, reason: decision.reason }),
+                JSON.stringify({ verdict }),
+              ]).catch(err => {
+                log.debug('Code decision persistence failed', { error: err.message });
+              });
+            }
+          }
+        } catch (err) {
+          log.debug('CodeDecider.decide failed', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubCodeDecision);
+  }
+
+  // 3d. CYNIC_STATE → HumanActor: Trigger intervention on burnout risk
+  // Reuses existing 1:5 CYNIC_STATE sampling (fires after handleCynicState)
+  if (humanActor) {
+    const unsubHumanAction = globalEventBus.subscribe(
+      EventType.CYNIC_STATE,
+      (event) => {
+        try {
+          const { psychology, collective } = event.payload || {};
+          // Only check every 5th emission (same sampling as snapshots)
+          if (_cynicStateCounter % 5 !== 0) return;
+
+          const burnoutRisk = psychology?.burnoutRisk || psychology?.frustration || 0;
+          const cognitiveLoad = psychology?.cognitiveLoad || 0;
+
+          // Trigger if burnout risk exceeds φ⁻¹ or cognitive load > Miller's Law (7)
+          if (burnoutRisk > 0.618 || cognitiveLoad > 7) {
+            const intervention = humanActor.act({
+              type: burnoutRisk > 0.618 ? 'BURNOUT_WARNING' : 'COMPLEXITY_WARNING',
+              burnoutRisk,
+              cognitiveLoad,
+              averageHealth: collective?.averageHealth || 0,
+            });
+
+            if (intervention) {
+              _stats.humanActionsTriggered++;
+              globalEventBus.publish(EventType.HUMAN_ACTION, {
+                source: 'HumanActor',
+                actionType: intervention.type || 'intervention',
+                reason: intervention.reason || 'High burnout/load detected',
+              }, { source: 'event-listeners' });
+
+              // Persist to unified_signals
+              if (persistence?.query) {
+                const id = `ha_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+                persistence.query(`
+                  INSERT INTO unified_signals (id, source, session_id, input, outcome, metadata)
+                  VALUES ($1, $2, $3, $4, $5, $6)
+                `, [
+                  id, 'human_action', context.sessionId || null,
+                  JSON.stringify({ burnoutRisk, cognitiveLoad }),
+                  JSON.stringify({ actionType: intervention.type }),
+                  JSON.stringify({ averageHealth: collective?.averageHealth }),
+                ]).catch(err => {
+                  log.debug('Human action persistence failed', { error: err.message });
+                });
+              }
+            }
+          }
+        } catch (err) {
+          log.debug('HumanActor.act failed', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubHumanAction);
+  }
+
+  // AXE 4: PATTERN_DETECTED (CRITICAL) → HumanActor: Emerge→Action loop
+  if (humanActor && persistence?.query) {
+    const unsubPatternAction = globalEventBus.subscribe(
+      EventType.PATTERN_DETECTED,
+      (event) => {
+        try {
+          const d = event.data || event.payload || {};
+          if (d.significance !== 'critical') return;
+
+          const intervention = humanActor.act({
+            type: 'COMPLEXITY_WARNING',
+            pattern: d.key || d.category,
+            occurrences: d.occurrences,
+            significance: d.significance,
+          });
+
+          if (intervention) {
+            _stats.humanActionsTriggered++;
+            globalEventBus.publish(EventType.HUMAN_ACTION, {
+              source: 'HumanActor',
+              actionType: 'pattern_response',
+              pattern: d.key,
+              reason: `Critical pattern "${d.key}" detected (${d.occurrences}x)`,
+            }, { source: 'event-listeners' });
+          }
+        } catch (err) {
+          log.debug('Pattern→HumanActor failed', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubPatternAction);
+  }
+
+  if (codeDecider || cynicAccountant || codeAccountant || humanActor) {
+    log.info('RIGHT side event listeners wired', {
+      codeDecider: !!codeDecider,
+      cynicAccountant: !!cynicAccountant,
+      codeAccountant: !!codeAccountant,
+      humanActor: !!humanActor,
+    });
   }
 
   _started = true;

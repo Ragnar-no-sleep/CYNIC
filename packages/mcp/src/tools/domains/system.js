@@ -849,6 +849,95 @@ export function createTopologyTool() {
 }
 
 /**
+ * Create accounting tool — RIGHT side economics visibility
+ * C1.6, C6.6: Track Dog operations and code change economics
+ *
+ * @returns {Object} Tool definition
+ */
+export function createAccountingTool() {
+  return {
+    name: 'brain_accounting',
+    description: 'CYNIC accounting: Dog operation economics, code change tracking, recent decisions, and human actions. The economic lens of the 7×7 matrix ACCOUNT column.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['snapshot', 'dogs', 'code', 'decisions', 'actions'],
+          description: 'Action: snapshot (all summaries), dogs (per-dog cost/efficiency), code (code change economics), decisions (recent CodeDecider decisions), actions (recent HumanActor actions)',
+        },
+      },
+    },
+    handler: async (params) => {
+      const { action = 'snapshot' } = params;
+
+      const result = { action, timestamp: Date.now() };
+
+      // Lazy-import singletons (avoids circular dependency)
+      try {
+        const { getCynicAccountantSingleton, getCodeAccountantSingleton, getCodeDeciderSingleton, getHumanActorSingleton } = await import('@cynic/node/collective-singleton.js');
+        const { getListenerStats } = await import('@cynic/node/services/event-listeners.js');
+
+        const cynicAccountant = getCynicAccountantSingleton();
+        const codeAccountant = getCodeAccountantSingleton();
+        const codeDecider = getCodeDeciderSingleton();
+        const humanActor = getHumanActorSingleton();
+        const listenerStats = getListenerStats();
+
+        if (action === 'snapshot' || action === 'dogs') {
+          result.dogs = cynicAccountant
+            ? {
+                summary: cynicAccountant.getSessionSummary(),
+                rankings: cynicAccountant.getDogRankings(),
+              }
+            : { status: 'not initialized' };
+        }
+
+        if (action === 'snapshot' || action === 'code') {
+          result.code = codeAccountant
+            ? {
+                summary: codeAccountant.getSessionSummary(),
+                trends: codeAccountant.getTrends(),
+              }
+            : { status: 'not initialized' };
+        }
+
+        if (action === 'snapshot' || action === 'decisions') {
+          result.decisions = {
+            triggered: listenerStats.codeDecisionsTriggered || 0,
+            available: !!codeDecider,
+          };
+        }
+
+        if (action === 'snapshot' || action === 'actions') {
+          result.actions = {
+            triggered: listenerStats.humanActionsTriggered || 0,
+            available: !!humanActor,
+          };
+        }
+
+        // Compact stats for snapshot
+        if (action === 'snapshot') {
+          result.stats = {
+            cynicAccountingOps: listenerStats.cynicAccountingOps || 0,
+            codeAccountingOps: listenerStats.codeAccountingOps || 0,
+            codeDecisionsTriggered: listenerStats.codeDecisionsTriggered || 0,
+            humanActionsTriggered: listenerStats.humanActionsTriggered || 0,
+          };
+        }
+
+        result.message = `*sniff* Accounting ${action}: ${Object.keys(result).filter(k => k !== 'action' && k !== 'timestamp' && k !== 'message').join(', ')}`;
+      } catch (err) {
+        result.error = err.message;
+        result.message = `*head tilt* Accounting unavailable: ${err.message}`;
+      }
+
+      return result;
+    },
+  };
+}
+
+/**
  * Factory for system domain tools
  */
 export const systemFactory = {
@@ -892,6 +981,9 @@ export const systemFactory = {
 
     // Topology: CYNIC's mirror — always available
     tools.push(createTopologyTool());
+
+    // Accounting: RIGHT side economics — always available
+    tools.push(createAccountingTool());
 
     return tools;
   },
