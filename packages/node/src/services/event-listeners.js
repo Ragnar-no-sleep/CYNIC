@@ -77,6 +77,7 @@ const _stats = {
   anchorFailuresPersisted: 0,
   anchorFailuresFailed: 0,
   // RIGHT side stats
+  codeDpoPairs: 0,
   codeDecisionsTriggered: 0,
   codeActionsTriggered: 0,
   cynicAccountingOps: 0,
@@ -1531,6 +1532,22 @@ export function startEventListeners(options = {}) {
           }, { sessionId });
 
           _stats.cosmosAccountingOps = (_stats.cosmosAccountingOps || 0) + 1;
+
+          // Persist high-significance value flows to unified_signals (C7.6 persistence)
+          if (persistence?.query && (d.significance === 'HIGH' || d.significance === 'CRITICAL')) {
+            const id = `cac_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            persistence.query(`
+              INSERT INTO unified_signals (id, source, session_id, input, outcome, metadata)
+              VALUES ($1, $2, $3, $4, $5, $6)
+            `, [
+              id, 'cosmos_accounting', context.sessionId || null,
+              JSON.stringify({ flowType, category, significance: d.significance }),
+              JSON.stringify({ magnitude: d.confidence || 0.3 }),
+              JSON.stringify({ domain: category, targetDomain: d.targetDomain || null }),
+            ]).catch(err => {
+              log.debug('Cosmos accounting persistence failed', { error: err.message });
+            });
+          }
         } catch (err) {
           log.debug('CosmosAccountant.trackValueFlow failed', { error: err.message });
         }
@@ -1704,6 +1721,33 @@ export function startEventListeners(options = {}) {
       }
     );
     _unsubscribers.push(unsubCodeLearnFeedback);
+
+    // 3c⅞. CodeLearner DPO pairs → persist to unified_signals (C1.5 DPO persistence)
+    // DPO pairs are preferred/rejected decision pairs used for routing weight training
+    codeLearner.on('dpo_pair', (pair) => {
+      try {
+        _stats.codeDpoPairs = (_stats.codeDpoPairs || 0) + 1;
+
+        if (persistence?.query) {
+          const id = `dpo_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+          persistence.query(`
+            INSERT INTO unified_signals (id, source, session_id, input, outcome, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6)
+          `, [
+            id, 'code_dpo', context.sessionId || null,
+            JSON.stringify({ preferred: pair.preferred, rejected: pair.rejected }),
+            JSON.stringify({ context: pair.context || 'code_decision', riskLevel: pair.riskLevel }),
+            JSON.stringify({ ts: pair.ts || Date.now() }),
+          ]).catch(err => {
+            log.debug('Code DPO pair persistence failed', { error: err.message });
+          });
+        }
+      } catch (err) {
+        log.debug('CodeLearner dpo_pair handler error', { error: err.message });
+      }
+    });
+
+    log.info('CodeLearner (C1.5) wired: decisions + feedback + DPO persistence');
   }
 
   // 3d. CYNIC_STATE → HumanActor: Trigger intervention on burnout risk
@@ -2151,6 +2195,14 @@ export function startEventListeners(options = {}) {
 
           if (action) {
             _stats.cosmosActions++;
+
+            // Publish cosmos:action for downstream consumers (C7.4 integration)
+            globalEventBus.publish('cosmos:action', {
+              source: 'CosmosActor',
+              action,
+              decision,
+            }, { source: 'event-listeners' });
+
             // Feed outcome to learner
             if (cosmosLearner) {
               cosmosLearner.recordOutcome({
@@ -2161,6 +2213,22 @@ export function startEventListeners(options = {}) {
                 },
               });
               _stats.cosmosLearnings++;
+            }
+
+            // Persist cosmos action to unified_signals (C7.4 persistence)
+            if (persistence?.query) {
+              const id = `ca_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+              persistence.query(`
+                INSERT INTO unified_signals (id, source, session_id, input, outcome, metadata)
+                VALUES ($1, $2, $3, $4, $5, $6)
+              `, [
+                id, 'cosmos_action', context.sessionId || null,
+                JSON.stringify({ decision: decision.decision, verdict: decision.verdict }),
+                JSON.stringify({ action: action.type, urgency: action.urgency }),
+                JSON.stringify({ message: action.message }),
+              ]).catch(err => {
+                log.debug('Cosmos action persistence failed', { error: err.message });
+              });
             }
           }
         } catch (err) {
@@ -2190,6 +2258,23 @@ export function startEventListeners(options = {}) {
             },
           });
           _stats.cosmosLearnings++;
+
+          // Persist learning outcome to unified_signals (C7.5 persistence)
+          if (persistence?.query) {
+            const id = `cl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            const prediction = cosmosLearner.predictHealth?.() ?? null;
+            persistence.query(`
+              INSERT INTO unified_signals (id, source, session_id, input, outcome, metadata)
+              VALUES ($1, $2, $3, $4, $5, $6)
+            `, [
+              id, 'cosmos_learning', context.sessionId || null,
+              JSON.stringify({ score: judgment.score, verdict: judgment.verdict }),
+              JSON.stringify({ health: judgment.score / 100, prediction }),
+              JSON.stringify({ category: 'health_prediction' }),
+            ]).catch(err => {
+              log.debug('Cosmos learning persistence failed', { error: err.message });
+            });
+          }
         } catch (err) {
           log.debug('CosmosLearner.recordOutcome failed', { error: err.message });
         }
@@ -2535,7 +2620,29 @@ export function startEventListeners(options = {}) {
     }, 89 * 60 * 1000); // F11 = 89 minutes
     _cosmosEmergenceInterval.unref();
 
-    log.info('CosmosEmergence (C7.7) wired to PATTERN_DETECTED + F11 interval');
+    // Persist CosmosEmergence detected patterns to unified_signals (C7.7 persistence)
+    cosmosEmergence.on('pattern_detected', (pattern) => {
+      try {
+        if (persistence?.query) {
+          const id = `cep_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+          persistence.query(`
+            INSERT INTO unified_signals (id, source, session_id, input, outcome, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6)
+          `, [
+            id, 'cosmos_emergence', context.sessionId || null,
+            JSON.stringify({ patternType: pattern.type, significance: pattern.significance }),
+            JSON.stringify({ confidence: pattern.confidence, message: pattern.message }),
+            JSON.stringify(pattern.data || {}),
+          ]).catch(err => {
+            log.debug('Cosmos emergence pattern persistence failed', { error: err.message });
+          });
+        }
+      } catch (err) {
+        log.debug('CosmosEmergence pattern_detected handler error', { error: err.message });
+      }
+    });
+
+    log.info('CosmosEmergence (C7.7) wired to PATTERN_DETECTED + F11 interval + pattern persistence');
   }
 
   _started = true;
