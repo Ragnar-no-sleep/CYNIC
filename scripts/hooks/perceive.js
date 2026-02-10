@@ -55,6 +55,9 @@ import { detectSkillTriggersFromRules, getRulesSettings } from './lib/index.js';
 // Task #21: Cost optimizer for tier-based complexity routing
 import { getCostOptimizer, ComplexityTier } from '@cynic/node';
 
+// Context compression: Experience curve — inject less as CYNIC learns
+import { contextCompressor } from '@cynic/node/services/context-compressor.js';
+
 // Brain Integration: Unified consciousness layer
 import {
   thinkAbout,
@@ -585,6 +588,9 @@ async function main() {
   // pendingOutput accumulates results — deadline flushes whatever we have
   let pendingOutput = { continue: true };
 
+  // ── Experience Curve: Start context compressor (loads from file) ─────
+  try { contextCompressor.start(); } catch { /* non-blocking */ }
+
   try {
     // Read stdin - try sync first, fall back to async
     const fs = await import('fs');
@@ -962,16 +968,16 @@ async function main() {
     // Launch MCP calls in parallel (independent of each other)
     const mcpPromises = [];
 
-    // Ecosystem awareness: every 5th prompt or when prompt mentions ecosystem/ship/deploy
+    // Ecosystem awareness: keyword-triggered OR periodic, but GATED by staleTTL (5min)
     const promptCount = temporalState.promptCount || 1;
     const ecosystemKeywords = /\b(ecosystem|distribution|ship|deploy|skills\.sh|github|render|status|cockpit)\b/i;
-    if (promptCount % 5 === 1 || ecosystemKeywords.test(prompt)) {
+    const wantEcosystem = promptCount % 5 === 1 || ecosystemKeywords.test(prompt);
+    if (wantEcosystem && contextCompressor.shouldInject('ecosystem_status', { estimatedChars: 200 }).inject) {
       mcpPromises.push(
         raceTimeout(
           callBrainTool('brain_distribution', {
             action: 'snapshot',
           }).catch(() =>
-            // Fallback: try ecosystem_monitor if brain_distribution unavailable
             callBrainTool('brain_ecosystem_monitor', { action: 'sources' }).catch(() => null)
           ),
           MCP_TOOL_TIMEOUT
@@ -979,9 +985,10 @@ async function main() {
       );
     }
 
-    // Social awareness: every 5th prompt or when prompt mentions twitter/social/community
+    // Social awareness: keyword-triggered OR periodic, GATED by staleTTL (5min)
     const socialKeywords = /\b(twitter|tweet|x\.com|social|community|engagement|follower|sentiment)\b/i;
-    if (promptCount % 5 === 1 || socialKeywords.test(prompt)) {
+    const wantSocial = promptCount % 5 === 1 || socialKeywords.test(prompt);
+    if (wantSocial && contextCompressor.shouldInject('social_status', { estimatedChars: 150 }).inject) {
       mcpPromises.push(
         raceTimeout(
           callBrainTool('brain_x_feed', {
@@ -992,8 +999,8 @@ async function main() {
       );
     }
 
-    // Accounting awareness: every 5th prompt — RIGHT side economics
-    if (promptCount % 5 === 1) {
+    // Accounting awareness: periodic, GATED by staleTTL (5min)
+    if (promptCount % 5 === 1 && contextCompressor.shouldInject('accounting_status', { estimatedChars: 150 }).inject) {
       mcpPromises.push(
         raceTimeout(
           callBrainTool('brain_accounting', {
@@ -1004,7 +1011,9 @@ async function main() {
       );
     }
 
-    if (prompt.length > 500 || hasCodeBlocks) {
+    // GATED by ContextCompressor: brain_complexity and brain_optimize have ZERO routing impact.
+    // They consume context but don't change decisions. Disabled after session 0.
+    if ((prompt.length > 500 || hasCodeBlocks) && contextCompressor.shouldInject('complexity_analysis', { estimatedChars: 300 }).inject) {
       mcpPromises.push(
         raceTimeout(
           callBrainTool('brain_complexity', {
@@ -1017,7 +1026,7 @@ async function main() {
       );
     }
 
-    if (estimatedTokens > 4000 || hasRepetition) {
+    if ((estimatedTokens > 4000 || hasRepetition) && contextCompressor.shouldInject('optimize_analysis', { estimatedChars: 500 }).inject) {
       mcpPromises.push(
         raceTimeout(
           callBrainTool('brain_optimize', {
@@ -1453,7 +1462,7 @@ async function main() {
     // ELENCHUS: Socratic questioning (Phase 6B)
     // "Ἔλεγχος - l'art de questionner pour révéler la vérité"
     // ═══════════════════════════════════════════════════════════════════════════
-    if (elenchus && prompt.length > DC.LENGTH.ELENCHUS_MIN) {
+    if (elenchus && prompt.length > DC.LENGTH.ELENCHUS_MIN && contextCompressor.shouldInject('elenchus', { estimatedChars: 200 }).inject) {
       try {
         // Check if this looks like an assertion (not a question)
         const isAssertion = !prompt.trim().endsWith('?') &&
@@ -1577,7 +1586,7 @@ async function main() {
     // ROLE REVERSAL: Detect teaching opportunities
     // "Enseigner, c'est apprendre deux fois"
     // ═══════════════════════════════════════════════════════════════════════════
-    if (roleReversal && prompt.length > DC.LENGTH.ROLE_REVERSAL_MIN && Math.random() < DC.PROBABILITY.ROLE_REVERSAL) {
+    if (roleReversal && prompt.length > DC.LENGTH.ROLE_REVERSAL_MIN && Math.random() < DC.PROBABILITY.ROLE_REVERSAL && contextCompressor.shouldInject('maieutic', { estimatedChars: 150 }).inject) {
       try {
         const opportunity = roleReversal.detectReversalOpportunity(prompt, {});
         if (opportunity && opportunity.shouldReverse) {
@@ -1592,7 +1601,7 @@ async function main() {
     // HYPOTHESIS: Track claims and hypotheses
     // "Toute assertion est une hypothèse à tester"
     // ═══════════════════════════════════════════════════════════════════════════
-    if (hypothesisTesting && prompt.length > DC.LENGTH.HYPOTHESIS_MIN) {
+    if (hypothesisTesting && prompt.length > DC.LENGTH.HYPOTHESIS_MIN && contextCompressor.shouldInject('hypothesis', { estimatedChars: 150 }).inject) {
       try {
         // Check for assertion patterns that could be hypotheses
         const assertionPatterns = /(?:I think|I believe|probably|likely|should be|must be|always|never)/i;
@@ -1723,9 +1732,16 @@ async function main() {
       injections.push('*sniff* Private content detected - will NOT be stored in collective memory.');
     }
 
+    // Report routing to compressor for stability tracking
+    if (routing?.suggestedAgent) {
+      contextCompressor.reportRouting(routing.suggestedAgent, routing.reason || 'default');
+    }
+
     // Framing directive is LAST — LLM sees it last, remembers it most (recency bias)
+    // Apply experience-based compression to reduce context over time
     if (framingDirective) {
-      injections.push(framingDirective);
+      const compressed = contextCompressor.compress('framing_directive', framingDirective);
+      injections.push(compressed);
     }
 
     // Send to MCP server (non-blocking) - with sanitized prompt
@@ -1817,11 +1833,15 @@ async function main() {
       });
     }
 
+    // Persist experience curve (non-blocking, before exit)
+    try { contextCompressor.stop(); } catch { /* non-blocking */ }
+
     // Exit promptly — AmbientConsensus timers would keep process alive for 5s+
     process.exit(0);
 
   } catch (error) {
     logger.error('Hook failed', { error: error.message });
+    try { contextCompressor.stop(); } catch { /* non-blocking */ }
     if (!outputSent) {
       outputSent = true;
       safeOutput({ continue: true });

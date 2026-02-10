@@ -34,6 +34,7 @@
     "./services/event-bus.js": "./src/services/event-bus.js",
     "./services/event-bus-bridge.js": "./src/services/event-bus-bridge.js",
     "./services/memory-coordinator.js": "./src/services/memory-coordinator.js",
+    "./services/context-compressor.js": "./src/services/context-compressor.js",
     "./chaos": "./src/chaos/index.js",
     "./inference": "./src/inference/index.js",
     "./tracing/dog-tracing.js": "./src/tracing/dog-tracing.js",

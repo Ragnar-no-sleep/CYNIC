@@ -17,7 +17,7 @@
 // φ CONSTANTS
 // ═══════════════════════════════════════════════════════════════════════════
 
-import { PHI_INV } from '@cynic/core';
+import { PHI_INV, PHI_INV_2 } from '@cynic/core';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // THOMPSON SAMPLER
@@ -196,6 +196,53 @@ class ThompsonSampler {
       totalPulls: this.totalPulls,
       arms,
     };
+  }
+
+  /**
+   * Get adaptive exploration rate.
+   * Decays from PHI_INV_2 (23.6%) toward 5% as experience grows.
+   * Formula: rate = max(0.05, PHI_INV_2 × e^(-totalPulls/200))
+   *
+   * @returns {number} Exploration rate (0.05 to 0.236)
+   */
+  getExplorationRate() {
+    const MIN_RATE = 0.05;
+    const decay = Math.exp(-this.totalPulls / 200);
+    return Math.max(MIN_RATE, PHI_INV_2 * decay);
+  }
+
+  /**
+   * Should we explore (random arm) vs exploit (best arm)?
+   * Uses adaptive rate that decreases with experience.
+   * @returns {boolean} true = explore, false = exploit
+   */
+  shouldExplore() {
+    return Math.random() < this.getExplorationRate();
+  }
+
+  /**
+   * Get maturity signal for ContextCompressor.
+   * Reports how converged this sampler is (0..φ⁻¹).
+   * @returns {{ maturity: number, converged: boolean }}
+   */
+  getMaturitySignal() {
+    if (this.arms.size === 0) return { maturity: 0, converged: false };
+
+    // Average uncertainty across all arms
+    let totalUncertainty = 0;
+    for (const armId of this.arms.keys()) {
+      totalUncertainty += this.getUncertainty(armId);
+    }
+    const avgUncertainty = totalUncertainty / this.arms.size;
+
+    // Maturity = inverse of uncertainty, scaled and capped
+    // Max uncertainty = 0.25 (uniform prior), min practical = ~0.01
+    const maturity = Math.min(1 - (avgUncertainty / 0.25), PHI_INV);
+
+    // Converged when exploration rate drops below 10% AND avg uncertainty < 5%
+    const converged = this.getExplorationRate() < 0.1 && avgUncertainty < 0.05;
+
+    return { maturity, converged };
   }
 
   /**

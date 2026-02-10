@@ -34,6 +34,7 @@ import { DOG_DIMENSION_AFFINITY } from '../judge/dimensions.js';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
+import { contextCompressor } from '../services/context-compressor.js';
 
 const log = createLogger("KabbalisticRouter");
 
@@ -1901,7 +1902,8 @@ export class KabbalisticRouter {
   }
 
   shouldExplore() {
-    return Math.random() < PHI_INV_3;
+    // Adaptive: decays from 23.6% toward 5% as Thompson gains experience
+    return this.thompsonSampler.shouldExplore();
   }
 
   thompsonSelect(candidates) {
@@ -1961,6 +1963,16 @@ export class KabbalisticRouter {
       }
       const state = this.thompsonSampler.exportState();
       writeFileSync(join(dir, 'state.json'), JSON.stringify(state), 'utf8');
+
+      // Report maturity to ContextCompressor (experience curve feedback)
+      try {
+        const maturity = this.thompsonSampler.getMaturitySignal();
+        contextCompressor.reportMaturity('thompson', maturity);
+        contextCompressor.reportMaturity('router', {
+          maturity: maturity.maturity,
+          converged: maturity.converged && this.thompsonSampler.totalPulls > 50,
+        });
+      } catch { /* non-blocking */ }
     } catch (err) {
       log.debug('Thompson state save failed (non-blocking)', { error: err.message });
     }
