@@ -18,7 +18,7 @@
 
 'use strict';
 
-import { createLogger, PHI_INV } from '@cynic/core';
+import { createLogger, PHI_INV, EcosystemMonitor } from '@cynic/core';
 import { EventBus, EventType, getEventBus } from './event-bus.js';
 import { PatternLearning } from '@cynic/persistence';
 import { getResidualGovernance } from '../judge/residual-governance.js';
@@ -94,6 +94,17 @@ export class AutomationExecutor {
         this.patternLearning = new PatternLearning({ pool: this.pool });
       } catch (e) {
         log.debug('PatternLearning auto-create failed (non-blocking)', { error: e.message });
+      }
+    }
+
+    // Ecosystem monitor (auto-create with $asdfasdfa defaults if not injected)
+    this.ecosystemMonitor = options.ecosystemMonitor || null;
+    if (!this.ecosystemMonitor) {
+      try {
+        this.ecosystemMonitor = new EcosystemMonitor();
+        this.ecosystemMonitor.registerAsdfasdfaDefaults();
+      } catch (e) {
+        log.debug('EcosystemMonitor auto-create failed (non-blocking)', { error: e.message });
       }
     }
 
@@ -1203,6 +1214,37 @@ export class AutomationExecutor {
           }
         }
       } catch (e) { /* table may not exist */ }
+
+      // 11. Distribution health (ecosystem repos, fetch + health report)
+      if (this.ecosystemMonitor) {
+        try {
+          await this.ecosystemMonitor.fetchAll();
+          const report = this.ecosystemMonitor.getHealthReport();
+          const sources = report.sources || [];
+          const total = sources.length;
+          const fetched = sources.filter(s => s.lastFetch).length;
+          const stale = sources.filter(s => !s.lastFetch).length;
+          const composite = report.eScore?.composite || 0;
+
+          // Publish distribution snapshot for event-listeners persistence
+          this.eventBus.publish(EventType.AUTOMATION_TICK, {
+            subType: 'distribution_snapshot',
+            health: { total, fetched, stale, errors: 0, verdict: report.verdict },
+            eScore: composite,
+            timestamp: Date.now(),
+          }, { source: 'AutomationExecutor' });
+
+          // Generate findings from health report
+          if (stale > total * PHI_INV && total > 0) {
+            findings.push({ type: 'distribution_stale', message: `${stale}/${total} ecosystem sources unfetched (>${Math.round(PHI_INV * 100)}% threshold)`, severity: 'medium' });
+          }
+          if (report.health === 'needs_attention') {
+            findings.push({ type: 'distribution_attention', message: `Ecosystem needs attention: ${report.verdict} (E-Score: ${Math.round(composite * 100)}%)`, severity: 'medium' });
+          }
+        } catch (e) {
+          log.debug('Distribution health check failed (non-blocking)', { error: e.message });
+        }
+      }
 
       this.stats.dataGraveRuns++;
       this.stats.lastDataGraveRun = Date.now();

@@ -1119,8 +1119,33 @@ export function startEventListeners(options = {}) {
         log.info('Data grave findings persisted to unified_signals', { count: highFindings.length, types: highFindings.map(f => f.type) });
       } catch (e) { log.debug('Data grave findings bridge error', { error: e.message }); }
     }));
+    // AXE 6: Bridge distribution_snapshot → distribution_snapshots table
+    // AutomationExecutor check #11 publishes ecosystem health as AUTOMATION_TICK with subType 'distribution_snapshot'.
+    _unsubscribers.push(ab.subscribe(AutomationEventType.AUTOMATION_TICK, (event) => {
+      try {
+        const d = event.data || event.payload || {};
+        if (d.subType !== 'distribution_snapshot') return;
+        if (!persistence?.query) return;
 
-    log.info('Automation bus orphan listeners wired (Fix #4 + 4b)');
+        const health = d.health || {};
+        persistence.query(`
+          INSERT INTO distribution_snapshots (health_report, e_score, total_sources, fetched_sources, stale_sources, error_sources)
+          VALUES ($1, $2, $3, $4, $5, $6)
+        `, [
+          JSON.stringify(health),
+          d.eScore || 0,
+          health.total || 0,
+          health.fetched || 0,
+          health.stale || 0,
+          health.errors || 0,
+        ]).catch(err => {
+          log.debug('Distribution snapshot persistence failed', { error: err.message });
+        });
+        _stats.distributionSnapshotsPersisted = (_stats.distributionSnapshotsPersisted || 0) + 1;
+      } catch (e) { log.debug('Distribution snapshot bridge error', { error: e.message }); }
+    }));
+
+    log.info('Automation bus orphan listeners wired (Fix #4 + 4b + AXE 6)');
   } catch (err) {
     log.debug('Automation bus listeners skipped', { error: err.message });
   }
