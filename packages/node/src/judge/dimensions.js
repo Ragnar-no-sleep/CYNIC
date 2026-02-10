@@ -289,6 +289,68 @@ export function getDimension(name) {
 }
 
 /**
+ * Context-aware axiom weight multipliers
+ *
+ * Maps queryType → { axiom → multiplier }
+ * Used by Judge._calculateAxiomScores() to weight axioms differently
+ * based on the task being judged. Security tasks boost VERIFY,
+ * design tasks boost PHI, social tasks boost CULTURE.
+ *
+ * Multipliers are φ-bounded: range [0.7, 1.4] (within φ⁻¹ deviation)
+ */
+export const QUERY_CONTEXT_WEIGHTS = {
+  // Security: VERIFY and FIDELITY matter most
+  PreToolUse:  { PHI: 1.0, VERIFY: 1.4, CULTURE: 0.7, BURN: 0.8, FIDELITY: 1.3 },
+  protection:  { PHI: 1.0, VERIFY: 1.4, CULTURE: 0.7, BURN: 0.8, FIDELITY: 1.3 },
+  // Code quality: PHI and VERIFY
+  PostToolUse: { PHI: 1.3, VERIFY: 1.3, CULTURE: 0.8, BURN: 1.0, FIDELITY: 0.9 },
+  code:        { PHI: 1.3, VERIFY: 1.3, CULTURE: 0.8, BURN: 1.0, FIDELITY: 0.9 },
+  // Design: PHI and CULTURE
+  design:      { PHI: 1.4, VERIFY: 0.9, CULTURE: 1.3, BURN: 1.0, FIDELITY: 0.8 },
+  // Social: CULTURE and FIDELITY
+  social:      { PHI: 0.9, VERIFY: 1.0, CULTURE: 1.4, BURN: 0.8, FIDELITY: 1.2 },
+  // Market/utility: BURN and VERIFY
+  market:      { PHI: 0.9, VERIFY: 1.2, CULTURE: 0.8, BURN: 1.4, FIDELITY: 1.0 },
+  // Exploration: slight CULTURE bias
+  exploration: { PHI: 1.0, VERIFY: 1.0, CULTURE: 1.2, BURN: 1.0, FIDELITY: 1.0 },
+  // Wisdom: FIDELITY and CULTURE
+  wisdom:      { PHI: 1.1, VERIFY: 0.9, CULTURE: 1.3, BURN: 0.8, FIDELITY: 1.3 },
+};
+
+/**
+ * Get axiom weight multipliers for a query type
+ * @param {string} queryType - Task/query type
+ * @returns {Object|null} { axiom → multiplier } or null if no special weighting
+ */
+export function getContextAxiomWeights(queryType) {
+  return QUERY_CONTEXT_WEIGHTS[queryType] || null;
+}
+
+/**
+ * Dog ↔ Dimension affinity map
+ *
+ * Maps each dog to the dimensions it specializes in.
+ * Used by KabbalisticRouter to translate SONA dimension insights
+ * into dog-level weight adjustments.
+ *
+ * When SONA discovers "ACCURACY has high correlation with success",
+ * dogs with ACCURACY affinity (analyst, cartographer) get boosted.
+ */
+export const DOG_DIMENSION_AFFINITY = {
+  guardian:     ['INTEGRITY', 'VERIFIABILITY', 'ACCOUNTABILITY', 'VIGILANCE', 'SACRIFICE'],
+  analyst:      ['ACCURACY', 'COHERENCE', 'PRECISION', 'REPRODUCIBILITY', 'TRANSPARENCY'],
+  architect:    ['STRUCTURE', 'ELEGANCE', 'HARMONY', 'PROPORTION', 'COMPLETENESS'],
+  sage:         ['RESONANCE', 'LINEAGE', 'KENOSIS', 'CANDOR', 'ATTUNEMENT'],
+  scholar:      ['PROVENANCE', 'VERIFIABILITY', 'CONSENSUS', 'RELEVANCE', 'AUTHENTICITY'],
+  oracle:       ['CONGRUENCE', 'HARMONY', 'NOVELTY', 'IMPACT', 'ALIGNMENT'],
+  scout:        ['RELEVANCE', 'NOVELTY', 'EFFICIENCY', 'UTILITY', 'CONTRIBUTION'],
+  janitor:      ['EFFICIENCY', 'SUSTAINABILITY', 'UTILITY', 'STRUCTURE', 'REPRODUCIBILITY'],
+  deployer:     ['IRREVERSIBILITY', 'INTEGRITY', 'VERIFIABILITY', 'EFFICIENCY', 'COMMITMENT'],
+  cartographer: ['COMPLETENESS', 'ACCURACY', 'STRUCTURE', 'PROPORTION', 'TRANSPARENCY'],
+  cynic:        ['CANDOR', 'CONGRUENCE', 'VIGILANCE', 'KENOSIS', 'COMMITMENT'],
+};
+
+/**
  * Calculate total weight for axiom
  * @param {string} axiom - Axiom name
  * @returns {number} Total weight

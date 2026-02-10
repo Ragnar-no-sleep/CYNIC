@@ -41,6 +41,7 @@ import {
   getDimensionsForAxiom,
   getTotalWeight,
   getAxiomTotalWeight,
+  getContextAxiomWeights,
   dimensionRegistry as legacyRegistry,
 } from './dimensions.js';
 import { createRealScorer } from './scorers.js';
@@ -381,8 +382,8 @@ export class CYNICJudge {
     // Calculate global score (weighted average - legacy)
     const globalScore = this._calculateGlobalScore(dimensionScores);
 
-    // Calculate axiom scores (aggregated by axiom)
-    const axiomScores = this._calculateAxiomScores(dimensionScores);
+    // Calculate axiom scores (aggregated by axiom, context-aware)
+    const axiomScores = this._calculateAxiomScores(dimensionScores, context);
 
     // D12: Record axiom aggregation step
     reasoningPath.push({
@@ -953,12 +954,17 @@ export class CYNICJudge {
   /**
    * Calculate scores aggregated by axiom
    * Applies learned weight modifiers from RLHF feedback
+   * P1-A: Applies context-aware axiom multipliers (queryType → axiom weights)
    * @private
    * @param {Object} dimensionScores - All dimension scores
+   * @param {Object} [context] - Judgment context with optional queryType/type
    * @returns {Object} Axiom scores {PHI, VERIFY, CULTURE, BURN, FIDELITY}
    */
-  _calculateAxiomScores(dimensionScores) {
+  _calculateAxiomScores(dimensionScores, context = {}) {
     const axiomScores = {};
+
+    // P1-A: Get context-aware axiom multipliers (security boosts VERIFY, etc.)
+    const contextWeights = getContextAxiomWeights(context?.queryType || context?.type);
 
     for (const [axiom, dims] of Object.entries(Dimensions)) {
       // Skip META - THE_UNNAMEABLE is not part of axiom Q-Score calculation
@@ -984,9 +990,19 @@ export class CYNICJudge {
       }
 
       // Calculate weighted average for this axiom
-      axiomScores[axiom] = totalWeight > 0
+      let axiomScore = totalWeight > 0
         ? Math.round(weightedSum / totalWeight * 10) / 10
         : 50; // Neutral if no data
+
+      // P1-A: Apply context-aware axiom multiplier
+      // Security tasks boost VERIFY (×1.4), design tasks boost PHI (×1.4), etc.
+      if (contextWeights && contextWeights[axiom]) {
+        axiomScore = Math.round(axiomScore * contextWeights[axiom] * 10) / 10;
+        // Clamp to [0, 100] — multipliers can push scores above 100
+        axiomScore = Math.min(100, Math.max(0, axiomScore));
+      }
+
+      axiomScores[axiom] = axiomScore;
     }
 
     // Store THE_UNNAMEABLE separately (not in Q-Score formula)

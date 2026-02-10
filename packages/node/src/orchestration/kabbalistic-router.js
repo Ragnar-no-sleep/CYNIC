@@ -30,6 +30,7 @@ import { ThompsonSampler } from '../learning/thompson-sampler.js';
 import { SEFIROT_TEMPLATE } from '../agents/collective/sefirot.js';
 import { RelationshipGraph } from '../agents/collective/relationship-graph.js';
 import { CONSULTATION_MATRIX, getConsultants, shouldConsult } from '@cynic/core/orchestration';
+import { DOG_DIMENSION_AFFINITY } from '../judge/dimensions.js';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
@@ -299,6 +300,10 @@ export class KabbalisticRouter {
     this._orchPerf = null;
     this._orchPerfLastLoad = 0;
 
+    // P1-C: SONA dimension insights cache (from ~/.cynic/sona/state.json)
+    this._sonaInsights = null;
+    this._sonaInsightsLastLoad = 0;
+
     // P-GAP-5: Burnout awareness cache (from psychology_snapshots)
     this._burnoutStatus = null;
     this._burnoutLastLoad = 0;
@@ -540,6 +545,32 @@ export class KabbalisticRouter {
       // D1: Update Thompson Sampler with routing outcome
       this.updateThompson(path, synthesis.hasConsensus && !context.error); // D1: learned weights flow back to routing
       this._saveThompsonState(); // R4: Persist Thompson state (debounced)
+
+      // P1-B: Record routing outcome for DPO learning (closes feedback loop)
+      // DPO processor reads from feedback table — without this, DPO has 0 input
+      if (this.persistence?.query) {
+        const success = synthesis.hasConsensus && !context.error;
+        this.persistence.query(`
+          INSERT INTO feedback (judgment_id, user_id, outcome, actual_score, reason, source_type, source_context)
+          VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `, [
+          null, // orphan feedback (routing decision, no linked judgment)
+          userId || null,
+          success ? 'correct' : (context.blocked ? 'incorrect' : 'partial'),
+          Math.round((reward + 1) * 50), // Convert [-1,1] → [0,100]
+          synthesis.reason || 'Routing decision',
+          'routing_outcome',
+          JSON.stringify({
+            taskType,
+            entrySefirah: path[0],
+            path: path.slice(0, 5),
+            blocked: !!context.blocked,
+            durationMs,
+            thompsonExplored,
+          }),
+        ]).catch(err => log.debug('DPO routing feedback failed', { error: err.message }));
+      }
+
       this._currentEpisodeId = null;
     }
 
@@ -1661,7 +1692,77 @@ export class KabbalisticRouter {
   }
 
   // ===========================================================================
-  // D1: BLENDED WEIGHTS (Q-Learning + DPO + Thompson)
+  // P1-C: SONA DIMENSION INSIGHTS → DOG WEIGHT MODULATION
+  // ===========================================================================
+
+  /**
+   * Load SONA dimension insights from disk (written by SESSION_ENDED in bus-subscriptions)
+   * Same file-based pattern as Thompson Sampler state persistence.
+   * Cached for 5 minutes to avoid excessive disk reads.
+   * @private
+   * @returns {Object|null} { [dimensionName]: { avgCorrelation } } or null
+   */
+  _loadSonaInsights() {
+    if (this._sonaInsights && (Date.now() - this._sonaInsightsLastLoad) < this._dpoWeightsTTL) {
+      return this._sonaInsights;
+    }
+    try {
+      const sonaFile = join(homedir(), '.cynic', 'sona', 'state.json');
+      if (existsSync(sonaFile)) {
+        const raw = readFileSync(sonaFile, 'utf8');
+        const state = JSON.parse(raw);
+        if (state?.insights && Object.keys(state.insights).length > 0) {
+          this._sonaInsights = state.insights;
+          this._sonaInsightsLastLoad = Date.now();
+          return this._sonaInsights;
+        }
+      }
+    } catch {
+      // Non-blocking — SONA insights are optional
+    }
+    return null;
+  }
+
+  /**
+   * Compute dog-level weight boosts from SONA dimension insights.
+   * Maps dimension correlations → dog affinity → weight adjustment.
+   * @private
+   * @returns {Object|null} { [dogName]: boost } (± PHI_INV_3 range)
+   */
+  _getSonaBoosts() {
+    const insights = this._loadSonaInsights();
+    if (!insights) return null;
+
+    // Lazy load affinity map (imported at top, cached here)
+    if (!this._dogDimAffinity) {
+      this._dogDimAffinity = DOG_DIMENSION_AFFINITY;
+      if (!this._dogDimAffinity) return null;
+    }
+
+    const boosts = {};
+    for (const [dog, dims] of Object.entries(this._dogDimAffinity)) {
+      let totalCorrelation = 0;
+      let count = 0;
+      for (const dim of dims) {
+        const insight = insights[dim];
+        if (insight?.avgCorrelation) {
+          totalCorrelation += insight.avgCorrelation;
+          count++;
+        }
+      }
+      // Average correlation across this dog's affinity dimensions
+      // Scale to ± PHI_INV_3 (max ±23.6% adjustment, same as Thompson exploration rate)
+      if (count > 0) {
+        const avgCorr = totalCorrelation / count;
+        boosts[dog] = avgCorr * PHI_INV_3; // Bounded: ±23.6% of correlation
+      }
+    }
+
+    return Object.keys(boosts).length > 0 ? boosts : null;
+  }
+
+  // ===========================================================================
+  // D1: BLENDED WEIGHTS (Q-Learning + DPO + Thompson + SONA)
   // ===========================================================================
 
   getBlendedWeights(contextType) {
@@ -1675,6 +1776,8 @@ export class KabbalisticRouter {
       if (!qWeights && !dpoWeights) return null;
       const allDogs = ['guardian','analyst','architect','scout','scholar','sage','oracle','janitor','deployer','cartographer','cynic'];
       const blended = {};
+      // P1-C: Load SONA dimension insights → dog weight boosts
+      const sonaBoosts = this._getSonaBoosts();
       for (const dog of allDogs) {
         const qW = qWeights ? (qWeights[dog] || 0.5) : 0.5;
         const dpoW = dpoWeights ? (dpoWeights[dog] || 0.5) : 0.5;
@@ -1690,6 +1793,10 @@ export class KabbalisticRouter {
         const orchPerf = this._orchPerf?.[dog];
         if (orchPerf && orchPerf.sampleSize >= 5) {
           blended[dog] += (orchPerf.successRate - 0.5) * PHI_INV_3;
+        }
+        // P1-C: SONA dimension insight boost (±PHI_INV_3 from dimension correlations)
+        if (sonaBoosts?.[dog]) {
+          blended[dog] += sonaBoosts[dog];
         }
       }
       return blended;
