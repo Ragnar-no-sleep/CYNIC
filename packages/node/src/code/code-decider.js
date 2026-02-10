@@ -19,8 +19,16 @@
 
 import { EventEmitter } from 'events';
 import { PHI_INV, PHI_INV_2, PHI_INV_3, createLogger, globalEventBus } from '@cynic/core';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { join } from 'path';
+import { homedir } from 'os';
 
 const log = createLogger('CodeDecider');
+
+/** Max calibration entries to retain (rolling window) */
+const MAX_CALIBRATION = 89; // Fib(11)
+/** Minimum outcomes needed before calibration adjusts confidence */
+const MIN_CALIBRATION_SAMPLES = 5;
 
 export const CodeDecisionType = {
   APPROVE: 'approve',
@@ -73,6 +81,12 @@ export class CodeDecider extends EventEmitter {
 
     this._history = [];
     this._maxHistory = 233; // Fib(13)
+
+    // Calibration: tracks decision outcomes to adjust future confidence
+    this._calibration = []; // [{ riskLevel, riskScore, confidence, decision, outcome, ts }]
+    this._calibrationPath = options.calibrationPath ||
+      join(homedir(), '.cynic', 'code', 'calibration.json');
+    this._loadCalibration();
 
     this._stats = {
       decisionsTotal: 0,
@@ -251,7 +265,37 @@ export class CodeDecider extends EventEmitter {
   _calculateConfidence(risk, change) {
     let confidence = PHI_INV;
     confidence *= (1 - risk.score * 0.8);
+
+    // Apply calibration adjustment from historical outcomes
+    const adjustment = this._getCalibrationAdjustment(risk.level);
+    if (adjustment !== 0) {
+      confidence *= (1 + adjustment);
+      log.debug('Calibration adjustment', { riskLevel: risk.level, adjustment: adjustment.toFixed(3) });
+    }
+
     return Math.min(PHI_INV, Math.max(0, confidence));
+  }
+
+  /**
+   * Get calibration-based confidence adjustment for a risk level.
+   * Compares predicted confidence to actual outcome success rate.
+   *
+   * @param {string} riskLevel
+   * @returns {number} Adjustment factor (-0.2 to +0.2)
+   */
+  _getCalibrationAdjustment(riskLevel) {
+    const relevant = this._calibration.filter(c => c.riskLevel === riskLevel);
+    if (relevant.length < MIN_CALIBRATION_SAMPLES) return 0;
+
+    // Compare: avg predicted confidence vs actual success rate
+    const avgConfidence = relevant.reduce((s, c) => s + c.confidence, 0) / relevant.length;
+    const successRate = relevant.filter(c => c.outcome === 'success').length / relevant.length;
+
+    // If success rate > confidence → we're too cautious → boost
+    // If success rate < confidence → we're too bold → reduce
+    const gap = successRate - avgConfidence;
+    // Clamp to [-0.2, +0.2] and scale by φ⁻¹
+    return Math.max(-0.2, Math.min(0.2, gap * PHI_INV));
   }
 
   _makeDecision(risk, confidence, change, context) {
@@ -306,7 +350,79 @@ export class CodeDecider extends EventEmitter {
     this._stats.avgDecisionTime = ((n - 1) * this._stats.avgDecisionTime + result.decisionTimeMs) / n;
   }
 
-  getStats() { return { ...this._stats }; }
+  /**
+   * Record the outcome of a previous decision for calibration learning.
+   *
+   * @param {Object} outcome
+   * @param {string} outcome.decisionType - The decision type that was made
+   * @param {string} outcome.riskLevel - Risk level at time of decision
+   * @param {number} outcome.riskScore - Risk score at time of decision
+   * @param {number} outcome.confidence - Confidence at time of decision
+   * @param {string} outcome.result - 'success' or 'failure'
+   * @param {string} [outcome.reason] - Why it succeeded/failed
+   */
+  recordOutcome(outcome) {
+    const entry = {
+      riskLevel: outcome.riskLevel || 'unknown',
+      riskScore: outcome.riskScore || 0,
+      confidence: outcome.confidence || 0,
+      decision: outcome.decisionType || 'unknown',
+      outcome: outcome.result === 'success' ? 'success' : 'failure',
+      reason: outcome.reason || null,
+      ts: Date.now(),
+    };
+
+    this._calibration.push(entry);
+    while (this._calibration.length > MAX_CALIBRATION) this._calibration.shift();
+
+    this._stats.outcomesRecorded = (this._stats.outcomesRecorded || 0) + 1;
+    this._persistCalibration();
+
+    this.emit('outcome_recorded', entry);
+    log.debug('Outcome recorded', { decision: entry.decision, outcome: entry.outcome, risk: entry.riskLevel });
+  }
+
+  getCalibrationStats() {
+    if (this._calibration.length === 0) return { entries: 0, successRate: 0, adjustments: {} };
+
+    const successRate = this._calibration.filter(c => c.outcome === 'success').length / this._calibration.length;
+    const adjustments = {};
+    for (const level of Object.values(ChangeRisk)) {
+      adjustments[level] = this._getCalibrationAdjustment(level);
+    }
+
+    return {
+      entries: this._calibration.length,
+      successRate,
+      adjustments,
+    };
+  }
+
+  _loadCalibration() {
+    try {
+      if (existsSync(this._calibrationPath)) {
+        const data = JSON.parse(readFileSync(this._calibrationPath, 'utf8'));
+        this._calibration = Array.isArray(data.calibration) ? data.calibration.slice(-MAX_CALIBRATION) : [];
+      }
+    } catch {
+      this._calibration = [];
+    }
+  }
+
+  _persistCalibration() {
+    try {
+      const dir = join(this._calibrationPath, '..');
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+      writeFileSync(this._calibrationPath, JSON.stringify({
+        calibration: this._calibration,
+        lastUpdated: Date.now(),
+      }, null, 2));
+    } catch (err) {
+      log.debug('Calibration persistence failed', { error: err.message });
+    }
+  }
+
+  getStats() { return { ...this._stats, calibration: this.getCalibrationStats() }; }
 
   getHealth() {
     const approvalRate = this._stats.decisionsTotal > 0
@@ -343,4 +459,6 @@ export function resetCodeDecider() {
   _instance = null;
 }
 
-export default { CodeDecider, CodeDecisionType, ChangeRisk, getCodeDecider, resetCodeDecider };
+export { MAX_CALIBRATION, MIN_CALIBRATION_SAMPLES };
+
+export default { CodeDecider, CodeDecisionType, ChangeRisk, getCodeDecider, resetCodeDecider, MAX_CALIBRATION, MIN_CALIBRATION_SAMPLES };

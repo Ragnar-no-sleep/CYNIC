@@ -56,6 +56,7 @@ import { contextCompressor } from './services/context-compressor.js';
 import { injectionProfile } from './services/injection-profile.js';
 import { getCodeDecider, resetCodeDecider } from './code/code-decider.js';
 import { getCodeActor, resetCodeActor } from './code/code-actor.js';
+import { getCodeLearner, resetCodeLearner } from './code/code-learner.js';
 import { getCynicAccountant, resetCynicAccountant } from './accounting/cynic-accountant.js';
 import { getCodeAccountant, resetCodeAccountant } from './accounting/code-accountant.js';
 import { getSocialAccountant, resetSocialAccountant } from './accounting/social-accountant.js';
@@ -349,6 +350,12 @@ let _codeActor = null;
  * @type {import('./accounting/cynic-accountant.js').CynicAccountant|null}
  */
 let _cynicAccountant = null;
+
+/**
+ * C1.5 (CODE × LEARN): CodeLearner singleton
+ * @type {import('./code/code-learner.js').CodeLearner|null}
+ */
+let _codeLearner = null;
 
 /**
  * C1.6 (CODE × ACCOUNT): CodeAccountant singleton
@@ -755,6 +762,11 @@ export function getCollectivePack(options = {}) {
     // "Le chien décide, agit, et rend des comptes"
     _codeDecider = getCodeDecider();
     _codeActor = getCodeActor();
+    _codeLearner = getCodeLearner({
+      codeDecider: _codeDecider,
+      codeActor: _codeActor,
+      codeEmergence: _codeEmergence,
+    });
     _cynicAccountant = getCynicAccountant();
     _codeAccountant = getCodeAccountant();
     _socialAccountant = getSocialAccountant();
@@ -787,6 +799,7 @@ export function getCollectivePack(options = {}) {
         // RIGHT side singletons
         codeDecider: _codeDecider,
         codeActor: _codeActor,
+        codeLearner: _codeLearner,
         cynicAccountant: _cynicAccountant,
         codeAccountant: _codeAccountant,
         socialAccountant: _socialAccountant,
@@ -991,6 +1004,7 @@ export async function getCollectivePackAsync(options = {}) {
         // RIGHT side singletons
         codeDecider: _codeDecider,
         codeActor: _codeActor,
+        codeLearner: _codeLearner,
         cynicAccountant: _cynicAccountant,
         codeAccountant: _codeAccountant,
         socialAccountant: _socialAccountant,
@@ -1461,6 +1475,7 @@ export async function getCollectivePackAsync(options = {}) {
       // RIGHT side (DECIDE/ACT/ACCOUNT)
       if (_codeDecider) systemTopology.registerComponent('codeDecider', _codeDecider);
       if (_codeActor) systemTopology.registerComponent('codeActor', _codeActor);
+      if (_codeLearner) systemTopology.registerComponent('codeLearner', _codeLearner);
       if (_cynicAccountant) systemTopology.registerComponent('cynicAccountant', _cynicAccountant);
       if (_codeAccountant) systemTopology.registerComponent('codeAccountant', _codeAccountant);
       if (_socialAccountant) systemTopology.registerComponent('socialAccountant', _socialAccountant);
@@ -1998,6 +2013,7 @@ export function getSingletonStatus() {
     // RIGHT side
     codeDeciderInitialized: !!_codeDecider,
     codeActorInitialized: !!_codeActor,
+    codeLearnerInitialized: !!_codeLearner,
     cynicAccountantInitialized: !!_cynicAccountant,
     codeAccountantInitialized: !!_codeAccountant,
     socialAccountantInitialized: !!_socialAccountant,
@@ -2035,6 +2051,12 @@ export function getCodeDeciderSingleton() { return _codeDecider; }
  * @returns {import('./code/code-actor.js').CodeActor|null}
  */
 export function getCodeActorSingleton() { return _codeActor; }
+
+/**
+ * C1.5: Get the CodeLearner singleton
+ * @returns {import('./code/code-learner.js').CodeLearner|null}
+ */
+export function getCodeLearnerSingleton() { return _codeLearner; }
 
 /**
  * C6.6: Get the CynicAccountant singleton
@@ -2225,6 +2247,7 @@ export function _resetForTesting() {
   // RIGHT side singletons (DECIDE/ACT/ACCOUNT)
   if (_codeDecider) { resetCodeDecider(); _codeDecider = null; }
   if (_codeActor) { resetCodeActor(); _codeActor = null; }
+  if (_codeLearner) { resetCodeLearner(); _codeLearner = null; }
   if (_cynicAccountant) { resetCynicAccountant(); _cynicAccountant = null; }
   if (_codeAccountant) { resetCodeAccountant(); _codeAccountant = null; }
   if (_socialAccountant) { resetSocialAccountant(); _socialAccountant = null; }

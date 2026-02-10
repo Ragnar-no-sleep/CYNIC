@@ -273,6 +273,7 @@ export class KabbalisticRouter {
       relationshipGraph = null,
       learningService = null,
       costOptimizer = null,
+      codeLearner = null,
     } = options;
 
     if (!collectivePack) {
@@ -286,6 +287,7 @@ export class KabbalisticRouter {
     // Optional integrations
     this.learningService = learningService;
     this.costOptimizer = costOptimizer;
+    this.codeLearner = codeLearner;
     this._currentEpisodeId = null;
 
     // D1: DPO weight cache (loaded from routing_weights table)
@@ -387,6 +389,20 @@ export class KabbalisticRouter {
     // STRESS-AWARE BEHAVIOR (B3: Antifragility → Router)
     // =======================================================================
     const antifragility = this._extractAntifragilityAwareness(harmonicState);
+
+    // =======================================================================
+    // CODE CONTEXT AWARENESS (C1.5: CodeLearner → Router)
+    // =======================================================================
+    let codeContext = null;
+    if (this.codeLearner && ['PreToolUse', 'code', 'commit', 'review'].includes(taskType)) {
+      try {
+        codeContext = this.codeLearner.getCodeContext({
+          filePath: payload.filePath || payload.path,
+        });
+      } catch {
+        // Non-blocking
+      }
+    }
 
     // 0. Cost optimization check (if enabled)
     let costOptimization = null;
@@ -657,6 +673,14 @@ export class KabbalisticRouter {
         trend: antifragility.trend,
         consultationLimit: antifragility.consultationLimit,
       },
+      // C1.5: Code context awareness (CodeLearner → Router)
+      codeContext: codeContext ? {
+        isHotspot: codeContext.isHotspot,
+        debtItems: codeContext.debtItems,
+        confidenceAdjustment: codeContext.confidenceAdjustment,
+        complexityCreep: codeContext.complexityCreep,
+        patterns: codeContext.patterns.length,
+      } : null,
       // B4: Order-optimized evaluation (Non-commutative → Router)
       nonCommutative: {
         orderSensitivity: nonCommutative.orderSensitivity,

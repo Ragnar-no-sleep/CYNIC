@@ -810,6 +810,7 @@ export function startEventListeners(options = {}) {
     // RIGHT side singletons (DECIDE/ACT/ACCOUNT)
     codeDecider,
     codeActor,
+    codeLearner,
     cynicAccountant,
     codeAccountant,
     socialAccountant,
@@ -1624,6 +1625,73 @@ export function startEventListeners(options = {}) {
       }
     );
     _unsubscribers.push(unsubCodeAction);
+  }
+
+  // 3c¾. CODE_DECISION → CodeLearner: Register decisions for feedback matching (C1.5)
+  if (codeLearner) {
+    const unsubCodeLearnRegister = globalEventBus.subscribe(
+      EventType.CODE_DECISION,
+      (event) => {
+        try {
+          const { decision, reason, judgmentId, qScore } = event.payload || {};
+          if (!decision) return;
+
+          codeLearner.registerDecision({
+            judgmentId,
+            type: decision,
+            decision,
+            riskLevel: event.payload.riskLevel || 'unknown',
+            riskScore: event.payload.riskScore || 0,
+            confidence: event.payload.confidence || 0,
+            riskFactors: event.payload.riskFactors || [],
+          });
+        } catch (err) {
+          log.debug('CodeLearner.registerDecision failed', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubCodeLearnRegister);
+
+    // USER_FEEDBACK → CodeLearner: Match feedback to code decisions
+    const unsubCodeLearnFeedback = globalEventBus.subscribe(
+      EventType.USER_FEEDBACK,
+      (event) => {
+        try {
+          const { type, context: feedbackContext, reason, judgmentId } = event.payload || {};
+          if (!type) return;
+
+          const result = codeLearner.processFeedback({
+            type,
+            context: feedbackContext,
+            reason,
+            judgmentId,
+          });
+
+          if (result) {
+            _stats.codeLearningOutcomes = (_stats.codeLearningOutcomes || 0) + 1;
+
+            // Persist learning outcome to unified_signals
+            if (persistence?.query) {
+              const id = `cl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+              persistence.query(`
+                INSERT INTO unified_signals (id, source, session_id, input, outcome, metadata)
+                VALUES ($1, $2, $3, $4, $5, $6)
+              `, [
+                id, 'code_learning', context.sessionId || null,
+                JSON.stringify({ decisionId: result.decisionId, feedback: result.feedback }),
+                JSON.stringify({ outcome: result.outcome, decisionType: result.decisionType }),
+                JSON.stringify({ riskLevel: result.riskLevel, confidence: result.confidence }),
+              ]).catch(err => {
+                log.debug('Code learning persistence failed', { error: err.message });
+              });
+            }
+          }
+        } catch (err) {
+          log.debug('CodeLearner.processFeedback failed', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubCodeLearnFeedback);
   }
 
   // 3d. CYNIC_STATE → HumanActor: Trigger intervention on burnout risk
