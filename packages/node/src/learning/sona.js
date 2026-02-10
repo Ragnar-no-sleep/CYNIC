@@ -502,6 +502,73 @@ export class SONA extends EventEmitter {
     return insights;
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // P4: Public accessors (wired to MCP brain_sona tool)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Get count of tracked patterns
+   * @returns {number}
+   */
+  getTrackedCount() {
+    return this._observations.size;
+  }
+
+  /**
+   * Get count of significant correlations
+   * @returns {number}
+   */
+  getCorrelationCount() {
+    return this.stats.correlationsFound;
+  }
+
+  /**
+   * Get all significant correlations (serialized)
+   * @returns {Object} { dimension: [{ patternId, correlation, strength, count }] }
+   */
+  getCorrelations() {
+    const result = {};
+    for (const [dimension, dimCorrelations] of this._correlations.entries()) {
+      const significant = [];
+      for (const [patternId, corr] of dimCorrelations.entries()) {
+        if (corr.strength >= this.config.CORRELATION_THRESHOLD) {
+          significant.push({
+            patternId,
+            correlation: corr.correlation,
+            strength: corr.strength,
+            count: corr.count,
+          });
+        }
+      }
+      if (significant.length > 0) {
+        result[dimension] = significant.sort((a, b) => b.strength - a.strength);
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Get adaptation suggestions based on strong correlations
+   * @returns {Array<{dimension, adjustment, confidence, reason}>}
+   */
+  getSuggestions() {
+    const suggestions = [];
+    for (const [dimension, dimCorrelations] of this._correlations.entries()) {
+      for (const [patternId, corr] of dimCorrelations.entries()) {
+        if (corr.strength >= this.config.CORRELATION_THRESHOLD && corr.count >= this.config.MIN_OBSERVATIONS) {
+          const direction = corr.correlation > 0 ? 'increase' : 'decrease';
+          suggestions.push({
+            dimension,
+            adjustment: corr.correlation * this.config.ADAPTATION_RATE,
+            confidence: Math.min(corr.count / 10, PHI_INV),
+            reason: `${patternId}: ${direction} weight (r=${corr.correlation.toFixed(3)}, n=${corr.count})`,
+          });
+        }
+      }
+    }
+    return suggestions.sort((a, b) => b.confidence - a.confidence).slice(0, 10);
+  }
+
   /**
    * Inject external services
    */

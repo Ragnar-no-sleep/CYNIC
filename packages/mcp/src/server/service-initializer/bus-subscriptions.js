@@ -91,6 +91,11 @@ export function setupBusSubscriptions(services) {
         });
       }
 
+      // P4: Feed MetaCognition with positive progress signal (HOWL/WAG = meaningful work)
+      if (services.metaCognition && (verdict === 'HOWL' || verdict === 'WAG')) {
+        services.metaCognition.recordProgress(`Judgment ${verdict} (Q:${qScore})`);
+      }
+
       // Forward judgment to P2P network nodes for blockchain inclusion.
       // Skip forwarded judgments (source starts with 'peer:' or 'http:') to avoid loops.
       const source = event.source || '';

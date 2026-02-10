@@ -103,7 +103,10 @@ export function createSONAFactory(services) {
     log.debug('SONA state load skipped', { error: e.message });
   }
 
-  log.debug('SONA ready', { adaptationRate: 0.236 });
+  // P4: Start adaptation loop (was never called — timer dormant)
+  sona.start();
+
+  log.debug('SONA ready + started', { adaptationRate: 0.236 });
   return sona;
 }
 
