@@ -170,7 +170,9 @@ export class UserLearningProfilesRepository extends BaseRepository {
    * Get profile summary for learning
    */
   async getSummary(userId) {
-    const profile = await this.findByUserId(userId);
+    const userIdUUID = await this._findUserUUID(userId);
+    if (!userIdUUID) return null;
+    const profile = await this.findByUserId(userIdUUID);
     if (!profile) return null;
 
     const accuracy = profile.total_feedback > 0

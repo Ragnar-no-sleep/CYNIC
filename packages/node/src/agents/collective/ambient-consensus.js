@@ -147,6 +147,12 @@ export class AmbientConsensus {
   async _onPreToolUse(event) {
     const { tool, input, confidence = 1.0 } = event.payload || {};
 
+    // Skip if tool is undefined (malformed event)
+    if (!tool || typeof tool !== 'string') {
+      log.debug('PreToolUse skipped — tool undefined or not a string', { tool });
+      return { blocked: false };
+    }
+
     try {
       // 1. Guardian safety check (always)
       if (this.pack.guardian?.checkCommand) {
@@ -198,6 +204,12 @@ export class AmbientConsensus {
    */
   async _onPostToolUse(event) {
     const { tool, result, success, error } = event.payload || {};
+
+    // Skip if tool is undefined (malformed event)
+    if (!tool || typeof tool !== 'string') {
+      log.debug('PostToolUse skipped — tool undefined or not a string', { tool });
+      return;
+    }
 
     try {
       // 1. Analyst analysis (always)

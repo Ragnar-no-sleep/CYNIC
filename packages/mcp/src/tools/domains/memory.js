@@ -255,6 +255,14 @@ export function createMemoryStoreTool(memoryRetriever) {
       }
 
       try {
+        if (!type) {
+          return {
+            success: false,
+            error: 'Missing required parameter: type (must be "memory", "decision", or "lesson")',
+            timestamp: Date.now(),
+          };
+        }
+
         let result;
 
         switch (type) {

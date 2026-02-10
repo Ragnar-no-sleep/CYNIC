@@ -1069,6 +1069,7 @@ export class CollectiveGuardian extends BaseAgent {
    * @private
    */
   _getCommandKey(command) {
+    if (!command || typeof command !== 'string') return '';
     // Normalize by removing arguments and keeping command base
     return command.split(/\s+/).slice(0, 2).join(' ').toLowerCase();
   }

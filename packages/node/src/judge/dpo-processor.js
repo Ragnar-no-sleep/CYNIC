@@ -69,6 +69,12 @@ export class DPOProcessor {
     };
 
     try {
+      // Bail if no repo available (pool may not be initialized)
+      if (!this.feedbackRepo?.findUnapplied) {
+        log.debug('DPOProcessor', 'No feedbackRepo available — skipping');
+        return result;
+      }
+
       // Get unapplied feedback with judgment data
       const feedback = await this.feedbackRepo.findUnapplied(this.batchSize);
 
