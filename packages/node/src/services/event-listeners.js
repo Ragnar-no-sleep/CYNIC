@@ -1606,6 +1606,28 @@ export function startEventListeners(options = {}) {
       }
     );
     _unsubscribers.push(unsubCodeDecision);
+
+    // 3c⅛. CodeDecider.outcome_recorded → persist calibration to unified_signals (C1.3 calibration loop)
+    codeDecider.on('outcome_recorded', (entry) => {
+      try {
+        if (persistence?.query) {
+          const id = `cdo_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+          persistence.query(`
+            INSERT INTO unified_signals (id, source, session_id, input, outcome, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6)
+          `, [
+            id, 'code_calibration', context.sessionId || null,
+            JSON.stringify({ decisionType: entry.decisionType, judgmentId: entry.judgmentId }),
+            JSON.stringify({ result: entry.result, successRate: entry.successRate }),
+            JSON.stringify({ confidence: entry.confidence, adjustment: entry.adjustment }),
+          ]).catch(err => {
+            log.debug('Code calibration persistence failed', { error: err.message });
+          });
+        }
+      } catch (err) {
+        log.debug('CodeDecider outcome_recorded handler error', { error: err.message });
+      }
+    });
   }
 
   // 3c½. CODE_DECISION → CodeActor: Execute advisory action from code decisions (C1.4)
@@ -1654,6 +1676,49 @@ export function startEventListeners(options = {}) {
       }
     );
     _unsubscribers.push(unsubCodeAction);
+
+    // 3c⅜. CodeActor debt + response → persist to unified_signals (C1.4 feedback loop)
+    codeActor.on('action', (result) => {
+      try {
+        if (result.type === 'log_debt' && persistence?.query) {
+          const id = `cdt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+          persistence.query(`
+            INSERT INTO unified_signals (id, source, session_id, input, outcome, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6)
+          `, [
+            id, 'code_debt', context.sessionId || null,
+            JSON.stringify({ actionType: result.type, urgency: result.urgency }),
+            JSON.stringify({ message: result.message }),
+            JSON.stringify({ judgmentId: result.context?.judgmentId }),
+          ]).catch(err => {
+            log.debug('Code debt persistence failed', { error: err.message });
+          });
+        }
+      } catch (err) {
+        log.debug('CodeActor action handler error', { error: err.message });
+      }
+    });
+
+    codeActor.on('response', (resp) => {
+      try {
+        if (persistence?.query) {
+          const id = `car_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+          persistence.query(`
+            INSERT INTO unified_signals (id, source, session_id, input, outcome, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6)
+          `, [
+            id, 'code_action_response', context.sessionId || null,
+            JSON.stringify({ actionType: resp.type }),
+            JSON.stringify({ response: resp.response }),
+            JSON.stringify({}),
+          ]).catch(err => {
+            log.debug('Code action response persistence failed', { error: err.message });
+          });
+        }
+      } catch (err) {
+        log.debug('CodeActor response handler error', { error: err.message });
+      }
+    });
   }
 
   // 3c¾. CODE_DECISION → CodeLearner: Register decisions for feedback matching (C1.5)
@@ -1973,6 +2038,22 @@ export function startEventListeners(options = {}) {
           const summary = humanAccountant.endSession();
           _stats.humanSessionsTracked++;
 
+          // Persist session summary to unified_signals (C5.6 persistence)
+          if (persistence?.query && summary) {
+            const id = `hs_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            persistence.query(`
+              INSERT INTO unified_signals (id, source, session_id, input, outcome, metadata)
+              VALUES ($1, $2, $3, $4, $5, $6)
+            `, [
+              id, 'human_accounting', context.sessionId || null,
+              JSON.stringify({ durationMs: summary.durationMs, tasksCompleted: summary.tasksCompleted, tasksAttempted: summary.tasksAttempted }),
+              JSON.stringify({ efficiency: summary.efficiency, productivityRating: summary.productivityRating }),
+              JSON.stringify({ topActivities: summary.topActivities, toolsUsed: summary.toolsUsed }),
+            ]).catch(err => {
+              log.debug('Human accounting persistence failed', { error: err.message });
+            });
+          }
+
           // Feed session summary to HumanEmergence for pattern analysis (C5.7 boost)
           if (humanEmergence && summary) {
             try {
@@ -2008,9 +2089,8 @@ export function startEventListeners(options = {}) {
           else if (itemType.includes('doc')) activityType = 'documentation';
           else if (itemType.includes('plan')) activityType = 'planning';
 
-          if (humanAccountant.recordActivity) {
-            humanAccountant.recordActivity(activityType, 60000); // Estimate ~1min per judgment
-          }
+          humanAccountant.startActivity(activityType, { source: 'judgment', estimatedMs: 60000 });
+          humanAccountant.endActivity({ completed: true, source: 'judgment' });
           _stats.humanActivitiesRecorded++;
         } catch (err) {
           log.debug('HumanAccountant.recordActivity failed', { error: err.message });
@@ -2027,9 +2107,7 @@ export function startEventListeners(options = {}) {
           const { type } = event.payload || {};
           if (!type) return;
           const success = type === 'positive';
-          if (humanAccountant.recordCompletion) {
-            humanAccountant.recordCompletion(success);
-          }
+          humanAccountant.recordTask(success, { feedbackType: type, reason });
         } catch (err) {
           log.debug('HumanAccountant.recordCompletion failed', { error: err.message });
         }
@@ -2441,7 +2519,30 @@ export function startEventListeners(options = {}) {
     }, 34 * 60 * 1000); // F9 = 34 minutes
     _humanEmergenceInterval.unref();
 
-    log.info('HumanEmergence (C5.7) wired to CYNIC_STATE + F9 interval');
+    // 4d2. HumanEmergence.pattern_detected → persist to unified_signals (C5.7 persistence)
+    humanEmergence.on('pattern_detected', (pattern) => {
+      try {
+        if (persistence?.query) {
+          const id = `hep_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+          persistence.query(`
+            INSERT INTO unified_signals (id, source, session_id, input, outcome, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6)
+          `, [
+            id, 'human_emergence', context.sessionId || null,
+            JSON.stringify({ patternType: pattern.type, significance: pattern.significance }),
+            JSON.stringify({ confidence: pattern.confidence, message: pattern.message }),
+            JSON.stringify(pattern.data || {}),
+          ]).catch(err => {
+            log.debug('Human emergence pattern persistence failed', { error: err.message });
+          });
+        }
+        _stats.humanEmergencePatterns++;
+      } catch (err) {
+        log.debug('HumanEmergence pattern_detected handler error', { error: err.message });
+      }
+    });
+
+    log.info('HumanEmergence (C5.7) wired to CYNIC_STATE + F9 interval + pattern persistence');
   }
 
   // 4e. DOG_EVENT + CONSENSUS_COMPLETED → CynicEmergence: Feed Dog behavior data (C6.7)
