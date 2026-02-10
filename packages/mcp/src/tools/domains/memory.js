@@ -323,12 +323,13 @@ export function createMemoryStoreTool(memoryRetriever) {
 
           default: {
             // Treat unrecognized types (file_modified, session_learning, etc.) as memory entries
+            // Map to 'insight' — DB CHECK constraint only allows: summary, key_moment, decision, preference, correction, insight
             const content = params.content;
             if (!content) throw new Error(`content required for type "${type}"`);
 
-            result = await memoryRetriever.rememberConversation(userId, type, content, {
+            result = await memoryRetriever.rememberConversation(userId, 'insight', content, {
               importance: params.importance || params.confidence || 0.5,
-              context: params.context || {},
+              context: { ...params.context, originalType: type },
             });
             break;
           }
