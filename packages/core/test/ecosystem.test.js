@@ -57,7 +57,7 @@ describe('ECOSYSTEM_CONSTANTS', () => {
   });
 
   it('should have Fibonacci max sources', () => {
-    assert.strictEqual(ECOSYSTEM_CONSTANTS.MAX_SOURCES, 13);
+    assert.strictEqual(ECOSYSTEM_CONSTANTS.MAX_SOURCES, 21); // F(8) — Solana + $asdfasdfa
   });
 });
 

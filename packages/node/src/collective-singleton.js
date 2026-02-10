@@ -23,7 +23,7 @@
 
 'use strict';
 
-import { createLogger, PHI_INV, globalEventBus, EventType } from '@cynic/core';
+import { createLogger, PHI_INV, globalEventBus, EventType, EcosystemMonitor } from '@cynic/core';
 import { createCollectivePack } from './agents/collective/index.js';
 import { SharedMemory } from './memory/shared-memory.js';
 import { getQLearningService } from './orchestration/learning-service.js';
@@ -267,6 +267,13 @@ let _heartbeatService = null;
  * @type {import('@cynic/persistence').EWCConsolidationService|null}
  */
 let _ewcService = null;
+
+/**
+ * AXE DISTRIBUTION: EcosystemMonitor singleton
+ * Tracks $asdfasdfa ecosystem repos via GitHub API (derived from ECOSYSTEM_SEED)
+ * @type {EcosystemMonitor|null}
+ */
+let _ecosystemMonitor = null;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // DEFAULT OPTIONS
@@ -1065,6 +1072,21 @@ export async function getCollectivePackAsync(options = {}) {
       }
     }
 
+    // AXE DISTRIBUTION: Initialize EcosystemMonitor with $asdfasdfa repos
+    // Tracks all ecosystem repos via GitHub API (derived from ECOSYSTEM_SEED)
+    if (!_ecosystemMonitor) {
+      try {
+        _ecosystemMonitor = new EcosystemMonitor();
+        _ecosystemMonitor.registerAsdfasdfaDefaults();
+        log.info('EcosystemMonitor wired with $asdfasdfa defaults', {
+          sources: _ecosystemMonitor.sources.size,
+        });
+      } catch (err) {
+        log.warn('EcosystemMonitor initialization failed (non-blocking)', { error: err.message });
+        _ecosystemMonitor = null;
+      }
+    }
+
     // AXE 6 (EMERGE): Initialize EmergenceDetector for cross-session pattern analysis
     // Detects recurring mistakes, successful strategies, user preferences, workflow patterns
     // from data graves (dog_events, consensus_votes, collective_snapshots, judgments, etc.)
@@ -1526,6 +1548,7 @@ export function getSingletonStatus() {
     solanaWatcherRunning: _solanaWatcher?._isRunning || false,
     ewcServiceRunning: !!_ewcService?.consolidationTimer,
     ewcStats: _ewcService?.stats || null,
+    ecosystemMonitorSources: _ecosystemMonitor?.sources?.size || 0,
   };
 }
 
@@ -1536,6 +1559,15 @@ export function getSingletonStatus() {
  */
 export function getSolanaWatcherSingleton() {
   return _solanaWatcher;
+}
+
+/**
+ * Get EcosystemMonitor singleton (if initialized)
+ *
+ * @returns {EcosystemMonitor|null} Monitor or null
+ */
+export function getEcosystemMonitorSingleton() {
+  return _ecosystemMonitor;
 }
 
 /**
@@ -1629,6 +1661,9 @@ export function _resetForTesting() {
     _heartbeatService = null;
   }
   _consciousnessBridge = null;
+
+  // AXE DISTRIBUTION: EcosystemMonitor
+  _ecosystemMonitor = null;
 
   // Human symbiosis singletons
   _humanAdvisor = null;

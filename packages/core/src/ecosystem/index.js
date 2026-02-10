@@ -16,6 +16,7 @@
 'use strict';
 
 import { PHI_INV, PHI_INV_2 } from '../axioms/constants.js';
+import { ECOSYSTEM_SEED } from './asdfasdfa-ecosystem.js';
 
 // =============================================================================
 // CONSTANTS
@@ -34,8 +35,8 @@ export const ECOSYSTEM_CONSTANTS = {
   /** Relevance decay factor (φ⁻²) */
   RELEVANCE_DECAY: PHI_INV_2,
 
-  /** Max sources to track (Fib(7) = 13) */
-  MAX_SOURCES: 13,
+  /** Max sources to track (Fib(8) = 21) */
+  MAX_SOURCES: 21,
 };
 
 // =============================================================================
@@ -735,13 +736,15 @@ export class EcosystemMonitor {
       }
     }
 
-    // Strategy 3: Known ecosystem relations (hardcoded for Solana)
+    // Strategy 3: Known ecosystem relations (Solana + $asdfasdfa from seed)
     const knownRelations = {
       'solana-labs': ['solana-program-library', 'solana-pay', 'wallet-adapter'],
       'helius-labs': ['das-api', 'xray'],
       'coral-xyz': ['backpack', 'sealevel-tools'],
       'metaplex-foundation': ['js', 'mpl-token-metadata', 'sugar'],
       'jup-ag': ['jupiter-quote-api', 'jupiter-swap-api'],
+      // $asdfasdfa ecosystem — derived from ECOSYSTEM_SEED
+      ...ECOSYSTEM_SEED,
     };
 
     for (const [org, repos] of Object.entries(knownRelations)) {
@@ -814,6 +817,24 @@ export class EcosystemMonitor {
       trackCommits: false,
     });
 
+    return this.listSources();
+  }
+
+  /**
+   * Register $asdfasdfa ecosystem sources (derived from ECOSYSTEM_SEED)
+   * Tracks all builders × repos from the single seed file.
+   */
+  registerAsdfasdfaDefaults() {
+    for (const [owner, repos] of Object.entries(ECOSYSTEM_SEED)) {
+      for (const repo of repos) {
+        try {
+          this.trackGitHubRepo(owner, repo, { trackCommits: true });
+        } catch {
+          // MAX_SOURCES reached — stop gracefully
+          return this.listSources();
+        }
+      }
+    }
     return this.listSources();
   }
 }

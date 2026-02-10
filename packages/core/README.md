@@ -18,23 +18,27 @@ import { timerTracker } from '@cynic/core';
 
 ## API Reference
 
+### Constants
+
+`ECOSYSTEM_SEED`
+
 ### Functions
 
 `timerTracker`
 
 ## Stats
 
-- **Source files**: 54
+- **Source files**: 55
 - **Test files**: 22
-- **Test ratio**: 41%
-- **Exports**: 1 named
+- **Test ratio**: 40%
+- **Exports**: 2 named
 
 ## Dimensions (4 Axioms)
 
 ```
-[████░░░░░░] 41% φ (Confidence)
+[████░░░░░░] 40% φ (Confidence)
 [█████░░░░░] 50% Verify
-[██████░░░░] 62% Culture
+[█████░░░░░] 50% Culture
 [██████░░░░] 62% Burn (Simplicity)
 [░░░░░░░░░░]  0% Emergence
 ```

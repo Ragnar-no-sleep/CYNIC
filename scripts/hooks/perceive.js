@@ -400,7 +400,7 @@ function calculateCYNICDistance({ brainThought, patterns, routing, tierDecision,
   return { distance, level, breakdown };
 }
 
-function generateFramingDirective(D, brainThought, routing, patterns, promptType, profile, { consciousnessState, voteSummary, tierDecision } = {}) {
+function generateFramingDirective(D, brainThought, routing, patterns, promptType, profile, { consciousnessState, voteSummary, tierDecision, ecosystemStatus } = {}) {
   // Only frame when CYNIC is awake (D >= φ⁻² = 38.2%)
   if (D.distance < PHI_INV_2) return null;
 
@@ -480,6 +480,14 @@ function generateFramingDirective(D, brainThought, routing, patterns, promptType
     }
   } else {
     lines.push('   Conscience: no read-back (first session or stale)');
+  }
+
+  // Ecosystem: distribution awareness (when available)
+  if (ecosystemStatus?.sources?.length > 0) {
+    const sources = ecosystemStatus.sources;
+    const total = sources.length;
+    const withUpdates = sources.filter(s => s.lastFetch).length;
+    lines.push(`   Ecosystem: ${total} sources tracked, ${withUpdates} fetched`);
   }
 
   // Frame: approach directive (maps to dominant axiom)
@@ -914,13 +922,28 @@ async function main() {
 
     let complexityResult = null;
     let optimizeResult = null;
+    let ecosystemStatus = null;
 
     const hasCodeBlocks = /```[\s\S]*?```/.test(prompt);
     const estimatedTokens = Math.ceil(prompt.length / 4);
     const hasRepetition = /((?:\b\w+\b.*?){3,})\1/.test(prompt);
 
-    // Launch both MCP calls in parallel (independent of each other)
+    // Launch MCP calls in parallel (independent of each other)
     const mcpPromises = [];
+
+    // Ecosystem awareness: every 5th prompt or when prompt mentions ecosystem/ship/deploy
+    const promptCount = temporalState.promptCount || 1;
+    const ecosystemKeywords = /\b(ecosystem|distribution|ship|deploy|skills\.sh|github|render|status|cockpit)\b/i;
+    if (promptCount % 5 === 1 || ecosystemKeywords.test(prompt)) {
+      mcpPromises.push(
+        raceTimeout(
+          callBrainTool('brain_ecosystem_monitor', {
+            action: 'sources',
+          }).catch(() => null),
+          MCP_TOOL_TIMEOUT
+        ).then(r => { ecosystemStatus = r; })
+      );
+    }
 
     if (prompt.length > 500 || hasCodeBlocks) {
       mcpPromises.push(
@@ -1547,7 +1570,7 @@ async function main() {
       framingDirective = generateFramingDirective(
         cynicDistance, brainThought, routing, patterns,
         detectPromptType(prompt), profile,
-        { consciousnessState, voteSummary, tierDecision },
+        { consciousnessState, voteSummary, tierDecision, ecosystemStatus },
       );
 
       logger.debug('CYNIC Distance', {

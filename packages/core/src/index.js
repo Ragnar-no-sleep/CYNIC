@@ -44,6 +44,7 @@ export * from './triggers/index.js';
 
 // Ecosystem Monitor (external sources → updates → E-Score)
 export * from './ecosystem/index.js';
+export { ECOSYSTEM_SEED } from './ecosystem/asdfasdfa-ecosystem.js';
 
 // Custom Error Types (programmatic error handling)
 export * from './errors.js';

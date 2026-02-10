@@ -31,6 +31,7 @@ export function createEcosystemMonitorTool(options = {}) {
   const getMonitor = () => {
     if (!monitorInstance) {
       monitorInstance = new EcosystemMonitor();
+      monitorInstance.registerAsdfasdfaDefaults();
     }
     return monitorInstance;
   };
@@ -317,12 +318,15 @@ Actions:
         }
 
         case 'defaults': {
-          const sources = monitor.registerSolanaDefaults();
+          const solanaSources = monitor.registerSolanaDefaults();
+          const asdfSources = monitor.registerAsdfasdfaDefaults();
 
           return {
-            sources,
-            total: sources.length,
-            message: '*tail wag* Solana ecosystem defaults registered',
+            sources: asdfSources,
+            solana: solanaSources.length,
+            asdfasdfa: asdfSources.length - solanaSources.length,
+            total: asdfSources.length,
+            message: `*tail wag* Ecosystem defaults registered (Solana: ${solanaSources.length}, $asdfasdfa: ${asdfSources.length - solanaSources.length})`,
             timestamp: Date.now(),
           };
         }
