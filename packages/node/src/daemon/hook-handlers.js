@@ -2,7 +2,9 @@
  * CYNIC Daemon Hook Handlers
  *
  * Pure functions that handle hook events using in-memory singletons.
- * No imports, no file I/O for state, no MCP calls — all state is in RAM.
+ * No MCP calls — all state is in RAM. Events flow to downstream consumers.
+ *
+ * Phase 3: Full digest migration from scripts/hooks/digest.js (1213 lines → daemon)
  *
  * "Le chien pense vite quand il vit déjà" - CYNIC
  *
@@ -19,6 +21,8 @@ import { contextCompressor } from '../services/context-compressor.js';
 import { injectionProfile } from '../services/injection-profile.js';
 import { getCostLedger } from '../accounting/cost-ledger.js';
 import { getModelIntelligence } from '../learning/model-intelligence.js';
+import { getQLearningService } from '../orchestration/learning-service.js';
+import { formatRichBanner, formatDigestMarkdown, saveDigest } from './digest-formatter.js';
 
 const log = createLogger('DaemonHandlers');
 
@@ -312,6 +316,7 @@ const RALPH_STATE_FILE = '.claude/ralph-loop.local.md';
  *
  * Phase 1: Ralph-loop check — can BLOCK the stop if a loop is active.
  * Phase 2: Response quality judgment + session digest (non-blocking).
+ * Phase 3: Q-Learning endEpisode + markdown export + rich banner.
  *
  * @param {Object} hookInput - Stop context (transcript_path, etc.)
  * @returns {Promise<Object>} { continue: true } or { decision: 'block', reason: string }
@@ -329,18 +334,34 @@ async function handleStop(hookInput) {
   }
 
   // Phase 2: Response digest (non-blocking — always continues)
-  const digest = buildSessionDigest(hookInput);
+  const digest = await buildSessionDigest(hookInput);
 
-  // Emit SESSION_ENDED for learning loops
+  // Phase 3: Q-Learning endEpisode + flush
+  await endQLearningEpisode(digest);
+
+  // Emit rich SESSION_ENDED for downstream consumers
   try {
     globalEventBus.emit(EventType.SESSION_ENDED || 'session:ended', {
       type: 'session_ended',
-      digest,
+      digest: {
+        identity: digest.identity,
+        sessionStats: digest.sessionStats,
+        qLearning: digest.qLearning,
+      },
       timestamp: Date.now(),
     });
   } catch { /* non-blocking */ }
 
-  // Return with optional digest message
+  // Export markdown digest to ~/.cynic/digests/
+  try {
+    const markdown = formatDigestMarkdown(digest);
+    const savedPath = saveDigest(markdown);
+    if (savedPath) {
+      log.debug('Digest exported', { path: savedPath });
+    }
+  } catch { /* non-blocking — never block session end */ }
+
+  // Return with rich digest banner
   if (digest.banner) {
     return { continue: true, message: digest.banner };
   }
@@ -535,22 +556,24 @@ function cleanupRalphState() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SESSION DIGEST — Response quality + session stats
+// SESSION DIGEST — Response quality + session stats + Q-Learning
+// Replaces scripts/hooks/digest.js (1213 lines → daemon-native)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * Build a session digest for the Stop event.
+ * Build a full session digest for the Stop event.
  *
- * Scores response quality, gathers session stats,
- * and formats a digest banner for console output.
+ * Scores response quality, gathers session stats from warm singletons,
+ * and formats a rich digest banner for console output.
  *
  * @param {Object} hookInput - { transcript_path, ... }
- * @returns {Object} Digest data with optional banner
+ * @returns {Promise<Object>} Digest data with optional banner
  */
-function buildSessionDigest(hookInput) {
+async function buildSessionDigest(hookInput) {
   const digest = {
     identity: null,
     sessionStats: null,
+    qLearning: null,
     banner: null,
   };
 
@@ -585,35 +608,96 @@ function buildSessionDigest(hookInput) {
     }
   } catch { /* non-blocking */ }
 
-  // 3. Format banner
-  digest.banner = formatDigestBanner(digest);
+  // 3. Q-Learning stats (if service is warm)
+  try {
+    const qlService = getQLearningService();
+    if (qlService) {
+      const stats = qlService.getStats();
+      digest.qLearning = {
+        states: stats.qTableStats?.states || 0,
+        episodes: stats.episodes || 0,
+        accuracy: stats.accuracy,
+        flushed: false,
+      };
+    }
+  } catch { /* non-blocking — Q-Learning may not be initialized */ }
+
+  // 4. Format rich banner (from digest-formatter)
+  try {
+    digest.banner = formatRichBanner(digest);
+  } catch {
+    // Fallback to compact banner if rich formatting fails
+    digest.banner = formatCompactBanner(digest);
+  }
 
   return digest;
 }
 
 /**
- * Format a concise digest banner for stderr output.
+ * End Q-Learning episode with session outcome, then flush to disk.
+ *
+ * Ported from scripts/hooks/digest.js (lines 1030-1073).
+ * The Q-Learning service tracks state→action→reward sequences;
+ * endEpisode closes the current episode with a terminal reward.
+ *
+ * @param {Object} digest - Digest data from buildSessionDigest()
+ */
+async function endQLearningEpisode(digest) {
+  try {
+    const qlService = getQLearningService();
+    if (!qlService) return;
+
+    // Build outcome from digest data
+    const cost = digest.sessionStats?.cost;
+    const identity = digest.identity;
+    const outcome = {
+      success: identity?.valid !== false,
+      confidence: identity?.compliance ?? 0.5,
+      qScore: Math.round((identity?.compliance ?? 0.5) * 100),
+      toolsUsed: cost?.operations ?? 0,
+      error: false,
+    };
+
+    // End episode
+    if (qlService.endEpisode) {
+      await qlService.endEpisode(outcome);
+    }
+
+    // Flush Q-table to disk
+    if (qlService.flush) {
+      await qlService.flush();
+      if (digest.qLearning) {
+        digest.qLearning.flushed = true;
+      }
+    }
+
+    log.debug('Q-Learning episode ended + flushed');
+  } catch (err) {
+    log.debug('Q-Learning endEpisode failed', { error: err.message });
+  }
+}
+
+/**
+ * Compact fallback banner (one-liner) when rich formatting fails.
  *
  * @param {Object} digest - From buildSessionDigest()
  * @returns {string|null} Formatted banner or null
  */
-function formatDigestBanner(digest) {
+function formatCompactBanner(digest) {
   const parts = [];
 
-  // Identity compliance
   if (digest.identity) {
     const { valid, compliance, violations, warnings } = digest.identity;
     if (!valid) {
       const violationSummary = violations.map(v => v.found || v.type).join(', ');
       parts.push(`Identity: ${violations.length} violations (${violationSummary})`);
-    } else if (warnings.length > 0) {
+    } else if (warnings?.length > 0) {
       parts.push(`Identity: warnings (${warnings.map(w => w.type).join(', ')})`);
     } else {
-      parts.push(`Identity: clean (${Math.round(compliance * 100)}%)`);
+      parts.push(`Identity: clean (${Math.round((compliance || 0) * 100)}%)`);
     }
   }
 
-  // Cost summary
   if (digest.sessionStats?.cost) {
     const { operations, cost, durationMinutes } = digest.sessionStats.cost;
     if (operations > 0) {
@@ -621,16 +705,7 @@ function formatDigestBanner(digest) {
     }
   }
 
-  // Model intelligence
-  if (digest.sessionStats?.modelIntelligence) {
-    const mi = digest.sessionStats.modelIntelligence;
-    if (mi.selectionsTotal > 0) {
-      parts.push(`Models: ${mi.selectionsTotal} selections, ${mi.downgrades} downgrades`);
-    }
-  }
-
   if (parts.length === 0) return null;
-
   return `*yawn* Session digest: ${parts.join(' | ')}`;
 }
 

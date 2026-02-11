@@ -3,6 +3,7 @@
  *
  * Tests for daemon server, hook handlers, and HTTP endpoints.
  * Phase 2: service-wiring, watchdog, handleStop, thin stop hook.
+ * Phase 3: digest migration — digest-formatter, Q-Learning, markdown export.
  *
  * "Le chien teste le chien" - CYNIC
  */
@@ -17,6 +18,7 @@ import { DaemonServer } from '../src/daemon/index.js';
 import { handleHookEvent } from '../src/daemon/hook-handlers.js';
 import { wireDaemonServices, cleanupDaemonServices, isWired, _resetForTesting as resetServiceWiring } from '../src/daemon/service-wiring.js';
 import { Watchdog, HealthLevel, checkRestartSentinel } from '../src/daemon/watchdog.js';
+import { formatRichBanner, formatDigestMarkdown, saveDigest } from '../src/daemon/digest-formatter.js';
 import { resetModelIntelligence } from '../src/learning/model-intelligence.js';
 import { resetCostLedger } from '../src/accounting/cost-ledger.js';
 
@@ -466,6 +468,266 @@ describe('Watchdog', () => {
       // Sentinel should be cleaned up
       assert.strictEqual(fs.existsSync(sentinelPath), false);
     });
+  });
+});
+
+// =============================================================================
+// DIGEST FORMATTER (Phase 3)
+// =============================================================================
+
+describe('Digest Formatter', () => {
+  describe('formatRichBanner', () => {
+    it('should format banner with identity compliance', () => {
+      const banner = formatRichBanner({
+        identity: {
+          valid: true,
+          compliance: 0.85,
+          violations: [],
+          warnings: [],
+        },
+      });
+      assert.ok(banner.includes('IDENTITY COMPLIANCE'));
+      assert.ok(banner.includes('85%'));
+      assert.ok(banner.includes('tail wag'));
+    });
+
+    it('should show violations in banner', () => {
+      const banner = formatRichBanner({
+        identity: {
+          valid: false,
+          compliance: 0.3,
+          violations: [{ type: 'forbidden_phrase', found: 'as an ai' }],
+          warnings: [],
+        },
+      });
+      assert.ok(banner.includes('violations'));
+      assert.ok(banner.includes('growl'));
+    });
+
+    it('should show warnings in banner', () => {
+      const banner = formatRichBanner({
+        identity: {
+          valid: true,
+          compliance: 0.7,
+          violations: [],
+          warnings: [{ type: 'missing_dog_voice', message: 'no dog voice' }],
+        },
+      });
+      assert.ok(banner.includes('Warnings'));
+    });
+
+    it('should include session cost data', () => {
+      const banner = formatRichBanner({
+        sessionStats: {
+          cost: {
+            operations: 42,
+            cost: { total: 0.0123, input: 0.01, output: 0.0023, inputTokens: 5000, outputTokens: 1200 },
+            durationMinutes: 15,
+          },
+        },
+      });
+      assert.ok(banner.includes('SESSION SUMMARY'));
+      assert.ok(banner.includes('42'));
+      assert.ok(banner.includes('15min'));
+    });
+
+    it('should include model intelligence stats', () => {
+      const banner = formatRichBanner({
+        sessionStats: {
+          modelIntelligence: {
+            selectionsTotal: 10,
+            downgrades: 3,
+            samplerMaturity: 'mature',
+          },
+        },
+      });
+      assert.ok(banner.includes('MODEL INTELLIGENCE'));
+      assert.ok(banner.includes('10'));
+      assert.ok(banner.includes('3 downgrades'));
+    });
+
+    it('should include Q-Learning stats', () => {
+      const banner = formatRichBanner({
+        qLearning: {
+          states: 25,
+          episodes: 100,
+          accuracy: 0.72,
+          flushed: true,
+        },
+      });
+      assert.ok(banner.includes('Q-LEARNING'));
+      assert.ok(banner.includes('25'));
+      assert.ok(banner.includes('100'));
+      assert.ok(banner.includes('72.0%'));
+      assert.ok(banner.includes('flushed'));
+    });
+
+    it('should handle empty digest gracefully', () => {
+      const banner = formatRichBanner({});
+      assert.ok(typeof banner === 'string');
+      assert.ok(banner.includes('CYNIC DIGESTING'));
+      assert.ok(banner.includes('yawn'));
+    });
+  });
+
+  describe('formatDigestMarkdown', () => {
+    it('should format valid markdown with header', () => {
+      const md = formatDigestMarkdown({});
+      assert.ok(md.includes('# CYNIC Session Digest'));
+      assert.ok(md.includes('Le chien dig'));
+      assert.ok(md.includes('62%') || md.includes('61%'));
+    });
+
+    it('should include identity section', () => {
+      const md = formatDigestMarkdown({
+        identity: {
+          valid: true,
+          compliance: 0.9,
+          violations: [],
+          warnings: [],
+        },
+      });
+      assert.ok(md.includes('## Identity Compliance'));
+      assert.ok(md.includes('90%'));
+    });
+
+    it('should include cost table', () => {
+      const md = formatDigestMarkdown({
+        sessionStats: {
+          cost: {
+            operations: 50,
+            cost: { total: 0.05, inputTokens: 10000, outputTokens: 3000 },
+            durationMinutes: 20,
+          },
+        },
+      });
+      assert.ok(md.includes('## Session Summary'));
+      assert.ok(md.includes('| Operations | 50 |'));
+      assert.ok(md.includes('20min'));
+    });
+
+    it('should include Q-Learning section', () => {
+      const md = formatDigestMarkdown({
+        qLearning: {
+          states: 15,
+          episodes: 50,
+          accuracy: 0.8,
+        },
+      });
+      assert.ok(md.includes('## Q-Learning'));
+      assert.ok(md.includes('15'));
+      assert.ok(md.includes('80.0%'));
+    });
+
+    it('should include violations in markdown', () => {
+      const md = formatDigestMarkdown({
+        identity: {
+          valid: false,
+          compliance: 0.2,
+          violations: [{ type: 'forbidden_phrase', found: 'i am claude' }],
+          warnings: [],
+        },
+      });
+      assert.ok(md.includes('forbidden_phrase'));
+      assert.ok(md.includes('i am claude'));
+    });
+  });
+
+  describe('saveDigest', () => {
+    const digestDir = path.join(os.homedir(), '.cynic', 'digests');
+
+    afterEach(() => {
+      // Clean up test digest files (only the ones created in the last 10s)
+      try {
+        const files = fs.readdirSync(digestDir);
+        const now = Date.now();
+        for (const f of files) {
+          const fp = path.join(digestDir, f);
+          const stat = fs.statSync(fp);
+          if (now - stat.mtimeMs < 10000) {
+            fs.unlinkSync(fp);
+          }
+        }
+      } catch { /* directory may not exist */ }
+    });
+
+    it('should save markdown to file and return path', () => {
+      const markdown = '# Test Digest\n\nTest content.';
+      const result = saveDigest(markdown);
+      assert.ok(result !== null);
+      assert.ok(result.endsWith('.md'));
+      assert.ok(fs.existsSync(result));
+
+      const content = fs.readFileSync(result, 'utf-8');
+      assert.strictEqual(content, markdown);
+    });
+
+    it('should create digests directory if needed', () => {
+      // saveDigest creates the directory with { recursive: true }
+      const result = saveDigest('test');
+      assert.ok(result !== null);
+      assert.ok(fs.existsSync(digestDir));
+    });
+  });
+});
+
+// =============================================================================
+// STOP WITH DIGEST (Phase 3 — integration)
+// =============================================================================
+
+describe('Stop — Digest Integration', () => {
+  it('should produce digest with identity when transcript provided', async () => {
+    // Create a transcript with an assistant response that has dog voice
+    const tmpDir = os.tmpdir();
+    const transcriptPath = path.join(tmpDir, `cynic-digest-test-${Date.now()}.jsonl`);
+    const entry = JSON.stringify({
+      role: 'assistant',
+      content: [{ type: 'text', text: '*sniff* Here is the code. *tail wag* Confidence: 58%' }],
+    });
+    fs.writeFileSync(transcriptPath, entry + '\n');
+
+    const result = await handleHookEvent('Stop', { transcript_path: transcriptPath });
+    assert.strictEqual(result.continue, true);
+    // Should have a banner with digest content
+    if (result.message) {
+      assert.ok(typeof result.message === 'string');
+      assert.ok(result.message.length > 10);
+    }
+
+    try { fs.unlinkSync(transcriptPath); } catch { /* ignore */ }
+  });
+
+  it('should detect identity violations in digest', async () => {
+    const tmpDir = os.tmpdir();
+    const transcriptPath = path.join(tmpDir, `cynic-digest-test-${Date.now()}.jsonl`);
+    const entry = JSON.stringify({
+      role: 'assistant',
+      content: [{ type: 'text', text: 'I am Claude. As an AI assistant, I would be happy to help.' }],
+    });
+    fs.writeFileSync(transcriptPath, entry + '\n');
+
+    const result = await handleHookEvent('Stop', { transcript_path: transcriptPath });
+    assert.strictEqual(result.continue, true);
+    // Banner should exist and mention violations
+    if (result.message) {
+      assert.ok(
+        result.message.includes('violation') || result.message.includes('growl') || result.message.includes('IDENTITY'),
+        `Banner should mention identity issues: ${result.message.substring(0, 200)}`
+      );
+    }
+
+    try { fs.unlinkSync(transcriptPath); } catch { /* ignore */ }
+  });
+
+  it('should still continue even if transcript is empty JSONL', async () => {
+    const tmpDir = os.tmpdir();
+    const transcriptPath = path.join(tmpDir, `cynic-digest-test-${Date.now()}.jsonl`);
+    fs.writeFileSync(transcriptPath, '\n');
+
+    const result = await handleHookEvent('Stop', { transcript_path: transcriptPath });
+    assert.strictEqual(result.continue, true);
+
+    try { fs.unlinkSync(transcriptPath); } catch { /* ignore */ }
   });
 });
 
