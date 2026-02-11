@@ -168,6 +168,46 @@ function parseFile(filePath) {
     extract('instanceSubscribe', 'global', 'sub');
   }
 
+  // Parameter bus: bus.emit('EVENT') / bus.publish('event') where bus is a function param
+  // e.g. circuit-breaker.js: wireEvents(breaker, bus, serviceType) { bus.emit('CIRCUIT_OPENED', ...) }
+  // Only count if the function signature takes 'bus' as parameter
+  const hasBusParam = /function\s+\w+\([^)]*\bbus\b[^)]*\)/.test(content);
+  if (hasBusParam) {
+    const paramBusRe = /\bbus\.(emit|publish)\(\s*['"]([^'"]+)['"]/g;
+    let m;
+    while ((m = paramBusRe.exec(content)) !== null) {
+      const event = m[2];
+      const line = lineOf(m[0]);
+      result.publishes.push({ event, bus: 'global', line, file: rel });
+    }
+  }
+
+  // Detect dynamic eventType from XxxEventType enum lookup patterns:
+  // const eventType = FilesystemEventType[...] || `perception:fs:${action}`;
+  // this.eventBus.publish(eventType, ...)
+  // If a file defines an EventType enum AND uses this.eventBus.publish(eventType),
+  // all enum values are potential publications.
+  if (usesGlobalBus) {
+    const hasDynamicPublish = /this\.eventBus\.(publish|emit)\(\s*eventType\b/.test(content);
+    if (hasDynamicPublish) {
+      // Find which EventType enum is used in the eventType assignment
+      const enumLookupMatch = content.match(/=\s*(\w+EventType)\[/);
+      if (enumLookupMatch) {
+        const enumName = enumLookupMatch[1];
+        const enumBlockRe = new RegExp('export const ' + enumName + '\\s*=\\s*\\{([\\s\\S]*?)\\};');
+        const enumBlockMatch = content.match(enumBlockRe);
+        if (enumBlockMatch) {
+          const defRe = /(\w+)\s*:\s*['"]([^'"]+)['"]/g;
+          let dm;
+          while ((dm = defRe.exec(enumBlockMatch[1])) !== null) {
+            const dynamicLine = lineOf('this.eventBus.publish(eventType') || lineOf('this.eventBus.emit(eventType');
+            result.publishes.push({ event: dm[2], bus: 'global', line: dynamicLine, file: rel });
+          }
+        }
+      }
+    }
+  }
+
   return result;
 }
 
@@ -567,6 +607,40 @@ const results = files.map(f => parseFile(f)).filter(Boolean);
 
 // 4. Build graph
 const graph = buildGraph(results, eventTypeMap);
+
+// 4b. Inject EventBusBridge synthetic publishers
+// The EventBusBridge forwards agent bus events → core bus events.
+// These are real publishers but invisible to static analysis.
+// Read the AGENT_TO_CORE mapping and inject synthetic "publisher" entries.
+try {
+  const bridgePath = resolve(ROOT, 'packages/node/src/services/event-bus-bridge.js');
+  const bridgeContent = readFileSync(bridgePath, 'utf8');
+  const bridgeRel = 'packages/node/src/services/event-bus-bridge.js';
+
+  // Extract AGENT_TO_CORE entries: [AgentEvent.FOO]: CoreEventType.BAR or 'literal'
+  const atcBlock = bridgeContent.match(/const AGENT_TO_CORE\s*=\s*\{([\s\S]*?)\};/);
+  if (atcBlock) {
+    const entryRe = /\]:\s*(?:CoreEventType\.(\w+)|['"]([^'"]+)['"])/g;
+    let m;
+    while ((m = entryRe.exec(atcBlock[1])) !== null) {
+      const coreConstant = m[1] ? `EventType.${m[1]}` : null;
+      const coreEvent = coreConstant ? (eventTypeMap[coreConstant] || coreConstant) : m[2];
+
+      if (!graph.events[coreEvent]) {
+        graph.events[coreEvent] = { publishers: [], subscribers: [], bus: ['global'] };
+      }
+      // Only add if not already a publisher (avoid double counting)
+      const alreadyPublished = graph.events[coreEvent].publishers.some(p => p.file === bridgeRel);
+      if (!alreadyPublished) {
+        graph.events[coreEvent].publishers.push({ file: bridgeRel, line: 0, bus: 'global' });
+        if (!graph.events[coreEvent].bus.includes('global')) {
+          graph.events[coreEvent].bus.push('global');
+        }
+        graph.buses.global.pubs++;
+      }
+    }
+  }
+} catch { /* bridge file not found — skip */ }
 
 // 5. Analyze
 const analysis = analyze(graph);
