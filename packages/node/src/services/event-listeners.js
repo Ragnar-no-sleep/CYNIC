@@ -146,6 +146,12 @@ let _humanJudgeInterval = null;
 /** @type {NodeJS.Timeout|null} CosmosJudge periodic health snapshot interval (F9=34min) */
 let _cosmosJudgeInterval = null;
 
+/** @type {NodeJS.Timeout|null} SocialJudge periodic assessment interval (F10=55min) */
+let _socialJudgeInterval = null;
+
+/** @type {NodeJS.Timeout|null} CynicJudge periodic self-assessment interval (F7=13min) */
+let _cynicJudgeInterval = null;
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // RETRY UTILITY
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -3446,6 +3452,511 @@ export function startEventListeners(options = {}) {
     log.info('CosmosAccountant (C7.6) wired to PATTERN_DETECTED for cross-domain tracking');
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 7. BROKEN CHAIN REPAIRS (social:capture→social:judgment, cynic:state→cynic:judgment, user:feedback→pattern:learned)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // 7a. SOCIAL_CAPTURE → social:judgment: Inline judgment of social interactions (C4.2)
+  // No dedicated SocialJudge module exists — inline lightweight scoring.
+  // Pattern: social captures → score quality/engagement → publish judgment → downstream (SocialDecider future)
+  if (socialAccountant) {
+    const unsubSocialJudgment = globalEventBus.subscribe(
+      EventType.SOCIAL_CAPTURE,
+      (event) => {
+        try {
+          const d = event.data || event.payload || {};
+          const tweets = d.tweets || [];
+          const users = d.users || [];
+          if (tweets.length === 0 && users.length === 0) return;
+
+          // Score: engagement volume + sentiment + reach
+          const totalEngagement = tweets.reduce((sum, t) =>
+            sum + (t.likes || 0) + (t.retweets || 0) + (t.replies || 0), 0);
+          const avgSentiment = tweets.length > 0
+            ? tweets.reduce((sum, t) => sum + (t.sentiment || 0), 0) / tweets.length
+            : 0;
+          const totalReach = tweets.reduce((sum, t) => sum + (t.impressions || t.likes || 0), 0)
+            + users.reduce((sum, u) => sum + (u.followers || 0), 0);
+
+          // φ-bounded score: normalize engagement + sentiment + reach
+          const engagementScore = Math.min(totalEngagement / 100, 1) * 0.4;
+          const sentimentScore = ((avgSentiment + 1) / 2) * 0.3; // normalize -1..1 → 0..1
+          const reachScore = Math.min(totalReach / 10000, 1) * 0.3;
+          const rawScore = (engagementScore + sentimentScore + reachScore) * 100;
+          const score = Math.min(rawScore, 61.8); // φ⁻¹ cap
+
+          const verdict = score > 50 ? 'HOWL' : score > 35 ? 'WAG' : score > 20 ? 'GROWL' : 'BARK';
+
+          globalEventBus.publish('social:judgment', {
+            cell: 'C4.2',
+            score,
+            verdict,
+            tweetCount: tweets.length,
+            userCount: users.length,
+            totalEngagement,
+            avgSentiment,
+            totalReach,
+            timestamp: Date.now(),
+          }, { source: 'event-listeners:SocialJudge' });
+
+          _stats.socialJudgments = (_stats.socialJudgments || 0) + 1;
+        } catch (err) {
+          log.debug('social:capture → social:judgment failed', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubSocialJudgment);
+    log.info('SocialJudge (C4.2) inline wired: SOCIAL_CAPTURE → social:judgment');
+  }
+
+  // 7a½. social:judgment → persist to unified_signals
+  if (persistence?.query) {
+    const unsubSocialJudgmentPersist = globalEventBus.subscribe(
+      'social:judgment',
+      (event) => {
+        try {
+          const d = event.payload || {};
+          const id = `soj_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+          persistence.query(`
+            INSERT INTO unified_signals (id, source, session_id, input, outcome, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6)
+          `, [
+            id, 'social_judgment', context.sessionId || null,
+            JSON.stringify({ tweets: d.tweetCount, users: d.userCount, engagement: d.totalEngagement }),
+            JSON.stringify({ score: d.score, verdict: d.verdict }),
+            JSON.stringify({ cell: 'C4.2', reach: d.totalReach, sentiment: d.avgSentiment }),
+          ]).catch(err => {
+            log.debug('social:judgment persistence failed', { error: err.message });
+          });
+        } catch (err) {
+          log.debug('social:judgment persist handler error', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubSocialJudgmentPersist);
+  }
+
+  // 7b. CYNIC_STATE → cynic:judgment: Self-assessment of collective health (C6.2)
+  // No dedicated CynicJudge module — inline scoring of collective state.
+  // Pattern: cynic state snapshots → score health/entropy/consensus → publish judgment
+  {
+    let cynicJudgeCounter = 0;
+    const unsubCynicJudgment = globalEventBus.subscribe(
+      EventType.CYNIC_STATE,
+      (event) => {
+        try {
+          cynicJudgeCounter++;
+          // Sample 1:5 (same rate as CYNIC_STATE persistence)
+          if (cynicJudgeCounter % 5 !== 0) return;
+
+          const d = event.payload || {};
+          const collective = d.collective || {};
+          const psychology = d.psychology || {};
+
+          // Score dimensions: collective health + consensus quality + dog diversity + low burnout
+          const health = collective.averageHealth || 0; // 0..1
+          const consensus = collective.consensusRate || 0; // 0..1
+          const activeDogs = collective.activeDogs || 0;
+          const dogDiversity = Math.min(activeDogs / 7, 1); // 7=L(4) ideal
+          const burnoutInverse = 1 - (psychology.burnoutRisk || psychology.frustration || 0); // lower burnout = better
+
+          const rawScore = (health * 0.3 + consensus * 0.25 + dogDiversity * 0.2 + burnoutInverse * 0.25) * 100;
+          const score = Math.min(rawScore, 61.8); // φ⁻¹ cap
+
+          const verdict = score > 50 ? 'HOWL' : score > 35 ? 'WAG' : score > 20 ? 'GROWL' : 'BARK';
+
+          globalEventBus.publish('cynic:judgment', {
+            cell: 'C6.2',
+            score,
+            verdict,
+            health,
+            consensus,
+            activeDogs,
+            burnoutRisk: 1 - burnoutInverse,
+            timestamp: Date.now(),
+          }, { source: 'event-listeners:CynicJudge' });
+
+          _stats.cynicJudgments = (_stats.cynicJudgments || 0) + 1;
+        } catch (err) {
+          log.debug('cynic:state → cynic:judgment failed', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubCynicJudgment);
+    log.info('CynicJudge (C6.2) inline wired: CYNIC_STATE → cynic:judgment (1:5 sampling)');
+  }
+
+  // 7b½. cynic:judgment → CynicDecider + persist (C6.2 downstream)
+  if (cynicDecider || persistence?.query) {
+    const unsubCynicJudgmentDown = globalEventBus.subscribe(
+      'cynic:judgment',
+      (event) => {
+        try {
+          const d = event.payload || {};
+
+          // Feed to CynicDecider if available
+          if (cynicDecider?.evaluate) {
+            cynicDecider.evaluate({
+              type: 'self_assessment',
+              score: d.score,
+              verdict: d.verdict,
+              health: d.health,
+              consensus: d.consensus,
+            });
+          }
+
+          // Persist
+          if (persistence?.query) {
+            const id = `cj_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            persistence.query(`
+              INSERT INTO unified_signals (id, source, session_id, input, outcome, metadata)
+              VALUES ($1, $2, $3, $4, $5, $6)
+            `, [
+              id, 'cynic_judgment', context.sessionId || null,
+              JSON.stringify({ health: d.health, consensus: d.consensus, dogs: d.activeDogs }),
+              JSON.stringify({ score: d.score, verdict: d.verdict }),
+              JSON.stringify({ cell: 'C6.2', burnoutRisk: d.burnoutRisk }),
+            ]).catch(err => {
+              log.debug('cynic:judgment persistence failed', { error: err.message });
+            });
+          }
+        } catch (err) {
+          log.debug('cynic:judgment downstream handler error', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubCynicJudgmentDown);
+  }
+
+  // 7c. USER_FEEDBACK → pattern:learned: Bridge feedback processing to learning events (C5.5→C6.5)
+  // CodeLearner processes feedback and persists, but never publishes pattern:learned.
+  // Bridge: when feedback produces a learning outcome, publish pattern:learned to globalEventBus.
+  {
+    const unsubFeedbackLearned = globalEventBus.subscribe(
+      EventType.USER_FEEDBACK,
+      (event) => {
+        try {
+          const { type, context: feedbackCtx, reason } = event.payload || {};
+          if (!type) return;
+
+          // Only emit pattern:learned for actionable feedback types
+          const learnableTypes = ['correct', 'incorrect', 'approve', 'reject', 'override'];
+          if (!learnableTypes.includes(type)) return;
+
+          globalEventBus.publish(EventType.PATTERN_LEARNED, {
+            source: 'user_feedback',
+            feedbackType: type,
+            reason: reason || null,
+            context: feedbackCtx || {},
+            confidence: type === 'correct' || type === 'approve' ? 0.618 : 0.382,
+            timestamp: Date.now(),
+          }, { source: 'event-listeners:FeedbackBridge' });
+
+          _stats.patternsLearned = (_stats.patternsLearned || 0) + 1;
+        } catch (err) {
+          log.debug('user:feedback → pattern:learned bridge failed', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubFeedbackLearned);
+    log.info('FeedbackBridge wired: USER_FEEDBACK → pattern:learned');
+  }
+
+  // 7c½. pattern:learned → unified_signals + homeostasis (downstream consumer)
+  // Without this subscriber, pattern:learned is an orphan event.
+  {
+    const unsubPatternLearned = globalEventBus.subscribe(
+      EventType.PATTERN_LEARNED,
+      (event) => {
+        try {
+          const d = event.payload || {};
+
+          // Feed learning confidence to homeostasis
+          if (homeostasis) {
+            homeostasis.update('patternLearningRate', d.confidence || 0.5);
+            _stats.homeostasisObservations++;
+          }
+
+          // Persist to unified_signals
+          if (persistence?.query) {
+            const id = `pl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            persistence.query(`
+              INSERT INTO unified_signals (id, source, session_id, input, outcome, metadata)
+              VALUES ($1, $2, $3, $4, $5, $6)
+            `, [
+              id, 'pattern_learned', context.sessionId || null,
+              JSON.stringify({ source: d.source, feedbackType: d.feedbackType }),
+              JSON.stringify({ confidence: d.confidence, reason: d.reason }),
+              JSON.stringify({ timestamp: d.timestamp }),
+            ]).catch(err => {
+              log.debug('pattern:learned persistence failed', { error: err.message });
+            });
+          }
+
+          _stats.patternsLearnedConsumed = (_stats.patternsLearnedConsumed || 0) + 1;
+        } catch (err) {
+          log.debug('pattern:learned consumer error', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubPatternLearned);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 8. ORPHAN EVENT CONSUMERS (events published but nobody subscribed)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // 8a. cynic:action → CynicAccountant: Track self-healing action costs (C6.4→C6.6)
+  // Pattern modeled on cosmos:action → CosmosAccountant (line ~2629)
+  if (cynicAccountant) {
+    const unsubCynicActionAccounting = globalEventBus.subscribe(
+      'cynic:action',
+      (event) => {
+        try {
+          const d = event.payload || {};
+          const actions = d.actions || [];
+          for (const action of actions) {
+            cynicAccountant.trackOperation(
+              'CynicActor',
+              action.type || 'self_heal',
+              { wasSuccessful: true, latencyMs: 0 },
+              { action: action.type, reason: action.reason }
+            );
+          }
+          _stats.cynicActionAccountingOps = (_stats.cynicActionAccountingOps || 0) + 1;
+        } catch (err) {
+          log.debug('cynic:action → CynicAccountant failed', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubCynicActionAccounting);
+    log.info('CynicAccountant (C6.6) wired to cynic:action');
+  }
+
+  // 8b. solana:action → SolanaAccountant: Track on-chain action costs (C2.4→C2.6)
+  if (solanaAccountant) {
+    const unsubSolanaActionAccounting = globalEventBus.subscribe(
+      'solana:action',
+      (event) => {
+        try {
+          const d = event.payload || {};
+          solanaAccountant.recordTransaction({
+            type: d.decision?.type || 'unknown',
+            success: d.decision?.executed ?? true,
+            fee: 0, // Fee tracked separately on actual TX
+          });
+          _stats.solanaActionAccountingOps = (_stats.solanaActionAccountingOps || 0) + 1;
+        } catch (err) {
+          log.debug('solana:action → SolanaAccountant failed', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubSolanaActionAccounting);
+    log.info('SolanaAccountant (C2.6) wired to solana:action');
+  }
+
+  // 8c. solana:learning → unified_signals + homeostasis (C2.5 downstream)
+  // Pattern modeled on code:learning handler (line ~1889)
+  {
+    const unsubSolanaLearning = globalEventBus.subscribe(
+      'solana:learning',
+      (event) => {
+        try {
+          const d = event.payload || {};
+          const updates = d.updates || [];
+
+          // Feed to homeostasis
+          if (homeostasis && updates.length > 0) {
+            homeostasis.update('solanaLearningRate', Math.min(updates.length / 5, 1));
+            _stats.homeostasisObservations++;
+          }
+
+          // Persist to unified_signals
+          if (persistence?.query && updates.length > 0) {
+            const id = `sl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            persistence.query(`
+              INSERT INTO unified_signals (id, source, session_id, input, outcome, metadata)
+              VALUES ($1, $2, $3, $4, $5, $6)
+            `, [
+              id, 'solana_learning', context.sessionId || null,
+              JSON.stringify({ cell: d.cell, updateCount: updates.length }),
+              JSON.stringify({ updates: updates.slice(0, 5) }), // cap payload
+              JSON.stringify({ dimension: 'SOLANA', analysis: 'LEARN' }),
+            ]).catch(err => {
+              log.debug('solana:learning persistence failed', { error: err.message });
+            });
+          }
+
+          _stats.solanaLearningConsumed = (_stats.solanaLearningConsumed || 0) + 1;
+        } catch (err) {
+          log.debug('solana:learning consumer error', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubSolanaLearning);
+  }
+
+  // 8d. solana:emergence → unified_signals + PATTERN_DETECTED bridge (C2.7 downstream)
+  // Emergence patterns should also flow into the PATTERN_DETECTED chain for CosmosJudge
+  {
+    const unsubSolanaEmergence = globalEventBus.subscribe(
+      'solana:emergence',
+      (event) => {
+        try {
+          const d = event.payload || {};
+          const patterns = d.patterns || [];
+
+          // Bridge significant patterns to PATTERN_DETECTED
+          for (const pattern of patterns) {
+            if (pattern.significance === 'high' || pattern.significance === 'critical') {
+              globalEventBus.publish(EventType.PATTERN_DETECTED, {
+                source: 'SolanaEmergence',
+                key: pattern.type || pattern.key || 'solana_anomaly',
+                significance: pattern.significance,
+                category: 'solana',
+                ...pattern,
+              }, { source: 'solana-emergence-bridge' });
+            }
+          }
+
+          // Persist to unified_signals
+          if (persistence?.query && patterns.length > 0) {
+            const id = `se_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            persistence.query(`
+              INSERT INTO unified_signals (id, source, session_id, input, outcome, metadata)
+              VALUES ($1, $2, $3, $4, $5, $6)
+            `, [
+              id, 'solana_emergence', context.sessionId || null,
+              JSON.stringify({ cell: d.cell, patternCount: patterns.length }),
+              JSON.stringify({ patterns: patterns.slice(0, 5) }),
+              JSON.stringify({ dimension: 'SOLANA', analysis: 'EMERGE' }),
+            ]).catch(err => {
+              log.debug('solana:emergence persistence failed', { error: err.message });
+            });
+          }
+
+          _stats.solanaEmergenceConsumed = (_stats.solanaEmergenceConsumed || 0) + 1;
+        } catch (err) {
+          log.debug('solana:emergence consumer error', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubSolanaEmergence);
+  }
+
+  // 8e. learning:signal → unified_signals (cross-domain learning archive)
+  // UnifiedSignalStore publishes complete signal objects — archive for analytics
+  if (persistence?.query) {
+    const unsubLearningSignal = globalEventBus.subscribe(
+      'learning:signal',
+      (event) => {
+        try {
+          const signal = event.payload || event;
+          if (!signal.id) return;
+
+          const id = `ls_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+          persistence.query(`
+            INSERT INTO unified_signals (id, source, session_id, input, outcome, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6)
+          `, [
+            id, 'learning_signal', context.sessionId || null,
+            JSON.stringify({ source: signal.source, input: signal.input }),
+            JSON.stringify({ outcome: signal.outcome, confidence: signal.learning?.confidence }),
+            JSON.stringify({ signalId: signal.id, canPair: signal.learning?.canPair }),
+          ]).catch(err => {
+            log.debug('learning:signal persistence failed', { error: err.message });
+          });
+
+          _stats.learningSignalsConsumed = (_stats.learningSignalsConsumed || 0) + 1;
+        } catch (err) {
+          log.debug('learning:signal consumer error', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubLearningSignal);
+  }
+
+  // 8f. learning:dpo_pair → preference_pairs + unified_signals (cross-domain DPO archive)
+  // Pattern modeled on codeLearner.on('dpo_pair') handler (line ~1851)
+  if (persistence?.query) {
+    const unsubLearningDpoPair = globalEventBus.subscribe(
+      'learning:dpo_pair',
+      (event) => {
+        try {
+          const pair = event.payload || event;
+          if (!pair.pairId) return;
+
+          // PRIMARY: Insert into preference_pairs (DPOOptimizer consumes)
+          persistence.query(`
+            INSERT INTO preference_pairs (chosen, rejected, context, context_type, confidence)
+            VALUES ($1, $2, $3, $4, $5)
+          `, [
+            JSON.stringify({ id: pair.chosenId }),
+            JSON.stringify({ id: pair.rejectedId }),
+            JSON.stringify({ source: 'UnifiedSignalStore', pairId: pair.pairId }),
+            'unified_signal',
+            0.5, // default confidence for auto-pairs
+          ]).catch(err => {
+            log.debug('learning:dpo_pair → preference_pairs failed', { error: err.message });
+          });
+
+          // ARCHIVE: Also insert into unified_signals
+          const id = `dp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+          persistence.query(`
+            INSERT INTO unified_signals (id, source, session_id, input, outcome, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6)
+          `, [
+            id, 'dpo_pair', context.sessionId || null,
+            JSON.stringify({ chosenId: pair.chosenId, rejectedId: pair.rejectedId }),
+            JSON.stringify({ paired: true }),
+            JSON.stringify({ pairId: pair.pairId }),
+          ]).catch(err => {
+            log.debug('learning:dpo_pair → unified_signals failed', { error: err.message });
+          });
+
+          _stats.dpoPairsConsumed = (_stats.dpoPairsConsumed || 0) + 1;
+        } catch (err) {
+          log.debug('learning:dpo_pair consumer error', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubLearningDpoPair);
+  }
+
+  // 8g. accounting:update → unified_signals (consolidated accounting archive)
+  // Multiple accountants publish this — archive all accounting updates
+  if (persistence?.query) {
+    const unsubAccountingUpdate = globalEventBus.subscribe(
+      EventType.ACCOUNTING_UPDATE,
+      (event) => {
+        try {
+          const d = event.payload || {};
+          const id = `au_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+          persistence.query(`
+            INSERT INTO unified_signals (id, source, session_id, input, outcome, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6)
+          `, [
+            id, 'accounting_update', context.sessionId || null,
+            JSON.stringify({ source: d.source, type: d.type }),
+            JSON.stringify({ interactions: d.interactions, value: d.value }),
+            JSON.stringify({ timestamp: Date.now() }),
+          ]).catch(err => {
+            log.debug('accounting:update persistence failed', { error: err.message });
+          });
+
+          _stats.accountingUpdatesConsumed = (_stats.accountingUpdatesConsumed || 0) + 1;
+        } catch (err) {
+          log.debug('accounting:update consumer error', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubAccountingUpdate);
+  }
+
+  if (socialAccountant || solanaAccountant || persistence?.query) {
+    log.info('Orphan event consumers wired: cynic:action, solana:action, solana:learning, solana:emergence, learning:signal, learning:dpo_pair, accounting:update');
+  }
+
   _started = true;
   _stats.startedAt = Date.now();
 
@@ -3788,6 +4299,14 @@ export function stopEventListeners() {
   if (_cosmosJudgeInterval) {
     clearInterval(_cosmosJudgeInterval);
     _cosmosJudgeInterval = null;
+  }
+  if (_socialJudgeInterval) {
+    clearInterval(_socialJudgeInterval);
+    _socialJudgeInterval = null;
+  }
+  if (_cynicJudgeInterval) {
+    clearInterval(_cynicJudgeInterval);
+    _cynicJudgeInterval = null;
   }
 
   _unsubscribers = [];

@@ -53,6 +53,10 @@ export const EventType = {
 
   // Social events (SOCIAL dimension)
   SOCIAL_CAPTURE: 'social:capture',
+  SOCIAL_JUDGMENT: 'social:judgment',
+
+  // Cynic self-judgment events (C6.2)
+  CYNIC_JUDGMENT: 'cynic:judgment',
 
   // Network/P2P events (PHASE 2: DECENTRALIZE)
   NODE_STARTED: 'node:started',
