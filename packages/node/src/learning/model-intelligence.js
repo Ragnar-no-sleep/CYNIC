@@ -196,8 +196,35 @@ export class ModelIntelligence extends EventEmitter {
       downgrades: 0,
     };
 
+    // Memory pressure handling
+    this._memoryPressure = false;
+
     // Load persisted state
     this._load();
+
+    // Wire event listeners
+    this._wireEvents();
+  }
+
+  /**
+   * Wire event listeners for memory-aware model selection.
+   * Closes orphan loop: daemon:memory:pressure → prefer lighter models
+   * @private
+   */
+  _wireEvents() {
+    globalEventBus.on('daemon:memory:pressure', (data) => {
+      const { heapRatio, heapUsedMB } = data;
+      this._memoryPressure = true;
+      log.warn('Memory pressure detected — preferring Haiku', {
+        heapRatio: (heapRatio * 100).toFixed(1) + '%',
+        heapUsedMB
+      });
+
+      // Reset pressure flag after 60s
+      setTimeout(() => {
+        this._memoryPressure = false;
+      }, 60_000);
+    });
   }
 
   // ===========================================================================
@@ -258,6 +285,18 @@ export class ModelIntelligence extends EventEmitter {
         model: ModelTier.HAIKU,
         reason: 'budget exhausted — forced minimum',
         confidence: phiBound(0.55),
+        experiment: null,
+        category,
+      };
+    }
+
+    // Memory pressure override: force Haiku to reduce heap usage
+    if (this._memoryPressure) {
+      this._stats.selectionsByModel.haiku++;
+      return {
+        model: ModelTier.HAIKU,
+        reason: 'memory pressure — forced Haiku',
+        confidence: phiBound(0.5),
         experiment: null,
         category,
       };

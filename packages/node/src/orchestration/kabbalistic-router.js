@@ -351,6 +351,49 @@ export class KabbalisticRouter {
       localResolutions: 0,
       costSaved: 0,
     };
+
+    // Degradation tracking for health-aware routing
+    this._healthDegraded = false;
+    this._healthLevel = 'healthy';
+    this._recommendedModel = null;
+
+    // Wire event listeners for health-aware routing
+    this._wireHealthEvents();
+  }
+
+  // ===========================================================================
+  // HEALTH-AWARE ROUTING (Wiring: daemon events → routing decisions)
+  // ===========================================================================
+
+  /**
+   * Wire event listeners for health-aware routing.
+   * Closes orphan loops: daemon:health:degraded, model:recommendation
+   * @private
+   */
+  _wireHealthEvents() {
+    // 1. daemon:health:degraded → force tier downgrade
+    globalEventBus.on('daemon:health:degraded', (data) => {
+      const { level, issues } = data;
+      this._healthDegraded = true;
+      this._healthLevel = level;
+
+      if (level === 'critical') {
+        log.warn('Health CRITICAL — forcing LOCAL tier', { issues: issues?.map(i => i.subsystem) });
+        // Force LOCAL tier (no LLM calls) on next route
+      } else if (level === 'warning') {
+        log.info('Health WARNING — preferring LIGHT tier', { issues: issues?.map(i => i.subsystem) });
+        // Prefer LIGHT tier (Haiku) on next route
+      }
+    });
+
+    // 2. model:recommendation → use budget-aware model suggestion
+    globalEventBus.on('model:recommendation', (data) => {
+      const { model, reason, budgetLevel } = data;
+      this._recommendedModel = model;
+      log.debug('Model recommendation received', { model, reason, budgetLevel });
+    });
+
+    log.debug('Health-aware routing events wired');
   }
 
   // ===========================================================================
@@ -420,7 +463,14 @@ export class KabbalisticRouter {
     let forcedTier = null;
     let throttleMs = 0;
 
-    if (budgetStatus.level === 'exhausted') {
+    // Health circuit breaker: daemon degradation overrides budget (highest priority)
+    if (this._healthLevel === 'critical') {
+      forcedTier = 'LOCAL'; // No LLM calls on critical health
+      log.warn('Health CRITICAL — forcing LOCAL tier (overrides budget)', { healthLevel: this._healthLevel });
+    } else if (this._healthLevel === 'warning') {
+      forcedTier = 'LIGHT'; // Haiku only on warning
+      log.info('Health WARNING — forcing LIGHT tier', { healthLevel: this._healthLevel });
+    } else if (budgetStatus.level === 'exhausted') {
       forcedTier = 'LOCAL'; // No LLM calls if exhausted
       log.warn('Budget EXHAUSTED — forcing LOCAL tier', { consumed: budgetStatus.consumedRatio });
     } else if (budgetStatus.level === 'critical') {

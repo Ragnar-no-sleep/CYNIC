@@ -1,0 +1,221 @@
+{
+  "generated": "2026-02-11T20:34:09.589Z",
+  "packages": [
+    {
+      "name": "@cynic/anchor",
+      "src": 8,
+      "tests": 3,
+      "deps": [
+        "@cynic/core"
+      ]
+    },
+    {
+      "name": "@cynic/burns",
+      "src": 4,
+      "tests": 4,
+      "deps": [
+        "@cynic/core"
+      ]
+    },
+    {
+      "name": "@cynic/core",
+      "src": 65,
+      "tests": 29,
+      "deps": []
+    },
+    {
+      "name": "@cynic/agent",
+      "src": 6,
+      "tests": 2,
+      "deps": [
+        "@cynic/core",
+        "@cynic/node"
+      ]
+    },
+    {
+      "name": "@cynic/emergence",
+      "src": 5,
+      "tests": 5,
+      "deps": [
+        "@cynic/core",
+        "@cynic/identity"
+      ]
+    },
+    {
+      "name": "@cynic/gasdf",
+      "src": 2,
+      "tests": 1,
+      "deps": [
+        "@cynic/core",
+        "@cynic/holdex"
+      ]
+    },
+    {
+      "name": "@cynic/gasdf-relayer",
+      "src": 4,
+      "tests": 1,
+      "deps": []
+    },
+    {
+      "name": "@cynic/holdex",
+      "src": 3,
+      "tests": 1,
+      "deps": [
+        "@cynic/core"
+      ]
+    },
+    {
+      "name": "@cynic/identity",
+      "src": 6,
+      "tests": 2,
+      "deps": [
+        "@cynic/core",
+        "@cynic/burns"
+      ]
+    },
+    {
+      "name": "@cynic/llm",
+      "src": 12,
+      "tests": 5,
+      "deps": [
+        "@cynic/core",
+        "@cynic/node"
+      ]
+    },
+    {
+      "name": "@cynic/mcp",
+      "src": 118,
+      "tests": 20,
+      "deps": [
+        "@cynic/core",
+        "@cynic/node",
+        "@cynic/observatory",
+        "@cynic/persistence"
+      ]
+    },
+    {
+      "name": "@cynic/node",
+      "src": 302,
+      "tests": 101,
+      "deps": [
+        "@cynic/anchor",
+        "@cynic/burns",
+        "@cynic/core",
+        "@cynic/emergence",
+        "@cynic/identity",
+        "@cynic/protocol"
+      ]
+    },
+    {
+      "name": "@cynic/observatory",
+      "src": 16,
+      "tests": 0,
+      "deps": [
+        "@cynic/core",
+        "@cynic/persistence"
+      ]
+    },
+    {
+      "name": "@cynic/persistence",
+      "src": 84,
+      "tests": 21,
+      "deps": []
+    },
+    {
+      "name": "@cynic/protocol",
+      "src": 26,
+      "tests": 8,
+      "deps": [
+        "@cynic/core"
+      ]
+    },
+    {
+      "name": "@cynic/zk",
+      "src": 3,
+      "tests": 1,
+      "deps": [
+        "@cynic/core"
+      ]
+    }
+  ],
+  "wiring": {
+    "publishers": 102,
+    "subscribers": 183,
+    "bridges": 3,
+    "bridgeRules": 11,
+    "uniqueEvents": 127
+  },
+  "daemon": {
+    "endpoints": 7,
+    "handlers": [
+      "UserPromptSubmit",
+      "PreToolUse",
+      "PostToolUse",
+      "SessionStart",
+      "SessionEnd",
+      "Stop",
+      "SubagentStart",
+      "SubagentStop",
+      "Error",
+      "Notification"
+    ],
+    "thinHooks": 10,
+    "standalone": 2
+  },
+  "cycle": {
+    "PERCEIVE": 1,
+    "JUDGE": 24,
+    "DECIDE": 30,
+    "ACT": 6,
+    "LEARN": 19,
+    "ACCOUNT": 9,
+    "EMERGE": 8
+  },
+  "singletons": [
+    "getSharedMemory",
+    "getReasoningBank",
+    "getDogStateEmitterSingleton",
+    "getLearningSchedulerSingleton",
+    "getUnifiedBridgeSingleton",
+    "getHumanAdvisorSingleton",
+    "getHumanLearningSingleton",
+    "getHumanAccountantSingleton",
+    "getHumanEmergenceSingleton",
+    "getCodeEmergenceSingleton",
+    "getCollectivePack",
+    "getQLearningServiceSingleton",
+    "getSingletonStatus",
+    "getCodeDeciderSingleton",
+    "getCodeActorSingleton",
+    "getCodeLearnerSingleton",
+    "getCynicAccountantSingleton",
+    "getCodeAccountantSingleton",
+    "getSocialDeciderSingleton",
+    "getSocialActorSingleton",
+    "getSocialAccountantSingleton",
+    "getSocialJudgeSingleton",
+    "getSocialLearnerSingleton",
+    "getCosmosAccountantSingleton",
+    "getCostLedgerSingleton",
+    "getModelIntelligenceSingleton",
+    "getHumanActorSingleton",
+    "getCynicActorSingleton",
+    "getCynicDeciderSingleton",
+    "getHomeostasisSingleton",
+    "getSolanaJudgeSingleton",
+    "getSolanaDeciderSingleton",
+    "getSolanaActorSingleton",
+    "getSolanaLearnerSingleton",
+    "getSolanaAccountantSingleton",
+    "getSolanaEmergenceSingleton",
+    "getCosmosJudgeSingleton",
+    "getCosmosDeciderSingleton",
+    "getCosmosActorSingleton",
+    "getCosmosLearnerSingleton",
+    "getCynicEmergenceSingleton",
+    "getSocialEmergenceSingleton",
+    "getCosmosEmergenceSingleton",
+    "getSolanaWatcherSingleton",
+    "getEcosystemMonitorSingleton"
+  ]
+}

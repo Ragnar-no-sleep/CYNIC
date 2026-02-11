@@ -23,7 +23,9 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
-import { PHI_INV, PHI_INV_2 } from '@cynic/core';
+import { PHI_INV, PHI_INV_2, globalEventBus, createLogger } from '@cynic/core';
+
+const log = createLogger('ContextCompressor');
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CONSTANTS
@@ -126,6 +128,63 @@ class ContextCompressor {
     // Session outcome history (persisted) — rolling window for backoff circuit breaker
     this._sessionOutcomes = []; // [{ ts, level, quality, errorRate, frustration }]
     this._backoffUntilSession = 0; // session count until which backoff is active
+
+    // Memory pressure handling
+    this._memoryPressure = false;
+
+    // Wire event listeners
+    this._wireEvents();
+  }
+
+  /**
+   * Wire event listeners for memory-aware compression.
+   * Closes orphan loop: daemon:memory:pressure → clear caches
+   * @private
+   */
+  _wireEvents() {
+    globalEventBus.on('daemon:memory:pressure', (data) => {
+      const { heapRatio, heapUsedMB } = data;
+      this._memoryPressure = true;
+      log.warn('Memory pressure detected — clearing compressor caches', {
+        heapRatio: (heapRatio * 100).toFixed(1) + '%',
+        heapUsedMB
+      });
+
+      // Clear non-critical caches
+      this._clearCaches();
+
+      // Reset pressure flag after 30s
+      setTimeout(() => {
+        this._memoryPressure = false;
+      }, 30_000);
+    });
+  }
+
+  /**
+   * Clear non-critical caches to free memory.
+   * @private
+   */
+  _clearCaches() {
+    // Clear topic history for infrequent topics (keep core perception)
+    const coreTopicKeys = ['framing_directive', 'consciousness_state', 'dog_routing'];
+    for (const [topic, data] of this._topics.entries()) {
+      if (!coreTopicKeys.includes(topic) && data.count < 5) {
+        this._topics.delete(topic);
+      }
+    }
+
+    // Clear old session outcomes (keep last 5)
+    if (this._sessionOutcomes.length > 5) {
+      this._sessionOutcomes = this._sessionOutcomes.slice(-5);
+    }
+
+    // Clear maturity signals (will be repopulated)
+    this._maturitySignals.clear();
+
+    log.info('ContextCompressor caches cleared', {
+      topicsRemaining: this._topics.size,
+      outcomesRemaining: this._sessionOutcomes.length
+    });
   }
 
   // ═══════════════════════════════════════════════════════════════════════
