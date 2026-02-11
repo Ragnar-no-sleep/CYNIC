@@ -306,6 +306,76 @@ describe('governor reset', () => {
 });
 
 // =============================================================================
+// Initial state (cross-process persistence)
+// =============================================================================
+
+describe('governor initialState', () => {
+  it('restores EMA from saved state', () => {
+    const gov = createPhiGovernor({ ema: 0.7 });
+    const state = gov.getState();
+    assert.equal(state.ema, 0.7);
+  });
+
+  it('restores adjustment factor', () => {
+    const gov = createPhiGovernor({ adjustmentFactor: 0.85 });
+    assert.equal(gov.getAdjustment(), 0.85);
+  });
+
+  it('restores consecutive counters', () => {
+    const gov = createPhiGovernor({ consecutiveHigh: 3, consecutiveLow: 0 });
+    const state = gov.getState();
+    assert.equal(state.consecutiveHigh, 3);
+    assert.equal(state.consecutiveLow, 0);
+  });
+
+  it('defaults when initialState is empty', () => {
+    const gov = createPhiGovernor({});
+    const state = gov.getState();
+    assert.equal(state.ema, SETPOINT);
+    assert.equal(state.adjustmentFactor, 1.0);
+  });
+
+  it('defaults when initialState is null-ish', () => {
+    const gov1 = createPhiGovernor();
+    const gov2 = createPhiGovernor(undefined);
+    assert.equal(gov1.getAdjustment(), 1.0);
+    assert.equal(gov2.getAdjustment(), 1.0);
+  });
+
+  it('round-trip: save getState → restore initialState', () => {
+    // Simulate: first process measures 5 over-influence readings
+    const gov1 = createPhiGovernor();
+    for (let i = 0; i < 5; i++) gov1.measure(800, 1000);
+    const saved = gov1.getState();
+
+    // Second process restores state
+    const gov2 = createPhiGovernor({
+      ema: saved.ema,
+      adjustmentFactor: saved.adjustmentFactor,
+      consecutiveHigh: saved.consecutiveHigh,
+      consecutiveLow: saved.consecutiveLow,
+    });
+
+    // Should have same EMA and adjustment
+    assert.equal(gov2.getState().ema, saved.ema);
+    assert.equal(gov2.getAdjustment(), saved.adjustmentFactor);
+    assert.equal(gov2.getState().consecutiveHigh, saved.consecutiveHigh);
+  });
+
+  it('restored governor continues adjusting correctly', () => {
+    // Over-influence state
+    const gov = createPhiGovernor({ ema: 0.75, adjustmentFactor: 0.9, consecutiveHigh: 3 });
+
+    // One more over-influence reading
+    gov.measure(800, 1000);
+
+    // Should reduce adjustment further
+    assert.ok(gov.getAdjustment() < 0.9, 'should continue reducing');
+    assert.equal(gov.getState().consecutiveHigh, 4);
+  });
+});
+
+// =============================================================================
 // Re-export
 // =============================================================================
 

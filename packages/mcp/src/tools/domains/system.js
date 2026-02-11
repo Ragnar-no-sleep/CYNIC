@@ -954,13 +954,13 @@ export function createCostTool() {
       properties: {
         action: {
           type: 'string',
-          enum: ['snapshot', 'burn_rate', 'budget', 'recommend', 'lifetime', 'estimate'],
-          description: 'Action: snapshot (all), burn_rate (velocity), budget (consumption), recommend (model suggestion), lifetime (cross-session), estimate (preview cost)',
+          enum: ['snapshot', 'burn_rate', 'budget', 'recommend', 'lifetime', 'estimate', 'model_intelligence'],
+          description: 'Action: snapshot (all), burn_rate (velocity), budget (consumption), recommend (LEARNED model suggestion via Thompson), lifetime (cross-session), estimate (preview cost), model_intelligence (affinity matrix + falsification hypotheses)',
         },
         taskType: {
           type: 'string',
-          enum: ['simple', 'moderate', 'complex'],
-          description: 'For recommend action: task complexity level',
+          enum: ['simple', 'moderate', 'complex', 'code_review', 'code_write', 'architecture', 'debug', 'security', 'knowledge', 'routing', 'default'],
+          description: 'For recommend: task type (ModelIntelligence categories). Legacy: simple/moderate/complex. Learned: code_review/code_write/architecture/debug/security/knowledge/routing/default',
         },
         needsReasoning: {
           type: 'boolean',
@@ -995,10 +995,41 @@ export function createCostTool() {
         }
 
         if (action === 'snapshot' || action === 'recommend') {
-          result.recommendation = costLedger.recommendModel({
-            taskType: params.taskType || 'moderate',
-            needsReasoning: params.needsReasoning || false,
-          });
+          // Try ModelIntelligence (learned) first, fallback to CostLedger (heuristic)
+          try {
+            const { getModelIntelligenceSingleton } = await import('@cynic/node/collective-singleton.js');
+            const mi = getModelIntelligenceSingleton();
+            if (mi) {
+              const budget = costLedger.getBudgetStatus();
+              const burnRate = costLedger.getBurnRate();
+              const selection = mi.selectModel(params.taskType || 'default', {
+                budgetLevel: budget.level,
+                velocity: burnRate.velocity,
+              });
+              result.recommendation = {
+                model: selection.model,
+                reason: selection.reason,
+                confidence: selection.confidence,
+                category: selection.category,
+                source: 'learned', // Thompson Sampling
+                experiment: selection.experiment ? {
+                  id: selection.experiment.id,
+                  hypothesis: selection.experiment.hypKey,
+                } : null,
+              };
+            }
+          } catch {
+            // ModelIntelligence not available — fallback below
+          }
+
+          // Fallback to static heuristic if MI didn't provide recommendation
+          if (!result.recommendation) {
+            result.recommendation = costLedger.recommendModel({
+              taskType: params.taskType || 'moderate',
+              needsReasoning: params.needsReasoning || false,
+            });
+            result.recommendation.source = 'heuristic';
+          }
         }
 
         if (action === 'snapshot') {
@@ -1014,6 +1045,32 @@ export function createCostTool() {
           result.estimate = costLedger.estimate({
             inputTokens: params.estimateTokens || 0,
           });
+        }
+
+        // model_intelligence: Full MI dashboard (affinity matrix, hypotheses, experiments)
+        if (action === 'model_intelligence') {
+          try {
+            const { getModelIntelligenceSingleton } = await import('@cynic/node/collective-singleton.js');
+            const mi = getModelIntelligenceSingleton();
+            if (mi) {
+              result.affinity = mi.getAffinityMatrix();
+              result.toolAffinity = mi.getToolAffinity();
+              result.hypotheses = mi.getHypotheses();
+              result.stats = mi.getStats();
+              result.maturity = mi.getMaturitySignal();
+              result.currentModel = mi.detectCurrentModel();
+              result.message = `*sniff* ModelIntelligence: ${result.stats.totalSelections || 0} selections, ` +
+                `${result.stats.activeExperiments || 0} active experiments, ` +
+                `maturity=${(result.maturity.maturity * 100).toFixed(1)}%` +
+                (result.maturity.converged ? ' (converged)' : '');
+            } else {
+              result.message = '*head tilt* ModelIntelligence not yet initialized.';
+            }
+          } catch (err) {
+            result.error = err.message;
+            result.message = `*head tilt* ModelIntelligence unavailable: ${err.message}`;
+          }
+          return result;
         }
 
         // Compact message for perceive.js injection

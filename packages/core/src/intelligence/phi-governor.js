@@ -47,14 +47,19 @@ const MAX_HISTORY = 89; // Fib(11)
  * Create a φ-governor instance.
  * Stateful — tracks influence history and EMA.
  *
+ * @param {Object} [initialState] - Optional state to restore (for cross-process persistence)
+ * @param {number} [initialState.ema] - Saved EMA value
+ * @param {number} [initialState.adjustmentFactor] - Saved adjustment factor
+ * @param {number} [initialState.consecutiveHigh] - Saved high streak
+ * @param {number} [initialState.consecutiveLow] - Saved low streak
  * @returns {Object} Governor with measure(), adjust(), getState(), reset()
  */
-export function createPhiGovernor() {
-  let _ema = SETPOINT;  // Start at setpoint (assume ideal)
+export function createPhiGovernor(initialState = {}) {
+  let _ema = initialState.ema ?? SETPOINT;
   let _history = [];
-  let _adjustmentFactor = 1.0;  // 1.0 = no change, <1 = reduce, >1 = enrich
-  let _consecutiveHigh = 0;
-  let _consecutiveLow = 0;
+  let _adjustmentFactor = initialState.adjustmentFactor ?? 1.0;
+  let _consecutiveHigh = initialState.consecutiveHigh ?? 0;
+  let _consecutiveLow = initialState.consecutiveLow ?? 0;
 
   return {
     /**

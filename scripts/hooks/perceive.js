@@ -55,6 +55,9 @@ import { detectSkillTriggersFromRules, getRulesSettings } from './lib/index.js';
 // Task #21: Cost optimizer for tier-based complexity routing
 import { getCostOptimizer, ComplexityTier } from '@cynic/node';
 
+// Intelligence: Code-driven classification + φ-governor (replaces regex intent detection)
+import { classifyPrompt, createPhiGovernor } from '@cynic/core';
+
 // Context compression: Experience curve — inject less as CYNIC learns
 import { contextCompressor } from '@cynic/node/services/context-compressor.js';
 
@@ -134,31 +137,61 @@ try {
 }
 
 // =============================================================================
-// INTENT DETECTION
+// CLASSIFICATION MAPPING — bridge classifier intents to perceive.js actions
 // =============================================================================
 
-const INTENT_PATTERNS = {
-  decision: {
-    keywords: ['decide', 'should', 'choose', 'which', 'better', 'recommend', 'option'],
-    action: 'decision_context'
-  },
-  architecture: {
-    keywords: ['architecture', 'design', 'structure', 'refactor', 'reorganize', 'pattern'],
-    action: 'architecture_context'
-  },
-  danger: {
-    keywords: ['delete', 'remove', 'drop', 'force', 'reset', 'rm ', 'wipe', 'destroy'],
-    action: 'danger_warning'
-  },
-  debug: {
-    keywords: ['error', 'bug', 'fail', 'broken', 'crash', 'fix', 'doesn\'t work', 'not working'],
-    action: 'debug_context'
-  },
-  learning: {
-    keywords: ['how', 'what', 'why', 'explain', 'understand', 'learn', 'teach'],
-    action: 'learning_context'
-  }
+/** Map classifier intent → old action key (for context generators) */
+const INTENT_TO_ACTION = {
+  danger: 'danger_warning',
+  security: 'danger_warning',
+  decision: 'decision_context',
+  debug: 'debug_context',
+  architecture: 'architecture_context',
+  explain: 'learning_context',
 };
+
+/** Map classifier intent → promptType (for brain routing, planning, framing) */
+const INTENT_TO_PROMPT_TYPE = {
+  debug: 'code',
+  build: 'code',
+  test: 'code',
+  deploy: 'code',
+  git: 'code',
+  architecture: 'architecture',
+  decision: 'decision',
+  security: 'security',
+  explain: 'knowledge',
+  danger: 'security',
+};
+
+// =============================================================================
+// φ-GOVERNOR PERSISTENCE — cross-process state via file
+// =============================================================================
+
+let _governorStatePath = null; // Set in main() after homedir() import
+
+function loadGovernorState(fsModule) {
+  try {
+    if (_governorStatePath && fsModule.existsSync(_governorStatePath)) {
+      const raw = JSON.parse(fsModule.readFileSync(_governorStatePath, 'utf8'));
+      // Only use if < 1 hour old (stale governor = fresh start)
+      if (raw.timestamp && (Date.now() - raw.timestamp) < 3600000) return raw;
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
+function saveGovernorState(fsModule, state) {
+  try {
+    if (_governorStatePath) {
+      const data = JSON.stringify({ ...state, timestamp: Date.now() });
+      fsModule.writeFileSync(_governorStatePath, data, 'utf8');
+    }
+  } catch (e) {
+    // Log to stderr for debugging — governor persistence is non-critical
+    process.stderr.write(`[PERCEIVE] governor save failed: ${e.message}\n`);
+  }
+}
 
 // =============================================================================
 // SKILL AUTO-ACTIVATION (S1: rules.json based)
@@ -173,59 +206,7 @@ const INTENT_PATTERNS = {
  * @returns {Array<{skill: string, description: string, priority: string}>}
  */
 function detectSkillTriggers(prompt) {
-  // Use rules-based detection from skill-rules.json
   return detectSkillTriggersFromRules(prompt);
-}
-
-function detectIntent(prompt) {
-  const promptLower = prompt.toLowerCase();
-  const intents = [];
-
-  for (const [intent, config] of Object.entries(INTENT_PATTERNS)) {
-    for (const keyword of config.keywords) {
-      if (promptLower.includes(keyword)) {
-        intents.push({ intent, action: config.action, keyword });
-        break;
-      }
-    }
-  }
-
-  return intents;
-}
-
-/**
- * Detect prompt type for Brain routing
- * Maps intent patterns to Brain-compatible types
- */
-function detectPromptType(prompt) {
-  const promptLower = prompt.toLowerCase();
-
-  // Decision-making prompts
-  if (/\b(should|decide|choose|which|better|recommend|option)\b/.test(promptLower)) {
-    return 'decision';
-  }
-
-  // Architecture/design prompts
-  if (/\b(architecture|design|structure|refactor|pattern|organize)\b/.test(promptLower)) {
-    return 'architecture';
-  }
-
-  // Code-related prompts
-  if (/\b(code|function|class|bug|error|fix|implement|write)\b/.test(promptLower)) {
-    return 'code';
-  }
-
-  // Security-related prompts
-  if (/\b(security|vulnerability|safe|dangerous|attack|exploit)\b/.test(promptLower)) {
-    return 'security';
-  }
-
-  // Knowledge/learning prompts
-  if (/\b(explain|what|why|how|understand|learn|teach)\b/.test(promptLower)) {
-    return 'knowledge';
-  }
-
-  return 'general';
 }
 
 // =============================================================================
@@ -650,12 +631,54 @@ async function main() {
     const hookContext = JSON.parse(input);
     const prompt = hookContext.prompt || '';
 
-    // Short prompts don't need context injection
-    if (prompt.length < DC.LENGTH.MIN_PROMPT) {
+    // ═══════════════════════════════════════════════════════════════════════════
+    // INTELLIGENT CLASSIFICATION — replaces regex intent detection
+    // classifyPrompt: 10 intents, 7 domains, 5 complexity levels, token budget
+    // "Le chien renifle avant de creuser"
+    // ═══════════════════════════════════════════════════════════════════════════
+    const user = detectUser();
+    const profile = loadUserProfile(user.userId);
+
+    const classification = classifyPrompt(prompt, {
+      sessionCount: profile.stats?.sessions || 0,
+    });
+
+    // Smart skip: trivial prompts ("ok", "yes", "/cmd", single chars) get no injection
+    if (classification.skip || prompt.length < DC.LENGTH.MIN_PROMPT) {
       outputSent = true;
       safeOutput({ continue: true });
       return;
     }
+
+    // Derive promptType from classification (brain routing, planning, framing)
+    const promptType = INTENT_TO_PROMPT_TYPE[classification.intent] || 'general';
+
+    logger.debug('Classification', {
+      intent: classification.intent,
+      domains: classification.topDomains.slice(0, 3).map(d => `${d.domain}:${d.score.toFixed(2)}`),
+      complexity: classification.complexity,
+      tokenBudget: classification.tokenBudget,
+    });
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // φ-GOVERNOR: Homeostatic influence control — file-backed across invocations
+    // "Le thermostat doré"
+    // ═══════════════════════════════════════════════════════════════════════════
+    const { homedir: getHomedir } = await import('os');
+    const { join: pathJoin } = await import('path');
+    _governorStatePath = pathJoin(getHomedir(), '.cynic', 'phi-governor-state.json');
+
+    const savedGovernorState = loadGovernorState(fs);
+    const governor = createPhiGovernor(savedGovernorState || {});
+    const governorAdjustment = governor.getAdjustment();
+    const adjustedBudget = governor.applyToBudget(classification.tokenBudget);
+
+    logger.debug('Governor', {
+      adjustment: governorAdjustment.toFixed(3),
+      baseBudget: classification.tokenBudget,
+      adjustedBudget,
+      zone: savedGovernorState ? `ema=${savedGovernorState.ema?.toFixed(3)}` : 'fresh',
+    });
 
     // ── Engagement detection: does current prompt engage with previous injections? ──
     // The learning loop: Hook N injects topics → Hook N+1 checks if user engaged
@@ -669,10 +692,6 @@ async function main() {
         injectionProfile._sessionInjections = new Set();
       }
     } catch { /* non-blocking */ }
-
-    // Detect user and load profile
-    const user = detectUser();
-    const profile = loadUserProfile(user.userId);
     const patterns = loadCollectivePatterns();
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -857,12 +876,11 @@ async function main() {
       }
     }
 
-    // Record this prompt in session state
+    // Record this prompt in session state (uses classification from above)
     if (sessionState.isInitialized()) {
-      const intentsPreview = detectIntent(prompt);
       sessionState.recordPrompt({
         content: prompt.slice(0, 500),  // Truncate for storage
-        intents: intentsPreview.map(i => i.intent),
+        intents: classification.intents.map(i => i.intent),
       });
     }
 
@@ -932,10 +950,7 @@ async function main() {
 
     if (isBrainAvailable()) {
       try {
-        // Detect type from prompt for better routing
-        const promptType = detectPromptType(prompt);
-
-        // Brain thinks about the prompt
+        // Brain thinks about the prompt (promptType from classification above)
         brainThought = await thinkAbout(prompt, {
           type: promptType,
           tier: tierDecision?.tier || 'full', // Dispatch to correct brain
@@ -1101,8 +1116,7 @@ async function main() {
       const planningGate = getPlanningGate();
 
       if (planningGate) {
-        // Detect prompt complexity based on type and length
-        const promptType = detectPromptType(prompt);
+        // Use classification complexity + promptType from above
         const isComplexPrompt = ['decision', 'architecture'].includes(promptType) ||
                                 prompt.length > 500 ||
                                 escalationLevel !== 'normal';
@@ -1187,10 +1201,8 @@ async function main() {
     // ═══════════════════════════════════════════════════════════════════════════
     let orchestration = null;
 
-    // Determine if this is high-risk based on intents or session state
-    const dangerIntents = ['danger'];
-    const previewIntents = detectIntent(prompt);
-    const hasHighRiskIntent = previewIntents.some(i => dangerIntents.includes(i.intent));
+    // Determine if this is high-risk based on classification
+    const hasHighRiskIntent = classification.intents.some(i => i.intent === 'danger' || i.intent === 'security');
     const isHighRisk = hasHighRiskIntent || escalationLevel !== 'normal' || recentWarnings.length > 0;
 
     try {
@@ -1239,8 +1251,10 @@ async function main() {
       logger.debug('Orchestration failed', { error: e.message });
     }
 
-    // Detect intents (final pass after orchestration context)
-    const intents = detectIntent(prompt);
+    // Map classification intents to legacy action format (for context generators)
+    const intents = classification.intents
+      .filter(i => INTENT_TO_ACTION[i.intent])
+      .map(i => ({ intent: i.intent, action: INTENT_TO_ACTION[i.intent] }));
 
     // Detect skill triggers (Phase 3: auto-activation)
     const skillTriggers = detectSkillTriggers(prompt);
@@ -1673,7 +1687,7 @@ async function main() {
         emergentCount: emergentPatternCount,
         consciousnessState,
         localSignals: {
-          intentDetected: intents.length > 0 || skillTriggers.length > 0,
+          intentDetected: classification.intents.length > 0 || skillTriggers.length > 0,
           injectionsProduced: injections.length > 0,
           phiBounded: injections.length > 0, // local analysis → φ-bounded by design
         },
@@ -1681,7 +1695,7 @@ async function main() {
 
       framingDirective = generateFramingDirective(
         cynicDistance, brainThought, routing, patterns,
-        detectPromptType(prompt), profile,
+        promptType, profile,
         { consciousnessState, voteSummary, tierDecision, ecosystemStatus, socialStatus, accountingStatus, costStatus },
       );
 
@@ -1793,8 +1807,17 @@ async function main() {
       promptLength: safePrompt.length,
       originalLength: prompt.length,
       hasPrivateContent: hasPrivate,
-      intents: intents.map(i => i.intent),
+      intents: classification.intents.map(i => i.intent),
       hasInjections: injections.length > 0,
+      // Classification data (code-driven, not LLM)
+      classification: {
+        intent: classification.intent,
+        domains: classification.topDomains.slice(0, 3).map(d => d.domain),
+        complexity: classification.complexity,
+        tokenBudget: classification.tokenBudget,
+        adjustedBudget,
+        governorZone: measurement?.zone || 'fresh',
+      },
       // Include orchestration decision
       orchestration: orchestration ? {
         sefirah: orchestration.routing?.sefirah,
@@ -1842,6 +1865,59 @@ async function main() {
       timestamp: Date.now(),
     });
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // φ-GOVERNOR: Budget enforcement — trim injections to adjusted budget
+    // Measure actual injection ratio and save state for next invocation
+    // "Le thermostat doré mesure et ajuste"
+    // ═══════════════════════════════════════════════════════════════════════════
+    const totalInjectionChars = injections.reduce((sum, inj) => sum + inj.length, 0);
+    const estimatedInjectionTokens = Math.ceil(totalInjectionChars / 4);
+
+    // If over budget, trim from the back (framing is last → trimmed first)
+    if (estimatedInjectionTokens > adjustedBudget && adjustedBudget > 0) {
+      let remaining = adjustedBudget * 4; // chars budget
+      const trimmed = [];
+      for (const inj of injections) {
+        if (remaining >= inj.length) {
+          trimmed.push(inj);
+          remaining -= inj.length;
+        } else {
+          break; // No partial injections
+        }
+      }
+      injections.length = 0;
+      injections.push(...trimmed);
+      logger.debug('Governor trimmed injections', {
+        original: estimatedInjectionTokens,
+        budget: adjustedBudget,
+        kept: trimmed.length,
+      });
+    }
+
+    // Measure: what ratio of context is CYNIC injection vs user prompt?
+    const finalInjectionChars = injections.reduce((sum, inj) => sum + inj.length, 0);
+    const promptChars = prompt.length;
+    const measurement = governor.measure(
+      Math.ceil(finalInjectionChars / 4),
+      Math.ceil((promptChars + finalInjectionChars) / 4),
+    );
+
+    // Persist governor state for next hook invocation
+    const gState = governor.getState();
+    saveGovernorState(fs, {
+      ema: gState.ema,
+      adjustmentFactor: gState.adjustmentFactor,
+      consecutiveHigh: gState.consecutiveHigh,
+      consecutiveLow: gState.consecutiveLow,
+    });
+
+    logger.debug('Governor measurement', {
+      ratio: measurement.ratio.toFixed(3),
+      zone: measurement.zone,
+      ema: measurement.ema.toFixed(3),
+      nextAdjustment: measurement.adjustment.toFixed(3),
+    });
+
     // Update pendingOutput with full results (brain + local + D)
     pendingOutput = injections.length > 0
       ? { continue: true, message: injections.join('\n\n') }
@@ -1857,7 +1933,8 @@ async function main() {
     const brainSrc = brainThought?.brainSource || 'none';
     const brainTag = brainSrc === 'local' ? ' | brain:local' : (brainSrc === 'full' ? ' | brain:full' : '');
     const llmTag = localLLMs > 0 ? ` | ${localLLMs} local LLM(s)` : '';
-    const dCompact = `D=${dPct}% (${activeCount}/7) ${cynicDistance.level}${brainTag}${llmTag}`;
+    const govTag = ` | φ=${measurement.zone}`;
+    const dCompact = `D=${dPct}% (${activeCount}/7) ${cynicDistance.level}${brainTag}${llmTag}${govTag}`;
 
     // If no framing directive but D > 0, add compact D line
     if (!framingDirective && dPct > 0) {
