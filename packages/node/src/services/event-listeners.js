@@ -1729,6 +1729,32 @@ export function startEventListeners(options = {}) {
     });
   }
 
+  // 3c½b. CODE_ACTION → CodeAccountant: Track economic value of code actions (C1.6)
+  if (codeAccountant && codeActor) {
+    const unsubCodeActionAccounting = globalEventBus.subscribe(
+      EventType.CODE_ACTION,
+      (event) => {
+        try {
+          const d = event.payload || {};
+          // Map action to accounting trackChange format
+          codeAccountant.trackChange({
+            filePath: d.judgmentId || 'advisory-action',
+            linesAdded: 0,
+            linesRemoved: 0,
+          }, {
+            source: 'code:action',
+            actionType: d.actionType,
+            urgency: d.urgency,
+          });
+          _stats.codeAccountingOps++;
+        } catch (err) {
+          log.debug('code:action → CodeAccountant failed', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubCodeActionAccounting);
+  }
+
   // 3c¾. CODE_DECISION → CodeLearner: Register decisions for feedback matching (C1.5)
   if (codeLearner) {
     const unsubCodeLearnRegister = globalEventBus.subscribe(
@@ -1952,6 +1978,28 @@ export function startEventListeners(options = {}) {
       }
     );
     _unsubscribers.push(unsubPatternAction);
+  }
+
+  // 3d½. HUMAN_ACTION → HumanAccountant: Track human intervention costs (C5.6)
+  if (humanAccountant && humanActor) {
+    const unsubHumanActionAccounting = globalEventBus.subscribe(
+      EventType.HUMAN_ACTION,
+      (event) => {
+        try {
+          const d = event.payload || {};
+          // Record intervention as a task completion
+          humanAccountant.recordTask(true, {
+            source: 'human:action',
+            actionType: d.actionType,
+            reason: d.reason,
+          });
+          _stats.humanAccountingOps = (_stats.humanAccountingOps || 0) + 1;
+        } catch (err) {
+          log.debug('human:action → HumanAccountant failed', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubHumanActionAccounting);
   }
 
   // ═════════════════════════════════════════════════════════════════════════════
@@ -2532,6 +2580,36 @@ export function startEventListeners(options = {}) {
       }
     );
     _unsubscribers.push(unsubCosmosAction);
+  }
+
+  // 3e¾½. cosmos:action → CosmosAccountant: Track ecosystem action value (C7.6)
+  if (cosmosAccountant?.trackValueFlow && cosmosActor) {
+    const unsubCosmosActionAccounting = globalEventBus.subscribe(
+      'cosmos:action',
+      (event) => {
+        try {
+          const d = event.payload || {};
+          const action = d.action || {};
+          const decision = d.decision || {};
+          cosmosAccountant.trackValueFlow({
+            type: 'ecosystem_event',
+            direction: 'out',
+            magnitude: action.urgency === 'critical' ? 0.8 : action.urgency === 'high' ? 0.5 : 0.2,
+            domain: 'cosmos',
+            targetDomain: action.type || 'unknown',
+            significance: decision.verdict === 'HOWL' ? 0.8 : decision.verdict === 'WAG' ? 0.5 : 0.3,
+          }, {
+            source: 'cosmos:action',
+            actionType: action.type,
+            verdict: decision.verdict,
+          });
+          _stats.cosmosAccountingOps = (_stats.cosmosAccountingOps || 0) + 1;
+        } catch (err) {
+          log.debug('cosmos:action → CosmosAccountant failed', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubCosmosActionAccounting);
   }
 
   // 3e⅞. cosmos:judgment → CosmosLearner: Learn from health observations (C7.5)
