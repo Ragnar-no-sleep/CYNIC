@@ -1981,6 +1981,54 @@ export function startEventListeners(options = {}) {
     );
     _unsubscribers.push(unsubHomeostasisJudgment);
 
+    // C6.2: Judge self-evaluation — feed confidence + skepticism to homeostasis
+    const unsubJudgeSelfEval = globalEventBus.subscribe(
+      EventType.JUDGMENT_CREATED,
+      (event) => {
+        try {
+          const j = event.payload || {};
+          const confidence = j.confidence;
+
+          // Feed judgment confidence as homeostasis metric
+          if (typeof confidence === 'number') {
+            homeostasis.update('judgmentConfidence', confidence);
+            _stats.homeostasisObservations++;
+          }
+
+          // If judge has selfSkeptic, track doubt quality
+          if (judge?.selfSkeptic) {
+            const skepticStats = judge.selfSkeptic.getStats?.();
+            if (skepticStats) {
+              // Compute skepticism ratio: doubts / total judgments
+              const ratio = skepticStats.judgmentsDoubled > 0
+                ? skepticStats.confidenceReductions / skepticStats.judgmentsDoubled
+                : 0;
+              homeostasis.update('judgmentSkepticism', ratio);
+            }
+          }
+
+          // Persist low-confidence judgments to unified_signals for meta-analysis
+          if (persistence?.query && typeof confidence === 'number' && confidence < 0.3) {
+            const id = `jse_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            persistence.query(`
+              INSERT INTO unified_signals (id, source, session_id, input, outcome, metadata)
+              VALUES ($1, $2, $3, $4, $5, $6)
+            `, [
+              id, 'judge_self_evaluation', context.sessionId || null,
+              JSON.stringify({ qScore: j.qScore, verdict: j.verdict, itemType: j.itemType }),
+              JSON.stringify({ confidence, weaknesses: j.weaknesses }),
+              JSON.stringify({ cell: 'C6.2', reason: 'low_confidence_judgment' }),
+            ]).catch(err => {
+              log.debug('Judge self-evaluation persistence failed', { error: err.message });
+            });
+          }
+        } catch (err) {
+          log.debug('Judge self-evaluation handler error', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubJudgeSelfEval);
+
     // Feed thermodynamic metrics (errorRate, latency)
     const unsubHomeostasisState = globalEventBus.subscribe(
       EventType.CYNIC_STATE,
@@ -2461,6 +2509,15 @@ export function startEventListeners(options = {}) {
           const { judgment } = event.payload || {};
           if (!judgment) return;
 
+          // C7.5 prediction validation: compare previous prediction vs actual score
+          const prediction = cosmosLearner.predictHealth?.() ?? null;
+          if (prediction?.prediction !== null && prediction?.prediction !== undefined) {
+            const actualScore = judgment.score;
+            const predicted = prediction.prediction;
+            const wasCorrect = Math.abs(predicted - actualScore) < 15; // within 15 points = correct
+            cosmosLearner.recordPredictionOutcome(wasCorrect);
+          }
+
           // Feed health score to learner
           cosmosLearner.recordOutcome({
             category: 'health_prediction',
@@ -2472,10 +2529,27 @@ export function startEventListeners(options = {}) {
           });
           _stats.cosmosLearnings++;
 
+          // C7.5 concentration_risk: derive from sub-score spread
+          const scores = judgment.scores || {};
+          const subValues = [scores.coherence, scores.utility, scores.sustainability].filter(v => typeof v === 'number');
+          if (subValues.length >= 2) {
+            const maxSub = Math.max(...subValues);
+            const minSub = Math.min(...subValues);
+            const spread = maxSub - minSub;
+            const concentration = spread / 100; // 0=balanced, 1=maximally concentrated
+            cosmosLearner.recordOutcome({
+              category: 'concentration_risk',
+              data: {
+                concentration,
+                level: concentration,
+                wasRisky: concentration > 0.4, // > 40pt spread = risky
+              },
+            });
+          }
+
           // Persist learning outcome to unified_signals (C7.5 persistence)
           if (persistence?.query) {
             const id = `cl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-            const prediction = cosmosLearner.predictHealth?.() ?? null;
             persistence.query(`
               INSERT INTO unified_signals (id, source, session_id, input, outcome, metadata)
               VALUES ($1, $2, $3, $4, $5, $6)
@@ -2494,6 +2568,32 @@ export function startEventListeners(options = {}) {
       }
     );
     _unsubscribers.push(unsubCosmosLearn);
+
+    // C7.5 cross_repo_convergence: learn from multi-domain patterns
+    const unsubCosmosConvergence = globalEventBus.subscribe(
+      EventType.PATTERN_DETECTED,
+      (event) => {
+        try {
+          const p = event.payload || {};
+          // Only feed cosmos/ecosystem patterns with domain info
+          if (p.category !== 'cosmos' && p.category !== 'ecosystem' && p.source !== 'CosmosEmergence') return;
+          const domains = p.domains || p.repos || [];
+          if (domains.length < 2) return;
+          cosmosLearner.recordOutcome({
+            category: 'cross_repo_convergence',
+            data: {
+              domains,
+              strength: p.confidence || 0.5,
+              convergence: p.confidence || 0.5,
+            },
+          });
+          _stats.cosmosLearnings++;
+        } catch (err) {
+          log.debug('CosmosLearner convergence handler error', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubCosmosConvergence);
   }
 
   if (codeDecider || codeActor || cynicAccountant || codeAccountant || socialAccountant || cosmosAccountant || humanActor || cosmosJudge) {
@@ -2654,7 +2754,7 @@ export function startEventListeners(options = {}) {
     }, 34 * 60 * 1000); // F9 = 34 minutes
     _humanEmergenceInterval.unref();
 
-    // 4d2. HumanEmergence.pattern_detected → persist to unified_signals (C5.7 persistence)
+    // 4d2. HumanEmergence.pattern_detected → persist + downstream consumers (C5.7)
     humanEmergence.on('pattern_detected', (pattern) => {
       try {
         if (persistence?.query) {
@@ -2671,6 +2771,30 @@ export function startEventListeners(options = {}) {
             log.debug('Human emergence pattern persistence failed', { error: err.message });
           });
         }
+
+        // C5.7→C6.1: Feed burnout/risk patterns to HomeostasisTracker
+        if (homeostasis) {
+          const pType = pattern.type || '';
+          if (pType === 'burnout_risk' || pType === 'overwork_pattern' || pType === 'declining_engagement') {
+            const riskLevel = pattern.confidence || 0.5;
+            homeostasis.update('humanBurnoutRisk', riskLevel);
+            _stats.homeostasisObservations++;
+          }
+        }
+
+        // C5.7→consciousness: Feed high-significance patterns as observation
+        if (consciousnessMonitor) {
+          const sigLevel = pattern.significance?.level ?? (pattern.significance === 'High' ? 3 : pattern.significance === 'Medium' ? 2 : 1);
+          if (sigLevel >= 2) {
+            const score = pattern.confidence || 0.5;
+            consciousnessMonitor.observe('HUMAN_EMERGENCE', {
+              patternType: pattern.type,
+              significance: pattern.significance,
+              message: pattern.message,
+            }, score, 'human-emergence-bridge');
+          }
+        }
+
         _stats.humanEmergencePatterns++;
       } catch (err) {
         log.debug('HumanEmergence pattern_detected handler error', { error: err.message });
@@ -2812,8 +2936,9 @@ export function startEventListeners(options = {}) {
     log.info('SocialEmergence (C4.7) wired to SOCIAL_CAPTURE + F10 interval');
   }
 
-  // 4g. PATTERN_DETECTED → CosmosEmergence: Feed cross-domain patterns as ecosystem data (C7.7)
+  // 4g. PATTERN_DETECTED + CYNIC_STATE → CosmosEmergence: Feed ecosystem data (C7.7)
   if (cosmosEmergence) {
+    // Feed cross-domain patterns
     const unsubCosmosEmergence = globalEventBus.subscribe(
       EventType.PATTERN_DETECTED,
       (event) => {
@@ -2826,6 +2951,11 @@ export function startEventListeners(options = {}) {
             eventType: d.key || d.type || 'pattern',
             significance: d.significance || 'low',
           });
+          // Also track repo activity per source dimension
+          cosmosEmergence.recordRepoActivity({
+            repo: d.category || d.dimension || d.source || 'unknown',
+            eventType: d.key || d.type || 'pattern',
+          });
           _stats.cosmosEmergenceSnapshots++;
         } catch (err) {
           log.debug('CosmosEmergence pattern handler error', { error: err.message });
@@ -2833,6 +2963,29 @@ export function startEventListeners(options = {}) {
       }
     );
     _unsubscribers.push(unsubCosmosEmergence);
+
+    // Feed health snapshots from CYNIC_STATE (unblocks health trajectory detector)
+    const unsubCosmosEmergenceHealth = globalEventBus.subscribe(
+      EventType.CYNIC_STATE,
+      (event) => {
+        try {
+          // Sample 1:5 to avoid flooding
+          if (Math.random() > 0.2) return;
+          const state = event.payload || {};
+          const dogs = state.dogs || {};
+          const health = state.health || state.consciousness || {};
+          cosmosEmergence.recordHealthSnapshot({
+            avgHealth: health.awarenessLevel ?? health.score ?? 0.5,
+            repoCount: Object.keys(dogs).length || 0,
+            totalIssues: state.goalViolations || 0,
+            stalePRs: 0,
+          });
+        } catch (err) {
+          log.debug('CosmosEmergence health snapshot error', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubCosmosEmergenceHealth);
 
     // F11=89min: CosmosEmergence analysis
     _cosmosEmergenceInterval = setInterval(() => {
