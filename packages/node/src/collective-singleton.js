@@ -65,6 +65,8 @@ import { getCodeAccountant, resetCodeAccountant } from './accounting/code-accoun
 import { getSocialAccountant, resetSocialAccountant } from './accounting/social-accountant.js';
 import { getSocialDecider, resetSocialDecider } from './social/social-decider.js';
 import { getSocialActor, resetSocialActor } from './social/social-actor.js';
+import { getSocialJudge, resetSocialJudge } from './social/social-judge.js';
+import { getSocialLearner, resetSocialLearner } from './social/social-learner.js';
 import { getCosmosAccountant, resetCosmosAccountant } from './accounting/cosmos-accountant.js';
 import { getCostLedger, resetCostLedger } from './accounting/cost-ledger.js';
 import { getModelIntelligence, resetModelIntelligence } from './learning/model-intelligence.js';
@@ -414,6 +416,20 @@ let _socialDecider = null;
  * @type {import('./social/social-actor.js').SocialActor|null}
  */
 let _socialActor = null;
+
+/**
+ * C4.2 (SOCIAL × JUDGE): SocialJudge singleton
+ * Judges social interactions (engagement, sentiment, reach)
+ * @type {import('./social/social-judge.js').SocialJudge|null}
+ */
+let _socialJudge = null;
+
+/**
+ * C4.5 (SOCIAL × LEARN): SocialLearner singleton
+ * Learns from social action outcomes (closes feedback loop)
+ * @type {import('./social/social-learner.js').SocialLearner|null}
+ */
+let _socialLearner = null;
 
 /**
  * C7.6 (COSMOS × ACCOUNT): CosmosAccountant singleton
@@ -832,6 +848,8 @@ export function getCollectivePack(options = {}) {
     _socialAccountant = getSocialAccountant();
     _socialDecider = getSocialDecider();
     _socialActor = getSocialActor();
+    _socialJudge = getSocialJudge();
+    _socialLearner = getSocialLearner();
     _cosmosAccountant = getCosmosAccountant();
     _costLedger = getCostLedger();
     _modelIntelligence = getModelIntelligence();
@@ -876,6 +894,8 @@ export function getCollectivePack(options = {}) {
         socialAccountant: _socialAccountant,
         socialDecider: _socialDecider,
         socialActor: _socialActor,
+        socialJudge: _socialJudge,
+        socialLearner: _socialLearner,
         cosmosAccountant: _cosmosAccountant,
         humanActor: _humanActor,
         // Cosmos pipeline singletons (C7.2-C7.5)
@@ -1095,6 +1115,8 @@ export async function getCollectivePackAsync(options = {}) {
         socialAccountant: _socialAccountant,
         socialDecider: _socialDecider,
         socialActor: _socialActor,
+        socialJudge: _socialJudge,
+        socialLearner: _socialLearner,
         cosmosAccountant: _cosmosAccountant,
         humanActor: _humanActor,
         // Cosmos pipeline singletons (C7.2-C7.5)
@@ -1579,6 +1601,8 @@ export async function getCollectivePackAsync(options = {}) {
       if (_cynicAccountant) systemTopology.registerComponent('cynicAccountant', _cynicAccountant);
       if (_codeAccountant) systemTopology.registerComponent('codeAccountant', _codeAccountant);
       if (_socialAccountant) systemTopology.registerComponent('socialAccountant', _socialAccountant);
+      if (_socialJudge) systemTopology.registerComponent('socialJudge', _socialJudge);
+      if (_socialLearner) systemTopology.registerComponent('socialLearner', _socialLearner);
       if (_cosmosAccountant) systemTopology.registerComponent('cosmosAccountant', _cosmosAccountant);
       if (_costLedger) systemTopology.registerComponent('costLedger', _costLedger);
       if (_modelIntelligence) systemTopology.registerComponent('modelIntelligence', _modelIntelligence);
@@ -2122,6 +2146,8 @@ export function getSingletonStatus() {
     cynicAccountantInitialized: !!_cynicAccountant,
     codeAccountantInitialized: !!_codeAccountant,
     socialAccountantInitialized: !!_socialAccountant,
+    socialJudgeInitialized: !!_socialJudge,
+    socialLearnerInitialized: !!_socialLearner,
     cosmosAccountantInitialized: !!_cosmosAccountant,
     costLedgerInitialized: !!_costLedger,
     modelIntelligenceInitialized: !!_modelIntelligence,
@@ -2188,6 +2214,12 @@ export function getSocialActorSingleton() { return _socialActor; }
 
 /** C4.6: Get SocialAccountant singleton @returns {import('./accounting/social-accountant.js').SocialAccountant|null} */
 export function getSocialAccountantSingleton() { return _socialAccountant; }
+
+/** C4.2: Get SocialJudge singleton @returns {import('./social/social-judge.js').SocialJudge|null} */
+export function getSocialJudgeSingleton() { return _socialJudge; }
+
+/** C4.5: Get SocialLearner singleton @returns {import('./social/social-learner.js').SocialLearner|null} */
+export function getSocialLearnerSingleton() { return _socialLearner; }
 
 /** C7.6: Get CosmosAccountant singleton @returns {import('./accounting/cosmos-accountant.js').CosmosAccountant|null} */
 export function getCosmosAccountantSingleton() { return _cosmosAccountant; }
@@ -2383,6 +2415,8 @@ export function _resetForTesting() {
   if (_socialAccountant) { resetSocialAccountant(); _socialAccountant = null; }
   if (_socialDecider) { resetSocialDecider(); _socialDecider = null; }
   if (_socialActor) { resetSocialActor(); _socialActor = null; }
+  if (_socialJudge) { resetSocialJudge(); _socialJudge = null; }
+  if (_socialLearner) { resetSocialLearner(); _socialLearner = null; }
   if (_cosmosAccountant) { resetCosmosAccountant(); _cosmosAccountant = null; }
   if (_costLedger) { resetCostLedger(); _costLedger = null; }
   if (_modelIntelligence) { resetModelIntelligence(); _modelIntelligence = null; }

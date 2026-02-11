@@ -835,6 +835,8 @@ export function startEventListeners(options = {}) {
     socialAccountant,
     socialDecider,
     socialActor,
+    socialJudge,
+    socialLearner,
     cosmosAccountant,
     humanActor,
     // Cosmos pipeline singletons (C7.2-C7.5)
@@ -3680,10 +3682,9 @@ export function startEventListeners(options = {}) {
   // 7. BROKEN CHAIN REPAIRS (social:capture→social:judgment, cynic:state→cynic:judgment, user:feedback→pattern:learned)
   // ═══════════════════════════════════════════════════════════════════════════
 
-  // 7a. SOCIAL_CAPTURE → social:judgment: Inline judgment of social interactions (C4.2)
-  // No dedicated SocialJudge module exists — inline lightweight scoring.
-  // Pattern: social captures → score quality/engagement → publish judgment → downstream (SocialDecider future)
-  if (socialAccountant) {
+  // 7a. SOCIAL_CAPTURE → SocialJudge.judge() → social:judgment (C4.2)
+  // Replaced inline scoring with dedicated SocialJudge module (factory-generated)
+  if (socialJudge) {
     const unsubSocialJudgment = globalEventBus.subscribe(
       EventType.SOCIAL_CAPTURE,
       (event) => {
@@ -3693,44 +3694,15 @@ export function startEventListeners(options = {}) {
           const users = d.users || [];
           if (tweets.length === 0 && users.length === 0) return;
 
-          // Score: engagement volume + sentiment + reach
-          const totalEngagement = tweets.reduce((sum, t) =>
-            sum + (t.likes || 0) + (t.retweets || 0) + (t.replies || 0), 0);
-          const avgSentiment = tweets.length > 0
-            ? tweets.reduce((sum, t) => sum + (t.sentiment || 0), 0) / tweets.length
-            : 0;
-          const totalReach = tweets.reduce((sum, t) => sum + (t.impressions || t.likes || 0), 0)
-            + users.reduce((sum, u) => sum + (u.followers || 0), 0);
-
-          // φ-bounded score: normalize engagement + sentiment + reach
-          const engagementScore = Math.min(totalEngagement / 100, 1) * 0.4;
-          const sentimentScore = ((avgSentiment + 1) / 2) * 0.3; // normalize -1..1 → 0..1
-          const reachScore = Math.min(totalReach / 10000, 1) * 0.3;
-          const rawScore = (engagementScore + sentimentScore + reachScore) * 100;
-          const score = Math.min(rawScore, 61.8); // φ⁻¹ cap
-
-          const verdict = score > 50 ? 'HOWL' : score > 35 ? 'WAG' : score > 20 ? 'GROWL' : 'BARK';
-
-          globalEventBus.publish('social:judgment', {
-            cell: 'C4.2',
-            score,
-            verdict,
-            tweetCount: tweets.length,
-            userCount: users.length,
-            totalEngagement,
-            avgSentiment,
-            totalReach,
-            timestamp: Date.now(),
-          }, { source: 'event-listeners:SocialJudge' });
-
+          socialJudge.judge({ type: 'community_health', data: { tweets, users } });
           _stats.socialJudgments = (_stats.socialJudgments || 0) + 1;
         } catch (err) {
-          log.debug('social:capture → social:judgment failed', { error: err.message });
+          log.debug('social:capture → SocialJudge.judge() failed', { error: err.message });
         }
       }
     );
     _unsubscribers.push(unsubSocialJudgment);
-    log.info('SocialJudge (C4.2) inline wired: SOCIAL_CAPTURE → social:judgment');
+    log.info('SocialJudge (C4.2) wired: SOCIAL_CAPTURE → socialJudge.judge()');
   }
 
   // 7a½. social:judgment → persist to unified_signals
@@ -3833,6 +3805,54 @@ export function startEventListeners(options = {}) {
     );
     _unsubscribers.push(unsubSocialAction);
     log.info('SocialActor (C4.4) wired: social:decision → social:action');
+  }
+
+  // 7a⁴. social:action → SocialLearner (C4.5) — close feedback loop
+  if (socialLearner) {
+    const unsubSocialLearning = globalEventBus.subscribe(
+      'social:action',
+      (event) => {
+        try {
+          const d = event.payload || {};
+          if (!d.type) return;
+
+          // Feed engagement trend from the judgment data flowing through the pipeline
+          socialLearner.recordOutcome({
+            category: 'engagement_trend',
+            data: {
+              totalEngagement: d.confidence ? Math.round(d.confidence * 100) : 0,
+              timestamp: d.timestamp || Date.now(),
+            },
+          });
+
+          // Feed action effectiveness (action delivered = success for now)
+          socialLearner.recordOutcome({
+            category: 'action_effectiveness',
+            data: {
+              actionType: d.type,
+              wasEffective: d.status === 'delivered',
+              timestamp: d.timestamp || Date.now(),
+            },
+          });
+
+          // Feed timing data
+          socialLearner.recordOutcome({
+            category: 'timing_optimization',
+            data: {
+              hour: new Date(d.timestamp || Date.now()).getHours(),
+              engagement: d.confidence ? Math.round(d.confidence * 100) : 0,
+              timestamp: d.timestamp || Date.now(),
+            },
+          });
+
+          _stats.socialLearnings = (_stats.socialLearnings || 0) + 1;
+        } catch (err) {
+          log.debug('social:action → SocialLearner failed', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubSocialLearning);
+    log.info('SocialLearner (C4.5) wired: social:action → recordOutcome() (feedback loop closed)');
   }
 
   // 7b. CYNIC_STATE → cynic:judgment: Self-assessment of collective health (C6.2)
