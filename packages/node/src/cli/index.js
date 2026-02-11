@@ -22,6 +22,7 @@ import { memoryCommand } from './commands/memory.js';
 import { qtableCommand } from './commands/qtable.js';
 import { hooksCommand } from './commands/hooks.js';
 import { judgeCommand } from './commands/judge.js';
+import { daemonCommand } from './commands/daemon.js';
 // Dashboard is loaded lazily to avoid requiring blessed when not needed
 
 const VERSION = '0.2.0';
@@ -217,6 +218,18 @@ export function createCLI(program) {
     .option('--json', 'Output as JSON')
     .option('-v, --verbose', 'Show verbose output')
     .action(hooksCommand);
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // DAEMON
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Daemon command (independent runtime)
+  program
+    .command('daemon <action>')
+    .alias('d')
+    .description('Manage the CYNIC daemon (start, stop, status, restart)')
+    .option('-p, --port <port>', 'Daemon HTTP port', '6180')
+    .action(daemonCommand);
 
   return program;
 }

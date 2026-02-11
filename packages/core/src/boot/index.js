@@ -261,5 +261,32 @@ export async function bootNode(options = {}) {
   });
 }
 
+/**
+ * Boot for daemon mode
+ *
+ * Registers daemon-specific providers (daemon-http, daemon-loop)
+ * then boots the system excluding P2P, MCP, and transport.
+ * The daemon boots once and runs always — thin hooks delegate to it.
+ *
+ * "Le chien ne vit plus dans le collier" - CYNIC
+ *
+ * @param {Object} [options] - Boot options
+ * @param {number} [options.port=6180] - HTTP port (φ-aligned)
+ * @param {string} [options.host='127.0.0.1'] - Bind host
+ * @returns {Promise<Object>}
+ */
+export async function bootDaemon(options = {}) {
+  const { port, host, ...restOptions } = options;
+
+  // Register daemon-specific providers
+  const { registerDaemonProviders } = await import('./providers/daemon.js');
+  registerDaemonProviders({ port, host });
+
+  return bootCYNIC({
+    ...restOptions,
+    exclude: ['node', 'transport', 'consensus', 'mcp', 'mcp-server', 'migrations', ...(restOptions.exclude || [])],
+  });
+}
+
 // Default export
 export default bootCYNIC;

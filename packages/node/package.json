@@ -42,7 +42,8 @@
     "./tracing/trace-propagation.js": "./src/tracing/trace-propagation.js",
     "./collective-singleton.js": "./src/collective-singleton.js",
     "./services/event-listeners.js": "./src/services/event-listeners.js",
-    "./solana": "./src/solana/index.js"
+    "./solana": "./src/solana/index.js",
+    "./daemon": "./src/daemon/index.js"
   },
   "scripts": {
     "test": "node --test --test-concurrency=4 test/*.test.js",
