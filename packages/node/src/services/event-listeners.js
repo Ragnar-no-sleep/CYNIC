@@ -3957,6 +3957,211 @@ export function startEventListeners(options = {}) {
     log.info('Orphan event consumers wired: cynic:action, solana:action, solana:learning, solana:emergence, learning:signal, learning:dpo_pair, accounting:update');
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 9. REMAINING ORPHAN CONSUMERS (second wave)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // 9a. human:perceived → HumanJudge: Feed perception data to judgment pipeline (C5.1→C5.2)
+  // HumanPerceiver publishes on significant energy/frustration deltas, but nobody consumed it.
+  if (humanJudge) {
+    const unsubHumanPerceived = globalEventBus.subscribe(
+      'human:perceived',
+      (event) => {
+        try {
+          const d = event.payload || {};
+
+          // Feed perception directly to HumanJudge (reactive, not just periodic)
+          humanJudge.judge({
+            energy: d.energy || 0.5,
+            focus: d.focus || 0.5,
+            frustration: d.frustration || 0,
+            burnoutRisk: d.burnoutRisk || 0,
+            sessionMinutes: d.sessionDuration ? Math.floor(d.sessionDuration / 60000) : 0,
+          }, { source: 'human:perceived', sessionId: context.sessionId });
+
+          _stats.humanPerceptionsFed = (_stats.humanPerceptionsFed || 0) + 1;
+        } catch (err) {
+          log.debug('human:perceived → HumanJudge failed', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubHumanPerceived);
+    log.info('HumanJudge (C5.2) wired to human:perceived (reactive C5.1→C5.2)');
+  }
+
+  // 9b. cynic:self_heal → unified_signals + homeostasis (C6.4 self-repair tracking)
+  // CynicActor emits self-healing actions — track for learning what repairs worked
+  {
+    const unsubSelfHeal = globalEventBus.subscribe(
+      'cynic:self_heal',
+      (event) => {
+        try {
+          const d = event.payload || {};
+
+          // Feed to homeostasis — self-healing lowers system entropy
+          if (homeostasis) {
+            homeostasis.update('selfHealingRate', 0.618); // self-healing = positive health signal
+            _stats.homeostasisObservations++;
+          }
+
+          // Persist to unified_signals
+          if (persistence?.query) {
+            const id = `sh_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            persistence.query(`
+              INSERT INTO unified_signals (id, source, session_id, input, outcome, metadata)
+              VALUES ($1, $2, $3, $4, $5, $6)
+            `, [
+              id, 'cynic_self_heal', context.sessionId || null,
+              JSON.stringify({ action: d.action, context: d.context }),
+              JSON.stringify({ healthState: d.healthState }),
+              JSON.stringify({ cell: 'C6.4', timestamp: d.ts }),
+            ]).catch(err => {
+              log.debug('cynic:self_heal persistence failed', { error: err.message });
+            });
+          }
+
+          _stats.selfHealsConsumed = (_stats.selfHealsConsumed || 0) + 1;
+        } catch (err) {
+          log.debug('cynic:self_heal consumer error', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubSelfHeal);
+  }
+
+  // 9c. cynic:threshold_adjustment → homeostasis + unified_signals (C6.4 calibration tracking)
+  // CynicActor adjusts routing/judge thresholds — feed to homeostasis for stability tracking
+  {
+    const unsubThresholdAdj = globalEventBus.subscribe(
+      'cynic:threshold_adjustment',
+      (event) => {
+        try {
+          const d = event.payload || {};
+
+          // Feed to homeostasis — threshold drift indicates system adaptation
+          if (homeostasis) {
+            homeostasis.update('thresholdDrift', d.urgency === 'high' ? 0.3 : 0.618);
+            _stats.homeostasisObservations++;
+          }
+
+          // Persist to unified_signals
+          if (persistence?.query) {
+            const id = `ta_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            persistence.query(`
+              INSERT INTO unified_signals (id, source, session_id, input, outcome, metadata)
+              VALUES ($1, $2, $3, $4, $5, $6)
+            `, [
+              id, 'threshold_adjustment', context.sessionId || null,
+              JSON.stringify({ reason: d.reason, recommendation: d.recommendation }),
+              JSON.stringify({ urgency: d.urgency }),
+              JSON.stringify({ cell: 'C6.4', source: d.source }),
+            ]).catch(err => {
+              log.debug('cynic:threshold_adjustment persistence failed', { error: err.message });
+            });
+          }
+
+          _stats.thresholdAdjustmentsConsumed = (_stats.thresholdAdjustmentsConsumed || 0) + 1;
+        } catch (err) {
+          log.debug('cynic:threshold_adjustment consumer error', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubThresholdAdj);
+  }
+
+  // 9d. solana:accounting → unified_signals (C2.6 archive)
+  // SolanaAccountant publishes transaction records — archive for analytics
+  if (persistence?.query) {
+    const unsubSolanaAccounting = globalEventBus.subscribe(
+      'solana:accounting',
+      (event) => {
+        try {
+          const d = event.payload || {};
+          const id = `sa_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+          persistence.query(`
+            INSERT INTO unified_signals (id, source, session_id, input, outcome, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6)
+          `, [
+            id, 'solana_accounting', context.sessionId || null,
+            JSON.stringify({ transaction: d.transaction }),
+            JSON.stringify({ cell: d.cell, dimension: d.dimension }),
+            JSON.stringify({ analysis: d.analysis, timestamp: d.timestamp }),
+          ]).catch(err => {
+            log.debug('solana:accounting persistence failed', { error: err.message });
+          });
+
+          _stats.solanaAccountingConsumed = (_stats.solanaAccountingConsumed || 0) + 1;
+        } catch (err) {
+          log.debug('solana:accounting consumer error', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubSolanaAccounting);
+  }
+
+  // 9e. component:error → unified_signals (error monitoring archive)
+  // 7 components publish errors — archive for pattern detection
+  if (persistence?.query) {
+    const unsubComponentError = globalEventBus.subscribe(
+      EventType.COMPONENT_ERROR,
+      (event) => {
+        try {
+          const d = event.payload || {};
+          const id = `ce_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+          persistence.query(`
+            INSERT INTO unified_signals (id, source, session_id, input, outcome, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6)
+          `, [
+            id, 'component_error', context.sessionId || null,
+            JSON.stringify({ component: d.component, operation: d.operation }),
+            JSON.stringify({ error: d.error }),
+            JSON.stringify({ eventId: d.eventId, timestamp: Date.now() }),
+          ]).catch(err => {
+            log.debug('component:error persistence failed', { error: err.message });
+          });
+
+          _stats.componentErrorsConsumed = (_stats.componentErrorsConsumed || 0) + 1;
+        } catch (err) {
+          log.debug('component:error consumer error', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubComponentError);
+  }
+
+  // 9f. solana:emergence:immediate → PATTERN_DETECTED bridge (urgent Solana anomalies)
+  // Same as solana:emergence but for time-critical patterns
+  {
+    const unsubSolanaEmergenceImmediate = globalEventBus.subscribe(
+      'solana:emergence:immediate',
+      (event) => {
+        try {
+          const d = event.payload || {};
+          const pattern = d.pattern || d;
+
+          // Always bridge immediate emergence to PATTERN_DETECTED
+          globalEventBus.publish(EventType.PATTERN_DETECTED, {
+            source: 'SolanaEmergence:immediate',
+            key: pattern.type || pattern.key || 'solana_urgent',
+            significance: 'critical',
+            category: 'solana',
+            urgent: true,
+            ...pattern,
+          }, { source: 'solana-emergence-immediate-bridge' });
+
+          _stats.solanaEmergenceImmediateConsumed = (_stats.solanaEmergenceImmediateConsumed || 0) + 1;
+        } catch (err) {
+          log.debug('solana:emergence:immediate consumer error', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubSolanaEmergenceImmediate);
+  }
+
+  if (humanJudge || homeostasis || persistence?.query) {
+    log.info('Second-wave orphan consumers wired: human:perceived, cynic:self_heal, cynic:threshold_adjustment, solana:accounting, component:error, solana:emergence:immediate');
+  }
+
   _started = true;
   _stats.startedAt = Date.now();
 
