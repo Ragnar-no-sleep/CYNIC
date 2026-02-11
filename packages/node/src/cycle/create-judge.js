@@ -34,6 +34,7 @@ import { PHI_INV, PHI_INV_2, createLogger, globalEventBus } from '@cynic/core';
  * @param {Function} [config.enrichResult] - (result, type, data, scores) → void [optional]
  * @param {Function} [config.healthCheck] - (stats) → health object [optional]
  * @param {string[]} [config.extraStatFields=[]] - Additional stat counter fields
+ * @param {Object} [config.verdictInit] - Custom verdict enum (values become stats keys, default: HOWL/WAG/GROWL/BARK)
  * @param {Object} [config.prototype] - Extra methods to add to the class prototype
  * @returns {{ Class, getInstance, resetInstance }}
  */
@@ -68,7 +69,9 @@ export function createJudge(config) {
       this._stats = {
         totalJudgments: 0,
         byType: {},
-        verdicts: { HOWL: 0, WAG: 0, GROWL: 0, BARK: 0 },
+        verdicts: config.verdictInit
+          ? Object.fromEntries(Object.values(config.verdictInit).map(v => [v, 0]))
+          : { HOWL: 0, WAG: 0, GROWL: 0, BARK: 0 },
         avgScore: 0,
         lastJudgment: null,
       };
