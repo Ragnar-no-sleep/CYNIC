@@ -1,6 +1,6 @@
 {
   "_comment": "THIN HOOKS — delegates to CYNIC daemon via HTTP. Auto-starts daemon on first use.",
-  "_coverage": "12/12 Claude Code hook events covered (5 via daemon, 7 via legacy)",
+  "_coverage": "12/12 Claude Code hook events covered (6 via daemon, 6 via legacy)",
   "_migration": "Copy this file to hooks.json to activate thin hooks. Revert to hooks-legacy.json for fat hooks.",
   "hooks": {
     "SessionStart": [
@@ -84,12 +84,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node scripts/hooks/ralph-loop.js",
-            "timeout": 30
-          },
-          {
-            "type": "command",
-            "command": "node scripts/hooks/digest.js || true",
+            "command": "node scripts/hooks/thin/stop.js",
             "timeout": 30
           }
         ]

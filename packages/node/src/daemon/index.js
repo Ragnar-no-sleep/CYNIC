@@ -101,18 +101,32 @@ export class DaemonServer {
       }
     });
 
-    // Health check
+    // Health check (enhanced with watchdog data)
     this.app.get('/health', (req, res) => {
       const uptime = this.startTime ? Date.now() - this.startTime : 0;
+      const mem = process.memoryUsage();
 
-      res.json({
+      const health = {
         status: 'healthy',
         pid: process.pid,
         uptime,
         uptimeHuman: formatUptime(uptime),
-        memoryMB: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+        memoryMB: Math.round(mem.heapUsed / 1024 / 1024),
+        heapUsedPercent: Math.round((mem.heapUsed / mem.heapTotal) * 1000) / 10,
         port: this.port,
-      });
+      };
+
+      // Watchdog enrichment (if running)
+      if (this.watchdog) {
+        const wdStatus = this.watchdog.getStatus();
+        health.status = wdStatus.level || 'healthy';
+        health.eventLoopLatencyMs = wdStatus.eventLoopLatencyMs;
+        health.degradedSubsystems = wdStatus.degradedSubsystems;
+        health.watchdogChecks = wdStatus.checkCount;
+        health.consecutiveCritical = wdStatus.consecutiveCritical;
+      }
+
+      res.json(health);
     });
 
     // Full status — ProcessRegistry snapshot

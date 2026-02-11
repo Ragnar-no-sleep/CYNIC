@@ -18,6 +18,8 @@ import os from 'os';
 import { bootDaemon } from '@cynic/core/boot';
 import { DaemonServer } from './index.js';
 import { processRegistry, createLogger } from '@cynic/core';
+import { wireDaemonServices, cleanupDaemonServices } from './service-wiring.js';
+import { Watchdog, checkRestartSentinel } from './watchdog.js';
 
 const log = createLogger('DaemonEntry');
 
@@ -59,7 +61,14 @@ async function main() {
     logToFile('ERROR', `Failed to write PID file: ${err.message}`);
   }
 
+  // Check for crash recovery (stale restart sentinel)
+  const recovery = checkRestartSentinel();
+  if (recovery.recovered) {
+    logToFile('INFO', `Crash recovery detected — previous PID: ${recovery.previousCrash?.pid}, reason: ${recovery.previousCrash?.reason}`);
+  }
+
   let server;
+  let watchdog;
 
   try {
     // Create and start daemon server
@@ -76,6 +85,24 @@ async function main() {
       // Daemon still runs — it can serve hooks even without full boot
     }
 
+    // Wire daemon-essential services (LLM, CostLedger — warm boot)
+    try {
+      wireDaemonServices();
+      logToFile('INFO', 'Daemon services wired (ModelIntelligence + CostLedger warm)');
+    } catch (err) {
+      logToFile('WARN', `Service wiring partial: ${err.message}`);
+    }
+
+    // Start watchdog (self-monitoring)
+    try {
+      watchdog = new Watchdog();
+      server.watchdog = watchdog; // Expose for /health endpoint
+      watchdog.start();
+      logToFile('INFO', 'Watchdog started (30s health checks)');
+    } catch (err) {
+      logToFile('WARN', `Watchdog failed to start: ${err.message}`);
+    }
+
     logToFile('INFO', 'Daemon fully operational');
   } catch (err) {
     logToFile('ERROR', `Daemon failed to start: ${err.message}`);
@@ -86,6 +113,8 @@ async function main() {
   // Graceful shutdown handlers
   function cleanup() {
     logToFile('INFO', 'Daemon shutting down...');
+    try { if (watchdog) watchdog.stop(); } catch { /* ignore */ }
+    try { cleanupDaemonServices(); } catch { /* ignore */ }
     try { fs.unlinkSync(PID_FILE); } catch { /* ignore */ }
     try { processRegistry.depart(); } catch { /* ignore */ }
     if (server) {

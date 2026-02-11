@@ -340,7 +340,7 @@ const instance = createIdentity();
 
 ## Stats
 
-- **Source files**: 299
+- **Source files**: 301
 - **Test files**: 105
 - **Test ratio**: 35%
 - **Exports**: 458 named
@@ -353,7 +353,7 @@ const instance = createIdentity();
 ## Dimensions (4 Axioms)
 
 ```
-[████░░░░░░] 35% φ (Confidence)
+[███░░░░░░░] 35% φ (Confidence)
 [█████░░░░░] 50% Verify
 [█████░░░░░] 50% Culture
 [█████░░░░░] 49% Burn (Simplicity)

@@ -11,10 +11,14 @@
 
 'use strict';
 
+import fs from 'fs';
 import { createLogger, PHI_INV, globalEventBus, EventType } from '@cynic/core';
+import { validateIdentity, hasForbiddenPhrase, hasDogVoice } from '@cynic/core';
 import { classifyPrompt } from '@cynic/core';
 import { contextCompressor } from '../services/context-compressor.js';
 import { injectionProfile } from '../services/injection-profile.js';
+import { getCostLedger } from '../accounting/cost-ledger.js';
+import { getModelIntelligence } from '../learning/model-intelligence.js';
 
 const log = createLogger('DaemonHandlers');
 
@@ -287,22 +291,347 @@ async function handleSleep(hookInput) {
     contextCompressor.recordSessionEnd();
   } catch { /* non-blocking */ }
 
+  // CostLedger session boundary — persist lifetime stats
+  try {
+    getCostLedger().endSession();
+  } catch { /* non-blocking */ }
+
   return { continue: true };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // STOP — Stop event
-// Handles digest/ralph-loop equivalent
+// Two-phase: (1) Ralph-loop check (can block), (2) Response digest (non-blocking)
 // ═══════════════════════════════════════════════════════════════════════════════
+
+/** Ralph-loop state file (relative to project root) */
+const RALPH_STATE_FILE = '.claude/ralph-loop.local.md';
 
 /**
  * Handle Stop event
  *
- * @param {Object} hookInput - Stop context
- * @returns {Promise<Object>} { continue: true }
+ * Phase 1: Ralph-loop check — can BLOCK the stop if a loop is active.
+ * Phase 2: Response quality judgment + session digest (non-blocking).
+ *
+ * @param {Object} hookInput - Stop context (transcript_path, etc.)
+ * @returns {Promise<Object>} { continue: true } or { decision: 'block', reason: string }
  */
 async function handleStop(hookInput) {
+  // Phase 1: Ralph-loop check (can block)
+  try {
+    const ralphResult = checkRalphLoop(hookInput);
+    if (ralphResult) {
+      log.info('Ralph loop blocking stop', { iteration: ralphResult.iteration });
+      return ralphResult;
+    }
+  } catch (err) {
+    log.debug('Ralph-loop check failed', { error: err.message });
+  }
+
+  // Phase 2: Response digest (non-blocking — always continues)
+  const digest = buildSessionDigest(hookInput);
+
+  // Emit SESSION_ENDED for learning loops
+  try {
+    globalEventBus.emit(EventType.SESSION_ENDED || 'session:ended', {
+      type: 'session_ended',
+      digest,
+      timestamp: Date.now(),
+    });
+  } catch { /* non-blocking */ }
+
+  // Return with optional digest message
+  if (digest.banner) {
+    return { continue: true, message: digest.banner };
+  }
+
   return { continue: true };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// RALPH-LOOP — Ported from scripts/hooks/ralph-loop.js
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Check if a ralph-loop is active and should block the stop.
+ *
+ * Reads .claude/ralph-loop.local.md, checks iteration vs max,
+ * reads last assistant message, checks completion promise.
+ *
+ * @param {Object} hookInput - { transcript_path, ... }
+ * @returns {Object|null} Block result or null to continue
+ */
+function checkRalphLoop(hookInput) {
+  // Check if ralph-loop state file exists
+  if (!fs.existsSync(RALPH_STATE_FILE)) {
+    return null; // No active loop
+  }
+
+  // Read and parse state file
+  let stateContent;
+  try {
+    stateContent = fs.readFileSync(RALPH_STATE_FILE, 'utf-8');
+  } catch {
+    cleanupRalphState();
+    return null;
+  }
+
+  const frontmatter = parseRalphFrontmatter(stateContent);
+  const iteration = parseInt(frontmatter.iteration, 10);
+  const maxIterations = parseInt(frontmatter.max_iterations, 10);
+  const completionPromise = frontmatter.completion_promise;
+
+  // Validate numeric fields
+  if (isNaN(iteration) || isNaN(maxIterations)) {
+    cleanupRalphState();
+    return null;
+  }
+
+  // Check if max iterations reached
+  if (maxIterations > 0 && iteration >= maxIterations) {
+    cleanupRalphState();
+    return null;
+  }
+
+  // Get transcript path from hook input
+  const transcriptPath = hookInput?.transcript_path;
+  if (!transcriptPath || !fs.existsSync(transcriptPath)) {
+    cleanupRalphState();
+    return null;
+  }
+
+  // Read last assistant message
+  const lastOutput = getLastAssistantMessage(transcriptPath);
+  if (!lastOutput) {
+    cleanupRalphState();
+    return null;
+  }
+
+  // Check for completion promise
+  if (completionPromise && completionPromise !== 'null') {
+    const promiseMatch = lastOutput.match(/<promise>([\s\S]*?)<\/promise>/);
+    if (promiseMatch) {
+      const promiseText = promiseMatch[1].trim().replace(/\s+/g, ' ');
+      if (promiseText === completionPromise) {
+        cleanupRalphState();
+        return null; // Promise fulfilled — allow stop
+      }
+    }
+  }
+
+  // Not complete — block stop and continue loop
+  const nextIteration = iteration + 1;
+  const promptText = extractRalphPrompt(stateContent);
+
+  if (!promptText) {
+    cleanupRalphState();
+    return null;
+  }
+
+  // Update iteration in state file
+  try {
+    const updatedContent = stateContent.replace(
+      /^iteration: .*/m,
+      `iteration: ${nextIteration}`
+    );
+    fs.writeFileSync(RALPH_STATE_FILE, updatedContent, 'utf-8');
+  } catch {
+    cleanupRalphState();
+    return null;
+  }
+
+  // Build system message
+  let systemMsg;
+  if (completionPromise && completionPromise !== 'null') {
+    systemMsg = `Ralph iteration ${nextIteration} | To stop: output <promise>${completionPromise}</promise> (ONLY when TRUE)`;
+  } else {
+    systemMsg = `Ralph iteration ${nextIteration} | No completion promise — loop runs until max_iterations`;
+  }
+
+  return {
+    decision: 'block',
+    reason: promptText,
+    systemMessage: systemMsg,
+    iteration: nextIteration,
+  };
+}
+
+/**
+ * Parse YAML frontmatter from ralph-loop state file.
+ * @param {string} content
+ * @returns {Object}
+ */
+function parseRalphFrontmatter(content) {
+  const match = content.match(/^---\n([\s\S]*?)\n---/);
+  if (!match) return {};
+
+  const result = {};
+  for (const line of match[1].split('\n')) {
+    const colonIndex = line.indexOf(':');
+    if (colonIndex > 0) {
+      const key = line.slice(0, colonIndex).trim();
+      let value = line.slice(colonIndex + 1).trim();
+      if ((value.startsWith('"') && value.endsWith('"')) ||
+          (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.slice(1, -1);
+      }
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
+/**
+ * Extract prompt text (everything after closing ---).
+ * @param {string} content
+ * @returns {string}
+ */
+function extractRalphPrompt(content) {
+  const parts = content.split(/^---$/m);
+  if (parts.length >= 3) {
+    return parts.slice(2).join('---').trim();
+  }
+  return '';
+}
+
+/**
+ * Read last assistant message from JSONL transcript.
+ * @param {string} transcriptPath
+ * @returns {string|null}
+ */
+function getLastAssistantMessage(transcriptPath) {
+  try {
+    const content = fs.readFileSync(transcriptPath, 'utf-8');
+    const lines = content.trim().split('\n');
+
+    for (let i = lines.length - 1; i >= 0; i--) {
+      try {
+        const entry = JSON.parse(lines[i]);
+        if (entry.role === 'assistant' || entry.message?.role === 'assistant') {
+          const message = entry.message || entry;
+          if (message.content && Array.isArray(message.content)) {
+            return message.content
+              .filter(block => block.type === 'text')
+              .map(block => block.text)
+              .join('\n');
+          }
+        }
+      } catch { /* skip invalid JSON */ }
+    }
+  } catch { /* transcript read failed */ }
+
+  return null;
+}
+
+/**
+ * Clean up ralph-loop state file.
+ */
+function cleanupRalphState() {
+  try {
+    if (fs.existsSync(RALPH_STATE_FILE)) {
+      fs.unlinkSync(RALPH_STATE_FILE);
+    }
+  } catch { /* ignore */ }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SESSION DIGEST — Response quality + session stats
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Build a session digest for the Stop event.
+ *
+ * Scores response quality, gathers session stats,
+ * and formats a digest banner for console output.
+ *
+ * @param {Object} hookInput - { transcript_path, ... }
+ * @returns {Object} Digest data with optional banner
+ */
+function buildSessionDigest(hookInput) {
+  const digest = {
+    identity: null,
+    sessionStats: null,
+    banner: null,
+  };
+
+  // 1. Identity validation on last response (if transcript available)
+  const transcriptPath = hookInput?.transcript_path;
+  if (transcriptPath) {
+    try {
+      const lastMessage = getLastAssistantMessage(transcriptPath);
+      if (lastMessage) {
+        digest.identity = validateIdentity(lastMessage, {
+          requireDogVoice: true,
+          checkConfidence: true,
+          checkForbidden: true,
+          isSubstantive: lastMessage.length > 50,
+        });
+      }
+    } catch { /* non-blocking */ }
+  }
+
+  // 2. Session stats from warm singletons
+  try {
+    const costLedger = getCostLedger();
+    digest.sessionStats = {
+      cost: costLedger.getSessionSummary(),
+    };
+  } catch { /* non-blocking */ }
+
+  try {
+    const mi = getModelIntelligence();
+    if (digest.sessionStats) {
+      digest.sessionStats.modelIntelligence = mi.getStats();
+    }
+  } catch { /* non-blocking */ }
+
+  // 3. Format banner
+  digest.banner = formatDigestBanner(digest);
+
+  return digest;
+}
+
+/**
+ * Format a concise digest banner for stderr output.
+ *
+ * @param {Object} digest - From buildSessionDigest()
+ * @returns {string|null} Formatted banner or null
+ */
+function formatDigestBanner(digest) {
+  const parts = [];
+
+  // Identity compliance
+  if (digest.identity) {
+    const { valid, compliance, violations, warnings } = digest.identity;
+    if (!valid) {
+      const violationSummary = violations.map(v => v.found || v.type).join(', ');
+      parts.push(`Identity: ${violations.length} violations (${violationSummary})`);
+    } else if (warnings.length > 0) {
+      parts.push(`Identity: warnings (${warnings.map(w => w.type).join(', ')})`);
+    } else {
+      parts.push(`Identity: clean (${Math.round(compliance * 100)}%)`);
+    }
+  }
+
+  // Cost summary
+  if (digest.sessionStats?.cost) {
+    const { operations, cost, durationMinutes } = digest.sessionStats.cost;
+    if (operations > 0) {
+      parts.push(`Session: ${operations} ops, $${cost.total.toFixed(4)}, ${durationMinutes}min`);
+    }
+  }
+
+  // Model intelligence
+  if (digest.sessionStats?.modelIntelligence) {
+    const mi = digest.sessionStats.modelIntelligence;
+    if (mi.selectionsTotal > 0) {
+      parts.push(`Models: ${mi.selectionsTotal} selections, ${mi.downgrades} downgrades`);
+    }
+  }
+
+  if (parts.length === 0) return null;
+
+  return `*yawn* Session digest: ${parts.join(' | ')}`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
