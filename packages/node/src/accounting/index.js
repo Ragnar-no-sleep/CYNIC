@@ -40,3 +40,12 @@ export {
   getCosmosAccountant,
   resetCosmosAccountant,
 } from './cosmos-accountant.js';
+
+// Cross-cutting: Universal cost accounting (feeds all accountants)
+export {
+  CostLedger,
+  ModelId,
+  BudgetStatus,
+  getCostLedger,
+  resetCostLedger,
+} from './cost-ledger.js';

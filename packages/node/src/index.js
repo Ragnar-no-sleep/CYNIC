@@ -532,6 +532,12 @@ export {
   ValueFlowType,
   getCosmosAccountant,
   resetCosmosAccountant,
+  // Cross-cutting cost accounting
+  CostLedger,
+  ModelId,
+  BudgetStatus,
+  getCostLedger,
+  resetCostLedger,
 } from './accounting/index.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════

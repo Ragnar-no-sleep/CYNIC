@@ -84,6 +84,9 @@ export const EventType = {
 
   // Topology events (self-awareness)
   TOPOLOGY_CHANGED: 'topology:changed',
+
+  // Cost accounting events (token velocity)
+  COST_UPDATE: 'cost:update',
 };
 
 /**

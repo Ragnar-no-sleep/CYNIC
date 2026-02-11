@@ -133,6 +133,8 @@ const instance = createIdentity();
 | `OperationType` | OperationType implementation |
 | `InteractionType` | InteractionType implementation |
 | `ValueFlowType` | ValueFlowType implementation |
+| `ModelId` | ModelId implementation |
+| `BudgetStatus` | BudgetStatus implementation |
 | `CodeEmergence` | CodeEmergence implementation |
 | `CodePatternType` | CodePatternType implementation |
 | `InterventionType` | InterventionType implementation |
@@ -290,6 +292,7 @@ const instance = createIdentity();
 | `getCynicAccountant()` | Get CynicAccountant singleton |
 | `getSocialAccountant()` | Get SocialAccountant singleton |
 | `getCosmosAccountant()` | Get CosmosAccountant singleton |
+| `getCostLedger()` | Get CostLedger singleton |
 | `getCodeEmergence()` | Get CodeEmergence singleton |
 | `getHumanAdvisor()` | Get HumanAdvisor singleton |
 | `getHumanLearning()` | Get HumanLearning singleton |
@@ -325,7 +328,7 @@ const instance = createIdentity();
 
 ### Functions
 
-`importIdentity`, `exportIdentity`, `calculateCompositeEScore`, `updateEScoreState`, `dimensionRegistry`, `resetLearningScheduler`, `serialize`, `deserialize`, `isValidMessage`, `initializeQLearning` + 122 more
+`importIdentity`, `exportIdentity`, `calculateCompositeEScore`, `updateEScoreState`, `dimensionRegistry`, `resetLearningScheduler`, `serialize`, `deserialize`, `isValidMessage`, `initializeQLearning` + 123 more
 
 ## Dependencies
 
@@ -334,10 +337,10 @@ const instance = createIdentity();
 
 ## Stats
 
-- **Source files**: 269
-- **Test files**: 98
-- **Test ratio**: 36%
-- **Exports**: 450 named
+- **Source files**: 276
+- **Test files**: 101
+- **Test ratio**: 37%
+- **Exports**: 454 named
 
 ## Fractal Structure
 
@@ -347,10 +350,10 @@ const instance = createIdentity();
 ## Dimensions (4 Axioms)
 
 ```
-[████░░░░░░] 36% φ (Confidence)
+[████░░░░░░] 37% φ (Confidence)
 [█████░░░░░] 50% Verify
 [█████░░░░░] 50% Culture
-[████░░░░░░] 44% Burn (Simplicity)
+[█████░░░░░] 45% Burn (Simplicity)
 [██████░░░░] 62% Emergence
 ```
 

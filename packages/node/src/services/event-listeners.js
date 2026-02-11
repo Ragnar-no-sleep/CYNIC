@@ -861,6 +861,8 @@ export function startEventListeners(options = {}) {
     consciousnessMonitor,
     // Human pipeline singletons (C5.2)
     humanJudge,
+    // Cross-cutting cost accounting
+    costLedger,
   } = options;
 
   // Get or create repositories
@@ -1493,6 +1495,61 @@ export function startEventListeners(options = {}) {
       }
     );
     _unsubscribers.push(unsubCodeAccounting);
+  }
+
+  // 3c. TOOL_COMPLETED → CostLedger: Record real token costs + feed CynicAccountant
+  //     This is THE bridge that feeds real tokensUsed values into the system.
+  //     Previously CynicAccountant.trackOperation() received tokensUsed: 0 on every call.
+  if (costLedger) {
+    const unsubCostLedger = globalEventBus.subscribe(
+      EventType.TOOL_COMPLETED,
+      (event) => {
+        try {
+          const { tool, result, input } = event.payload || {};
+          if (!tool) return;
+
+          // Estimate tokens from tool input/output
+          const inputText = typeof input === 'string' ? input : JSON.stringify(input || '');
+          const outputText = typeof result === 'string' ? result : JSON.stringify(result || '');
+
+          const costRecord = costLedger.record({
+            type: 'tool_call',
+            inputText,
+            outputText,
+            source: `tool:${tool}`,
+            durationMs: event.payload?.durationMs || 0,
+          });
+
+          // Feed CynicAccountant with REAL token values
+          if (cynicAccountant && costRecord) {
+            cynicAccountant.trackOperation('system', 'action', {
+              tokensUsed: costRecord.totalTokens,
+              latencyMs: costRecord.durationMs,
+              wasSuccessful: !event.payload?.error,
+              confidenceProduced: 0.382, // φ⁻² default for tool calls
+            });
+          }
+
+          _stats.costLedgerOps = (_stats.costLedgerOps || 0) + 1;
+        } catch (err) {
+          log.debug('CostLedger.record failed', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubCostLedger);
+
+    // 3c½. SESSION_ENDED → CostLedger.persist (save lifetime stats)
+    const unsubCostSessionEnd = globalEventBus.subscribe(
+      EventType.SESSION_ENDED,
+      () => {
+        try {
+          costLedger.endSession();
+        } catch (err) {
+          log.debug('CostLedger.endSession failed', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubCostSessionEnd);
   }
 
   // 3b½. SOCIAL_CAPTURE → SocialAccountant: Track social interaction economics (C4.6)
@@ -2763,6 +2820,7 @@ export function startEventListeners(options = {}) {
       codeDecider: !!codeDecider,
       codeActor: !!codeActor,
       cynicAccountant: !!cynicAccountant,
+      costLedger: !!costLedger,
       codeAccountant: !!codeAccountant,
       socialAccountant: !!socialAccountant,
       cosmosAccountant: !!cosmosAccountant,
