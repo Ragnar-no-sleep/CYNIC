@@ -2873,6 +2873,91 @@ export function startEventListeners(options = {}) {
     );
     _unsubscribers.push(unsubFsUnlink);
 
+    // 4a¾. perception:fs:addDir / unlinkDir → CodeEmergence (C1.1→C1.7 structural changes)
+    const unsubFsAddDir = globalEventBus.subscribe(
+      'perception:fs:addDir',
+      (event) => {
+        try {
+          const d = event.payload || event;
+          if (!d.path) return;
+          codeEmergence.recordChange({
+            filePath: d.path,
+            linesAdded: 0,
+            linesRemoved: 0,
+            imports: [],
+            complexityDelta: 0.05, // New directory = structural growth
+          });
+          _stats.codeEmergenceChanges++;
+        } catch (err) {
+          log.debug('CodeEmergence fs:addDir handler error', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubFsAddDir);
+
+    const unsubFsUnlinkDir = globalEventBus.subscribe(
+      'perception:fs:unlinkDir',
+      (event) => {
+        try {
+          const d = event.payload || event;
+          if (!d.path) return;
+          codeEmergence.recordChange({
+            filePath: d.path,
+            linesAdded: 0,
+            linesRemoved: 0,
+            imports: [],
+            complexityDelta: -0.05, // BURN axiom: directory removal simplifies
+          });
+          _stats.codeEmergenceChanges++;
+        } catch (err) {
+          log.debug('CodeEmergence fs:unlinkDir handler error', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubFsUnlinkDir);
+
+    // 4a⅞. perception:fs:error → unified_signals (C1.1 error tracking)
+    const unsubFsError = globalEventBus.subscribe(
+      'perception:fs:error',
+      (event) => {
+        try {
+          const d = event.payload || event;
+          if (persistence?.query) {
+            const id = `fse_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            persistence.query(`
+              INSERT INTO unified_signals (id, source, session_id, input, outcome, metadata)
+              VALUES ($1, $2, $3, $4, $5, $6)
+            `, [
+              id, 'fs_perception_error', sessionId || null,
+              JSON.stringify({ error: d.error }),
+              JSON.stringify({ type: 'perception_error' }),
+              JSON.stringify({ stack: d.stack }),
+            ]).catch(() => {});
+          }
+        } catch (err) {
+          log.debug('fs:error persist handler error', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubFsError);
+
+    // 4a⁹⁄₁₆. perception:fs:ready → log + stats (C1.1 lifecycle)
+    const unsubFsReady = globalEventBus.subscribe(
+      'perception:fs:ready',
+      (event) => {
+        try {
+          const d = event.payload || event;
+          log.info('Filesystem perception ready', {
+            paths: d.paths,
+            filesWatched: d.filesWatched,
+          });
+        } catch (err) {
+          log.debug('fs:ready handler error', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubFsReady);
+
     // 4b. Fibonacci-triggered code emergence analysis (F7=13min)
     _codeEmergenceInterval = setInterval(() => {
       try {
@@ -4160,6 +4245,234 @@ export function startEventListeners(options = {}) {
 
   if (humanJudge || homeostasis || persistence?.query) {
     log.info('Second-wave orphan consumers wired: human:perceived, cynic:self_heal, cynic:threshold_adjustment, solana:accounting, component:error, solana:emergence:immediate');
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════════
+  // SECTION 10: BRIDGE-FORWARDED ORPHAN CONSUMERS
+  // Events published by EventBusBridge (agent→core) with zero subscribers
+  // ═════════════════════════════════════════════════════════════════════════════
+
+  // 10a. cynic:guidance → persist + homeostasis (C6.3 guidance from dogs)
+  //      Published when dogs emit guidance signals via agent bus → EventBusBridge
+  {
+    const unsubCynicGuidance = globalEventBus.subscribe(
+      'cynic:guidance',
+      (event) => {
+        try {
+          const d = event.payload || event;
+          if (homeostasis) {
+            homeostasis.update('guidanceFrequency', 1);
+            _stats.homeostasisObservations++;
+          }
+          if (persistence?.query) {
+            const id = `cg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            persistence.query(`
+              INSERT INTO unified_signals (id, source, session_id, input, outcome, metadata)
+              VALUES ($1, $2, $3, $4, $5, $6)
+            `, [
+              id, 'cynic_guidance', sessionId || null,
+              JSON.stringify({ type: d.type || 'guidance', source: d.source }),
+              JSON.stringify({ guidance: d.guidance || d.message }),
+              JSON.stringify({ dogs: d.dogs, confidence: d.confidence }),
+            ]).catch(() => {});
+          }
+        } catch (err) {
+          log.debug('cynic:guidance consumer error', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubCynicGuidance);
+  }
+
+  // 10b. cynic:override → persist + homeostasis (C6.4 manual override)
+  //      Published when dogs force an override via agent bus → EventBusBridge
+  {
+    const unsubCynicOverride = globalEventBus.subscribe(
+      'cynic:override',
+      (event) => {
+        try {
+          const d = event.payload || event;
+          if (homeostasis) {
+            homeostasis.update('overrideFrequency', 1);
+            _stats.homeostasisObservations++;
+          }
+          if (persistence?.query) {
+            const id = `co_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            persistence.query(`
+              INSERT INTO unified_signals (id, source, session_id, input, outcome, metadata)
+              VALUES ($1, $2, $3, $4, $5, $6)
+            `, [
+              id, 'cynic_override', sessionId || null,
+              JSON.stringify({ type: d.type || 'override', reason: d.reason }),
+              JSON.stringify({ action: d.action, target: d.target }),
+              JSON.stringify({ dogs: d.dogs, urgency: d.urgency }),
+            ]).catch(() => {});
+          }
+        } catch (err) {
+          log.debug('cynic:override consumer error', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubCynicOverride);
+  }
+
+  // 10c. vulnerability:detected → PATTERN_DETECTED bridge + persist (security)
+  //      Published when agent dogs detect security vulnerabilities
+  {
+    const unsubVulnerability = globalEventBus.subscribe(
+      'vulnerability:detected',
+      (event) => {
+        try {
+          const d = event.payload || event;
+          // Bridge to pattern pipeline for downstream handling
+          globalEventBus.publish(EventType.PATTERN_DETECTED, {
+            source: 'SecurityGuardian',
+            key: 'vulnerability_detected',
+            significance: 'high',
+            category: 'security',
+            vulnerability: d.type || d.vulnerability,
+            severity: d.severity,
+            ...d,
+          }, { source: 'event-listeners' });
+          if (persistence?.query) {
+            const id = `vd_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            persistence.query(`
+              INSERT INTO unified_signals (id, source, session_id, input, outcome, metadata)
+              VALUES ($1, $2, $3, $4, $5, $6)
+            `, [
+              id, 'vulnerability_detected', sessionId || null,
+              JSON.stringify({ type: d.type, severity: d.severity }),
+              JSON.stringify({ vulnerability: d.vulnerability }),
+              JSON.stringify({ file: d.file, line: d.line }),
+            ]).catch(() => {});
+          }
+        } catch (err) {
+          log.debug('vulnerability:detected consumer error', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubVulnerability);
+  }
+
+  // 10d. reality:drift → homeostasis + ANOMALY_DETECTED bridge (drift = instability)
+  //      Published when agent dogs detect reality divergence from expected state
+  {
+    const unsubRealityDrift = globalEventBus.subscribe(
+      'reality:drift',
+      (event) => {
+        try {
+          const d = event.payload || event;
+          if (homeostasis) {
+            homeostasis.update('realityDrift', d.magnitude || 0.5);
+            _stats.homeostasisObservations++;
+          }
+          // Bridge to anomaly pipeline
+          globalEventBus.publish(EventType.ANOMALY_DETECTED, {
+            source: 'RealityDrift',
+            type: 'reality_drift',
+            severity: d.severity || 'medium',
+            dimension: d.dimension,
+            magnitude: d.magnitude,
+          }, { source: 'event-listeners' });
+        } catch (err) {
+          log.debug('reality:drift consumer error', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubRealityDrift);
+  }
+
+  // 10e. deploy:completed / deploy:failed → unified_signals (deployment tracking)
+  //      Published when agent dogs detect deployment lifecycle events
+  if (persistence?.query) {
+    const unsubDeployCompleted = globalEventBus.subscribe(
+      'deploy:completed',
+      (event) => {
+        try {
+          const d = event.payload || event;
+          const id = `dc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+          persistence.query(`
+            INSERT INTO unified_signals (id, source, session_id, input, outcome, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6)
+          `, [
+            id, 'deploy_completed', sessionId || null,
+            JSON.stringify({ service: d.service, version: d.version }),
+            JSON.stringify({ status: 'completed', duration: d.duration }),
+            JSON.stringify({ environment: d.environment }),
+          ]).catch(() => {});
+        } catch (err) {
+          log.debug('deploy:completed persist error', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubDeployCompleted);
+
+    const unsubDeployFailed = globalEventBus.subscribe(
+      'deploy:failed',
+      (event) => {
+        try {
+          const d = event.payload || event;
+          const id = `df_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+          persistence.query(`
+            INSERT INTO unified_signals (id, source, session_id, input, outcome, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6)
+          `, [
+            id, 'deploy_failed', sessionId || null,
+            JSON.stringify({ service: d.service, version: d.version }),
+            JSON.stringify({ status: 'failed', error: d.error }),
+            JSON.stringify({ environment: d.environment }),
+          ]).catch(() => {});
+        } catch (err) {
+          log.debug('deploy:failed persist error', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubDeployFailed);
+  }
+
+  // 10f. tool:called → unified_signals (tool usage tracking, complement to tool:completed)
+  //      Published by CollectivePack.receiveHookEvent() on PreToolUse
+  {
+    const unsubToolCalled = globalEventBus.subscribe(
+      EventType.TOOL_CALLED,
+      (event) => {
+        try {
+          const d = event.payload || event;
+          if (persistence?.query) {
+            const id = `tc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            persistence.query(`
+              INSERT INTO unified_signals (id, source, session_id, input, outcome, metadata)
+              VALUES ($1, $2, $3, $4, $5, $6)
+            `, [
+              id, 'tool_called', sessionId || null,
+              JSON.stringify({ tool: d.tool, hookType: d.hookType }),
+              JSON.stringify({ blocked: d.blocked || false }),
+              JSON.stringify({ userId: d.userId }),
+            ]).catch(() => {});
+          }
+        } catch (err) {
+          log.debug('tool:called persist error', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubToolCalled);
+  }
+
+  // 10g. component:ready → SystemTopology registration (self-awareness)
+  //      Published when components finish initialization
+  {
+    const unsubComponentReady = globalEventBus.subscribe(
+      EventType.COMPONENT_READY,
+      (event) => {
+        try {
+          const d = event.payload || event;
+          log.debug('Component ready', { component: d.name || d.component || event.source });
+        } catch (err) {
+          log.debug('component:ready handler error', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubComponentReady);
   }
 
   _started = true;
