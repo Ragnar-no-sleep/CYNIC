@@ -140,6 +140,12 @@ let _socialEmergenceInterval = null;
 /** @type {NodeJS.Timeout|null} Cosmos emergence analysis interval (F11=89min) */
 let _cosmosEmergenceInterval = null;
 
+/** @type {NodeJS.Timeout|null} HumanJudge periodic assessment interval (F8=21min) */
+let _humanJudgeInterval = null;
+
+/** @type {NodeJS.Timeout|null} CosmosJudge periodic health snapshot interval (F9=34min) */
+let _cosmosJudgeInterval = null;
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // RETRY UTILITY
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -847,6 +853,8 @@ export function startEventListeners(options = {}) {
     humanAccountant,
     homeostasis,
     consciousnessMonitor,
+    // Human pipeline singletons (C5.2)
+    humanJudge,
   } = options;
 
   // Get or create repositories
@@ -2647,6 +2655,70 @@ export function startEventListeners(options = {}) {
     );
     _unsubscribers.push(unsubCodeEmergenceJudgment);
 
+    // 4a½. perception:fs:change → CodeEmergence: Feed raw filesystem changes (C1.1→C1.7 bridge)
+    const unsubFsChange = globalEventBus.subscribe(
+      'perception:fs:change',
+      (event) => {
+        try {
+          const d = event.payload || event;
+          if (!d.path) return;
+          codeEmergence.recordChange({
+            filePath: d.path,
+            linesAdded: 0,
+            linesRemoved: 0,
+            imports: [],
+            complexityDelta: 0,
+          });
+          _stats.codeEmergenceChanges++;
+        } catch (err) {
+          log.debug('CodeEmergence fs:change handler error', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubFsChange);
+
+    const unsubFsAdd = globalEventBus.subscribe(
+      'perception:fs:add',
+      (event) => {
+        try {
+          const d = event.payload || event;
+          if (!d.path) return;
+          codeEmergence.recordChange({
+            filePath: d.path,
+            linesAdded: 1,
+            linesRemoved: 0,
+            imports: [],
+            complexityDelta: 0.05,
+          });
+          _stats.codeEmergenceChanges++;
+        } catch (err) {
+          log.debug('CodeEmergence fs:add handler error', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubFsAdd);
+
+    const unsubFsUnlink = globalEventBus.subscribe(
+      'perception:fs:unlink',
+      (event) => {
+        try {
+          const d = event.payload || event;
+          if (!d.path) return;
+          codeEmergence.recordChange({
+            filePath: d.path,
+            linesAdded: 0,
+            linesRemoved: 1,
+            imports: [],
+            complexityDelta: -0.1, // BURN axiom: deletion simplifies
+          });
+          _stats.codeEmergenceChanges++;
+        } catch (err) {
+          log.debug('CodeEmergence fs:unlink handler error', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubFsUnlink);
+
     // 4b. Fibonacci-triggered code emergence analysis (F7=13min)
     _codeEmergenceInterval = setInterval(() => {
       try {
@@ -2673,7 +2745,7 @@ export function startEventListeners(options = {}) {
     }, 13 * 60 * 1000); // F7 = 13 minutes
     _codeEmergenceInterval.unref();
 
-    // 4b2. CodeEmergence.pattern_detected → persist + feed CodeDecider (C1.7 integration)
+    // 4b2. CodeEmergence.pattern_detected → persist + feed CodeDecider calibration (C1.3→C1.7 bridge)
     codeEmergence.on('pattern_detected', (pattern) => {
       try {
         // Persist code emergence patterns to unified_signals
@@ -2691,6 +2763,19 @@ export function startEventListeners(options = {}) {
             log.debug('Code emergence pattern persistence failed', { error: err.message });
           });
         }
+
+        // C1.7→C1.3: Feed code patterns as calibration to CodeDecider
+        if (codeDecider?.recordOutcome) {
+          const pType = pattern.type || pattern.key || '';
+          const isNegative = pType.includes('hotspot') || pType.includes('complexity') || pType.includes('coupling');
+          codeDecider.recordOutcome({
+            decision: isNegative ? 'FLAG_REVIEW' : 'APPROVE',
+            outcome: isNegative ? 'pattern_warning' : 'pattern_healthy',
+            riskLevel: isNegative ? 'high' : 'low',
+            reason: `emergence_pattern: ${pType}`,
+          });
+        }
+
         _stats.codeEmergencePatterns++;
       } catch (err) {
         log.debug('CodeEmergence pattern_detected handler error', { error: err.message });
@@ -3034,6 +3119,185 @@ export function startEventListeners(options = {}) {
     log.info('CosmosEmergence (C7.7) wired to PATTERN_DETECTED + F11 interval + pattern persistence');
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 5. HUMAN JUDGE (C5.2) — Periodic human state assessment
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  if (humanJudge) {
+    // 5a. F8=21min: Periodic human state judgment from psychology file
+    _humanJudgeInterval = setInterval(async () => {
+      try {
+        const { readFileSync, existsSync } = await import('fs');
+        const { join } = await import('path');
+        const { homedir } = await import('os');
+        const psyPath = join(homedir(), '.cynic', 'psychology', 'state.json');
+        if (!existsSync(psyPath)) return;
+
+        const psyState = JSON.parse(readFileSync(psyPath, 'utf8'));
+        // Only judge if recently updated (within 30 min)
+        if (!psyState.updatedAt || (Date.now() - psyState.updatedAt) > 30 * 60 * 1000) return;
+
+        const dims = psyState.dimensions || {};
+        const temporal = psyState.temporal || {};
+
+        const perception = {
+          energy: dims.energy?.value ?? 0.5,
+          focus: dims.focus?.value ?? 0.5,
+          frustration: dims.frustration?.value ?? 0.2,
+          cognitiveLoad: dims.cognitiveLoad?.value ?? 4,
+          sessionMinutes: temporal.sessionDuration ? Math.floor(temporal.sessionDuration / 60000) : 0,
+        };
+
+        humanJudge.judge(perception, { source: 'periodic', sessionId: context.sessionId });
+        _stats.humanJudgments = (_stats.humanJudgments || 0) + 1;
+      } catch (err) {
+        log.debug('HumanJudge periodic assessment error', { error: err.message });
+      }
+    }, 21 * 60 * 1000); // F8 = 21 minutes
+    _humanJudgeInterval.unref();
+
+    // 5b. human:judgment → HomeostasisTracker + CosmosAccountant + persist (C5.2 downstream)
+    const unsubHumanJudgment = globalEventBus.subscribe(
+      'human:judgment',
+      (event) => {
+        try {
+          const j = event.payload || event;
+
+          // Feed human wellbeing to homeostasis
+          if (homeostasis) {
+            if (typeof j.qScore === 'number') {
+              homeostasis.update('humanWellbeing', j.qScore);
+              _stats.homeostasisObservations++;
+            }
+            if (j.scores?.burnoutRisk !== undefined) {
+              homeostasis.update('humanBurnoutRisk', j.scores.burnoutRisk);
+              _stats.homeostasisObservations++;
+            }
+          }
+
+          // Feed to CosmosAccountant as cross-domain value flow
+          if (cosmosAccountant?.trackValueFlow) {
+            cosmosAccountant.trackValueFlow({
+              type: 'ecosystem_event',
+              direction: 'in',
+              magnitude: j.qScore || 0.5,
+              domain: 'human',
+              significance: j.verdict === 'critical' ? 0.9 : j.verdict === 'strained' ? 0.6 : 0.3,
+            });
+          }
+
+          // Persist to unified_signals
+          if (persistence?.query) {
+            const id = `hj_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            persistence.query(`
+              INSERT INTO unified_signals (id, source, session_id, input, outcome, metadata)
+              VALUES ($1, $2, $3, $4, $5, $6)
+            `, [
+              id, 'human_judgment', context.sessionId || null,
+              JSON.stringify({ qScore: j.qScore, verdict: j.verdict }),
+              JSON.stringify({ scores: j.scores }),
+              JSON.stringify({ cell: 'C5.2', recommendations: j.recommendations }),
+            ]).catch(err => {
+              log.debug('HumanJudge persistence failed', { error: err.message });
+            });
+          }
+
+          _stats.humanJudgments = (_stats.humanJudgments || 0) + 1;
+        } catch (err) {
+          log.debug('HumanJudge downstream handler error', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubHumanJudgment);
+
+    log.info('HumanJudge (C5.2) wired with F8 periodic + downstream persistence');
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 6. COSMOS JUDGE PERIODIC + COSMOS ACCOUNTANT CROSS-DOMAIN (C7.2 + C7.6)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // 6a. F9=34min: Periodic CosmosJudge ecosystem health snapshot
+  if (cosmosJudge) {
+    _cosmosJudgeInterval = setInterval(() => {
+      try {
+        // Build ecosystem health snapshot from accumulated emergence data
+        const healthData = {
+          avgHealth: consciousnessMonitor?.getHealth?.()?.score ?? 0.5,
+          repoCount: 0,
+          totalIssues: 0,
+          stalePRs: 0,
+        };
+
+        // Gather health from all emergence detectors
+        const emergenceDetectors = [codeEmergence, humanEmergence, cynicEmergence, socialEmergence, cosmosEmergence];
+        let activeDetectors = 0;
+        for (const detector of emergenceDetectors) {
+          if (detector?.getStats) {
+            activeDetectors++;
+            const stats = detector.getStats();
+            healthData.totalIssues += stats.anomalies || stats.warnings || 0;
+          }
+        }
+        healthData.repoCount = activeDetectors;
+
+        cosmosJudge.judge({
+          type: 'ecosystem_health',
+          data: healthData,
+        });
+        _stats.cosmosJudgments = (_stats.cosmosJudgments || 0) + 1;
+      } catch (err) {
+        log.debug('CosmosJudge periodic health snapshot error', { error: err.message });
+      }
+    }, 34 * 60 * 1000); // F9 = 34 minutes
+    _cosmosJudgeInterval.unref();
+
+    log.info('CosmosJudge (C7.2) periodic health snapshot wired at F9=34min');
+  }
+
+  // 6b. PATTERN_DETECTED → CosmosAccountant: Track cross-domain value flows (C7.6)
+  if (cosmosAccountant?.trackValueFlow) {
+    const unsubCosmosAccounting = globalEventBus.subscribe(
+      EventType.PATTERN_DETECTED,
+      (event) => {
+        try {
+          const d = event.payload || event;
+          const category = d.category || d.dimension || 'unknown';
+          const sig = d.confidence || (d.significance === 'high' ? 0.8 : d.significance === 'medium' ? 0.5 : 0.3);
+
+          // Track as pattern detection value
+          cosmosAccountant.trackValueFlow({
+            type: 'pattern_detected',
+            direction: 'in',
+            magnitude: sig,
+            domain: category,
+            significance: sig,
+          });
+
+          // If pattern spans multiple domains, also track as cross-domain sync
+          const domains = d.domains || d.repos || [];
+          if (domains.length >= 2) {
+            cosmosAccountant.trackValueFlow({
+              type: 'cross_domain_sync',
+              direction: 'in',
+              magnitude: sig,
+              domain: domains[0],
+              targetDomain: domains[1],
+              significance: sig * 1.2, // cross-domain patterns are higher value
+            });
+          }
+
+          _stats.cosmosAccountingOps = (_stats.cosmosAccountingOps || 0) + 1;
+        } catch (err) {
+          log.debug('CosmosAccountant pattern tracking error', { error: err.message });
+        }
+      }
+    );
+    _unsubscribers.push(unsubCosmosAccounting);
+
+    log.info('CosmosAccountant (C7.6) wired to PATTERN_DETECTED for cross-domain tracking');
+  }
+
   _started = true;
   _stats.startedAt = Date.now();
 
@@ -3362,6 +3626,14 @@ export function stopEventListeners() {
   if (_cosmosEmergenceInterval) {
     clearInterval(_cosmosEmergenceInterval);
     _cosmosEmergenceInterval = null;
+  }
+  if (_humanJudgeInterval) {
+    clearInterval(_humanJudgeInterval);
+    _humanJudgeInterval = null;
+  }
+  if (_cosmosJudgeInterval) {
+    clearInterval(_cosmosJudgeInterval);
+    _cosmosJudgeInterval = null;
   }
 
   _unsubscribers = [];

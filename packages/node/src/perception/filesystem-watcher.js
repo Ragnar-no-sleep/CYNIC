@@ -12,7 +12,7 @@
 'use strict';
 
 import chokidar from 'chokidar';
-import { createLogger } from '@cynic/core';
+import { createLogger, globalEventBus } from '@cynic/core';
 import { getEventBus } from '../services/event-bus.js';
 
 const log = createLogger('FilesystemWatcher');
@@ -71,7 +71,7 @@ export class FilesystemWatcher {
    */
   constructor(options = {}) {
     this.paths = options.paths || [process.cwd()];
-    this.eventBus = options.eventBus || getEventBus();
+    this.eventBus = options.eventBus || globalEventBus;
     this.ignored = options.ignored || DEFAULT_IGNORED;
     this.persistent = options.persistent ?? true;
     this.ignoreInitial = options.ignoreInitial ?? true;

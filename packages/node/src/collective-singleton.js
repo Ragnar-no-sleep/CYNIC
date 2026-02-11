@@ -65,6 +65,7 @@ import { getCodeAccountant, resetCodeAccountant } from './accounting/code-accoun
 import { getSocialAccountant, resetSocialAccountant } from './accounting/social-accountant.js';
 import { getCosmosAccountant, resetCosmosAccountant } from './accounting/cosmos-accountant.js';
 import { getHumanActor, resetHumanActor } from './symbiosis/human-actor.js';
+import { getHumanJudge, resetHumanJudge } from './symbiosis/human-judge.js';
 import { getSolanaJudge, resetSolanaJudge } from './solana/solana-judge.js';
 import { getSolanaDecider, resetSolanaDecider } from './solana/solana-decider.js';
 import { getSolanaActor, resetSolanaActor } from './solana/solana-actor.js';
@@ -231,6 +232,14 @@ let _humanAccountant = null;
  * @type {HumanEmergence|null}
  */
 let _humanEmergence = null;
+
+/**
+ * C5.2: The global HumanJudge instance
+ * Judges human wellbeing, productivity, engagement, burnout risk
+ * "Le chien juge l'état du maître"
+ * @type {HumanJudge|null}
+ */
+let _humanJudge = null;
 
 /**
  * C1.7: The global CodeEmergence instance
@@ -770,6 +779,7 @@ export function getCollectivePack(options = {}) {
     _humanLearning = getHumanLearning();
     _humanAccountant = getHumanAccountant();
     _humanEmergence = getHumanEmergence();
+    _humanJudge = getHumanJudge();
     _codeEmergence = getCodeEmergence();
     _cynicEmergence = getCynicEmergence();
     _socialEmergence = getSocialEmergence();
@@ -854,6 +864,8 @@ export function getCollectivePack(options = {}) {
         humanAccountant: _humanAccountant,
         homeostasis: _homeostasis,
         consciousnessMonitor: _consciousnessBridge?.consciousness || null,
+        // Human pipeline (C5.2)
+        humanJudge: _humanJudge,
       });
       log.info('EventListeners started - data loops closed (AXE 2)', { hasBlockStore: !!blockStore, hasJudge: !!(finalOptions.judge || _globalPack?.judge) });
 
@@ -1065,6 +1077,8 @@ export async function getCollectivePackAsync(options = {}) {
         humanAccountant: _humanAccountant,
         homeostasis: _homeostasis,
         consciousnessMonitor: _consciousnessBridge?.consciousness || null,
+        // Human pipeline (C5.2)
+        humanJudge: _humanJudge,
       });
       log.info('EventListeners started on subsequent call with persistence (AXE 2 fix)');
 
@@ -1503,6 +1517,7 @@ export async function getCollectivePackAsync(options = {}) {
       if (_humanAdvisor) systemTopology.registerComponent('humanAdvisor', _humanAdvisor);
       if (_humanLearning) systemTopology.registerComponent('humanLearning', _humanLearning);
       if (_humanAccountant) systemTopology.registerComponent('humanAccountant', _humanAccountant);
+      if (_humanJudge) systemTopology.registerComponent('humanJudge', _humanJudge);
       if (_humanEmergence) systemTopology.registerComponent('humanEmergence', _humanEmergence);
       if (_codeEmergence) systemTopology.registerComponent('codeEmergence', _codeEmergence);
       if (_cynicEmergence) systemTopology.registerComponent('cynicEmergence', _cynicEmergence);
@@ -2288,6 +2303,7 @@ export function _resetForTesting() {
   _humanAdvisor = null;
   _humanLearning = null;
   _humanAccountant = null;
+  if (_humanJudge) { resetHumanJudge(); _humanJudge = null; }
   if (_humanEmergence) { resetHumanEmergence(); _humanEmergence = null; }
   if (_codeEmergence) { resetCodeEmergence(); _codeEmergence = null; }
   if (_cynicEmergence) { resetCynicEmergence(); _cynicEmergence = null; }
