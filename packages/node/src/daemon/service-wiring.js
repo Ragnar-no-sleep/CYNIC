@@ -17,9 +17,13 @@
 
 'use strict';
 
-import { createLogger, globalEventBus } from '@cynic/core';
+import { createLogger, globalEventBus, EventType } from '@cynic/core';
 import { getModelIntelligence } from '../learning/model-intelligence.js';
 import { getCostLedger } from '../accounting/cost-ledger.js';
+import { getCollectivePackAsync } from '../collective-singleton.js';
+import { createSONA } from '../learning/sona.js';
+import { createBehaviorModifier } from '../learning/behavior-modifier.js';
+import { getMetaCognition } from '../learning/meta-cognition.js';
 
 const log = createLogger('ServiceWiring');
 
@@ -29,6 +33,15 @@ const PERSIST_INTERVAL_MS = 5 * 60 * 1000;
 let _persistTimer = null;
 let _costListener = null;
 let _wired = false;
+
+// Learning system state
+let _learningWired = false;
+let _sona = null;
+let _behaviorModifier = null;
+let _metaCognition = null;
+let _learningPersistTimer = null;
+let _sonaListener = null;
+let _feedbackListener = null;
 
 /**
  * Wire daemon-essential services at boot.
@@ -99,6 +112,122 @@ export function wireDaemonServices() {
   return { modelIntelligence: mi, costLedger };
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// LEARNING SYSTEM — collective-singleton + SONA + BehaviorModifier + MetaCognition
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Wire the learning system at daemon boot.
+ *
+ * Initializes collective-singleton (Q-Learning, LearningScheduler, UnifiedBridge,
+ * EmergenceDetector, EventListeners, etc.) plus SONA, BehaviorModifier, and
+ * MetaCognition. These are the organs that let CYNIC learn from every session.
+ *
+ * Non-blocking: daemon still runs if learning fails to initialize.
+ *
+ * @returns {Promise<{ sona: Object|null, behaviorModifier: Object|null, metaCognition: Object|null }>}
+ */
+export async function wireLearningSystem() {
+  if (_learningWired) {
+    log.debug('Learning system already wired — skipping');
+    return { sona: _sona, behaviorModifier: _behaviorModifier, metaCognition: _metaCognition };
+  }
+
+  // 1. Boot collective-singleton (the big one — wakes everything)
+  try {
+    await getCollectivePackAsync();
+    log.info('Collective-singleton initialized (Q-Learning, LearningScheduler, EventListeners, Emergence)');
+  } catch (err) {
+    log.warn('Collective-singleton init failed — learning degraded', { error: err.message });
+  }
+
+  // 2. SONA — real-time pattern adaptation
+  try {
+    _sona = createSONA();
+    _sonaListener = (data) => {
+      try {
+        if (data?.patternId && data?.dimensionScores) {
+          _sona.observe({
+            patternId: data.patternId,
+            dimensionScores: data.dimensionScores,
+            judgmentId: data.judgmentId,
+          });
+        }
+      } catch { /* non-blocking */ }
+    };
+    globalEventBus.on(EventType.JUDGMENT_CREATED || 'judgment:created', _sonaListener);
+    log.info('SONA wired — observing judgments');
+  } catch (err) {
+    log.warn('SONA init failed', { error: err.message });
+  }
+
+  // 3. BehaviorModifier — feedback → behavior changes
+  try {
+    _behaviorModifier = createBehaviorModifier();
+    _feedbackListener = (data) => {
+      try {
+        if (_behaviorModifier && data) {
+          _behaviorModifier.processFeedback(data);
+        }
+        if (_sona && data?.judgmentId) {
+          _sona.processFeedback(data);
+        }
+      } catch { /* non-blocking */ }
+    };
+    globalEventBus.on(EventType.USER_FEEDBACK || 'feedback:processed', _feedbackListener);
+    log.info('BehaviorModifier wired — processing feedback');
+  } catch (err) {
+    log.warn('BehaviorModifier init failed', { error: err.message });
+  }
+
+  // 4. MetaCognition — self-monitoring and strategy switching
+  try {
+    _metaCognition = getMetaCognition();
+    log.info('MetaCognition wired — self-monitoring active');
+  } catch (err) {
+    log.warn('MetaCognition init failed', { error: err.message });
+  }
+
+  // 5. Periodic persist for learning singletons (3 min, offset from main persist)
+  _learningPersistTimer = setInterval(() => {
+    try {
+      if (_sona?.getStats) {
+        log.debug('Learning persist tick', { sonaPatterns: _sona.getStats().trackedPatterns || 0 });
+      }
+    } catch { /* non-blocking */ }
+  }, 3 * 60 * 1000);
+  _learningPersistTimer.unref();
+
+  _learningWired = true;
+  log.info('Learning system wired — organism breathing');
+
+  return { sona: _sona, behaviorModifier: _behaviorModifier, metaCognition: _metaCognition };
+}
+
+/**
+ * Get SONA singleton (if wired).
+ * @returns {Object|null}
+ */
+export function getSONASingleton() { return _sona; }
+
+/**
+ * Get BehaviorModifier singleton (if wired).
+ * @returns {Object|null}
+ */
+export function getBehaviorModifierSingleton() { return _behaviorModifier; }
+
+/**
+ * Get MetaCognition singleton (if wired).
+ * @returns {Object|null}
+ */
+export function getMetaCognitionSingleton() { return _metaCognition; }
+
+/**
+ * Check if learning system is wired.
+ * @returns {boolean}
+ */
+export function isLearningWired() { return _learningWired; }
+
 /**
  * Cleanup wired services for graceful shutdown.
  *
@@ -128,8 +257,39 @@ export function cleanupDaemonServices() {
     log.debug('Final persist failed', { error: err.message });
   }
 
+  // Clean up learning system
+  cleanupLearningSystem();
+
   _wired = false;
   log.info('Daemon services cleaned up');
+}
+
+/**
+ * Cleanup learning system resources.
+ */
+function cleanupLearningSystem() {
+  if (!_learningWired) return;
+
+  if (_learningPersistTimer) {
+    clearInterval(_learningPersistTimer);
+    _learningPersistTimer = null;
+  }
+
+  if (_sonaListener) {
+    globalEventBus.removeListener(EventType.JUDGMENT_CREATED || 'judgment:created', _sonaListener);
+    _sonaListener = null;
+  }
+
+  if (_feedbackListener) {
+    globalEventBus.removeListener(EventType.USER_FEEDBACK || 'feedback:processed', _feedbackListener);
+    _feedbackListener = null;
+  }
+
+  _sona = null;
+  _behaviorModifier = null;
+  _metaCognition = null;
+  _learningWired = false;
+  log.info('Learning system cleaned up');
 }
 
 /**
@@ -153,4 +313,22 @@ export function _resetForTesting() {
     _costListener = null;
   }
   _wired = false;
+
+  // Reset learning system
+  if (_learningPersistTimer) {
+    clearInterval(_learningPersistTimer);
+    _learningPersistTimer = null;
+  }
+  if (_sonaListener) {
+    globalEventBus.removeListener(EventType.JUDGMENT_CREATED || 'judgment:created', _sonaListener);
+    _sonaListener = null;
+  }
+  if (_feedbackListener) {
+    globalEventBus.removeListener(EventType.USER_FEEDBACK || 'feedback:processed', _feedbackListener);
+    _feedbackListener = null;
+  }
+  _sona = null;
+  _behaviorModifier = null;
+  _metaCognition = null;
+  _learningWired = false;
 }

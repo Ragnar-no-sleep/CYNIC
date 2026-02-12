@@ -23,6 +23,7 @@ import { getCostLedger } from '../accounting/cost-ledger.js';
 import { getModelIntelligence } from '../learning/model-intelligence.js';
 import { getQLearningService } from '../orchestration/learning-service.js';
 import { formatRichBanner, formatDigestMarkdown, saveDigest } from './digest-formatter.js';
+import { getMetaCognitionSingleton } from './service-wiring.js';
 
 const log = createLogger('DaemonHandlers');
 
@@ -340,6 +341,8 @@ async function handleGuard(hookInput) {
 async function handleObserve(hookInput) {
   const toolName = hookInput?.tool_name || '';
   const toolInput = hookInput?.tool_input || {};
+  const toolOutput = hookInput?.tool_output;
+  const isError = hookInput?.is_error === true;
 
   // Emit tool observation for learning loops
   try {
@@ -348,6 +351,26 @@ async function handleObserve(hookInput) {
       input: typeof toolInput === 'object' ? toolInput : {},
       timestamp: Date.now(),
     });
+  } catch { /* non-blocking */ }
+
+  // Q-Learning: record this tool action in current episode
+  try {
+    const ql = getQLearningService();
+    if (ql?.recordAction) {
+      ql.recordAction(toolName, { success: !isError, tool: toolName });
+    }
+  } catch { /* non-blocking */ }
+
+  // MetaCognition: track action for stuck/thrashing detection
+  try {
+    const mc = getMetaCognitionSingleton();
+    if (mc?.recordAction) {
+      mc.recordAction({
+        tool: toolName,
+        success: !isError,
+        timestamp: Date.now(),
+      });
+    }
   } catch { /* non-blocking */ }
 
   return { continue: true };
@@ -370,6 +393,23 @@ async function handleAwaken(hookInput) {
   // Context compression: start tracking this session
   try { contextCompressor.start(); } catch { /* non-blocking */ }
   try { injectionProfile.start(); } catch { /* non-blocking */ }
+
+  // Q-Learning: start episode for this session
+  try {
+    const ql = getQLearningService();
+    if (ql?.startEpisode) {
+      ql.startEpisode({ taskType: 'session', tool: 'daemon' });
+      log.debug('Q-Learning episode started');
+    }
+  } catch { /* non-blocking */ }
+
+  // MetaCognition: reset for new session
+  try {
+    const mc = getMetaCognitionSingleton();
+    if (mc?.reset) {
+      mc.reset();
+    }
+  } catch { /* non-blocking */ }
 
   return {
     continue: true,

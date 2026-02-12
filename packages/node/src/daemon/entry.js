@@ -18,7 +18,7 @@ import os from 'os';
 import { bootDaemon } from '@cynic/core/boot';
 import { DaemonServer } from './index.js';
 import { processRegistry, createLogger } from '@cynic/core';
-import { wireDaemonServices, cleanupDaemonServices } from './service-wiring.js';
+import { wireDaemonServices, wireLearningSystem, cleanupDaemonServices } from './service-wiring.js';
 import { Watchdog, checkRestartSentinel } from './watchdog.js';
 
 const log = createLogger('DaemonEntry');
@@ -91,6 +91,14 @@ async function main() {
       logToFile('INFO', 'Daemon services wired (ModelIntelligence + CostLedger warm)');
     } catch (err) {
       logToFile('WARN', `Service wiring partial: ${err.message}`);
+    }
+
+    // Wire learning system (collective-singleton, SONA, BehaviorModifier, MetaCognition)
+    try {
+      await wireLearningSystem();
+      logToFile('INFO', 'Learning system wired — organism breathing');
+    } catch (err) {
+      logToFile('WARN', `Learning system wiring failed — daemon still operational: ${err.message}`);
     }
 
     // Start watchdog (self-monitoring)

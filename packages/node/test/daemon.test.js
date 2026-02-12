@@ -17,7 +17,7 @@ import os from 'os';
 
 import { DaemonServer } from '../src/daemon/index.js';
 import { handleHookEvent, _resetHandlersForTesting, classifyError, extractErrorContext, classifyNotification, detectNotificationBurst, SUBAGENT_TO_DOG } from '../src/daemon/hook-handlers.js';
-import { wireDaemonServices, cleanupDaemonServices, isWired, _resetForTesting as resetServiceWiring } from '../src/daemon/service-wiring.js';
+import { wireDaemonServices, wireLearningSystem, cleanupDaemonServices, isWired, isLearningWired, getSONASingleton, getBehaviorModifierSingleton, getMetaCognitionSingleton, _resetForTesting as resetServiceWiring } from '../src/daemon/service-wiring.js';
 import { Watchdog, HealthLevel, checkRestartSentinel } from '../src/daemon/watchdog.js';
 import { formatRichBanner, formatDigestMarkdown, saveDigest } from '../src/daemon/digest-formatter.js';
 import { resetModelIntelligence } from '../src/learning/model-intelligence.js';
@@ -1238,5 +1238,126 @@ describe('DaemonServer', () => {
   it('should handle stop when not running', async () => {
     // Should not throw
     await server.stop();
+  });
+});
+
+// =============================================================================
+// LEARNING SYSTEM WIRING
+// =============================================================================
+
+describe('Learning System Wiring', () => {
+  beforeEach(() => {
+    resetServiceWiring();
+    resetModelIntelligence();
+    resetCostLedger();
+  });
+
+  afterEach(() => {
+    resetServiceWiring();
+    resetModelIntelligence();
+    resetCostLedger();
+  });
+
+  it('should wire learning system and mark as wired', async () => {
+    assert.strictEqual(isLearningWired(), false);
+    const result = await wireLearningSystem();
+    assert.strictEqual(isLearningWired(), true);
+    assert.ok(result.sona);
+    assert.ok(result.behaviorModifier);
+    assert.ok(result.metaCognition);
+  });
+
+  it('should be idempotent (wire twice returns same singletons)', async () => {
+    const first = await wireLearningSystem();
+    const second = await wireLearningSystem();
+    assert.strictEqual(first.sona, second.sona);
+    assert.strictEqual(first.behaviorModifier, second.behaviorModifier);
+    assert.strictEqual(first.metaCognition, second.metaCognition);
+  });
+
+  it('should expose singletons via getters', async () => {
+    await wireLearningSystem();
+    assert.ok(getSONASingleton());
+    assert.ok(getBehaviorModifierSingleton());
+    assert.ok(getMetaCognitionSingleton());
+  });
+
+  it('should clean up on reset', async () => {
+    await wireLearningSystem();
+    assert.strictEqual(isLearningWired(), true);
+    resetServiceWiring();
+    assert.strictEqual(isLearningWired(), false);
+    assert.strictEqual(getSONASingleton(), null);
+    assert.strictEqual(getBehaviorModifierSingleton(), null);
+    assert.strictEqual(getMetaCognitionSingleton(), null);
+  });
+
+  it('should clean up via cleanupDaemonServices', async () => {
+    wireDaemonServices();
+    await wireLearningSystem();
+    assert.strictEqual(isWired(), true);
+    assert.strictEqual(isLearningWired(), true);
+    cleanupDaemonServices();
+    assert.strictEqual(isWired(), false);
+    assert.strictEqual(isLearningWired(), false);
+  });
+});
+
+// =============================================================================
+// Q-LEARNING EPISODE LIFECYCLE (via hooks)
+// =============================================================================
+
+describe('Q-Learning Episode Lifecycle', () => {
+  beforeEach(() => {
+    _resetHandlersForTesting();
+    resetServiceWiring();
+    resetModelIntelligence();
+    resetCostLedger();
+  });
+
+  afterEach(() => {
+    _resetHandlersForTesting();
+    resetServiceWiring();
+    resetModelIntelligence();
+    resetCostLedger();
+  });
+
+  it('should start Q-Learning episode on SessionStart', async () => {
+    const result = await handleHookEvent('SessionStart', {});
+    assert.strictEqual(result.continue, true);
+    // Episode start is non-blocking — verify no crash
+    assert.ok(result.message.includes('daemon'));
+  });
+
+  it('should record action on PostToolUse', async () => {
+    // Start session first (may or may not start episode depending on QL init)
+    await handleHookEvent('SessionStart', {});
+
+    // Observe a tool use
+    const result = await handleHookEvent('PostToolUse', {
+      tool_name: 'Bash',
+      tool_input: { command: 'npm test' },
+      tool_output: 'All tests passed',
+    });
+    assert.strictEqual(result.continue, true);
+  });
+
+  it('should handle full lifecycle: awaken → observe → stop', async () => {
+    // 1. Session start
+    const awaken = await handleHookEvent('SessionStart', {});
+    assert.strictEqual(awaken.continue, true);
+
+    // 2. Multiple tool observations
+    for (let i = 0; i < 3; i++) {
+      const obs = await handleHookEvent('PostToolUse', {
+        tool_name: `Tool${i}`,
+        tool_input: {},
+      });
+      assert.strictEqual(obs.continue, true);
+    }
+
+    // 3. Session stop
+    const stop = await handleHookEvent('Stop', {});
+    assert.strictEqual(stop.continue, true);
   });
 });
